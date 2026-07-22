@@ -1,0 +1,151 @@
+import type { Category, Ingredient, Recipe, Tag } from './types';
+
+// 참고자료(요리_재료_관리.html, 리조또_레시피_모음.md)가 프로젝트에 없어
+// CLAUDE.md에 적힌 레시피 이름과 카테고리만 보고 합리적으로 추정한 시드 데이터.
+// 실제 레시피와 다를 수 있으니 앱에서 확인 후 자유롭게 수정할 것.
+
+export const seedCategories: Category[] = [
+  { id: 'cat-vegetable', name: '채소' },
+  { id: 'cat-meat-seafood', name: '육류·해산물' },
+  { id: 'cat-dairy', name: '유제품' },
+  { id: 'cat-grain', name: '곡류' },
+  { id: 'cat-sauce', name: '소스·양념' },
+  { id: 'cat-etc', name: '기타' },
+];
+
+export const seedIngredients: Ingredient[] = [
+  { id: 'ing-rice', name: '밥', categoryId: 'cat-grain', defaultBuyUnit: '1공기', allergens: [] },
+  { id: 'ing-cream', name: '생크림', categoryId: 'cat-dairy', defaultBuyUnit: '200ml', allergens: [] },
+  { id: 'ing-milk', name: '우유', categoryId: 'cat-dairy', defaultBuyUnit: '500ml', allergens: [] },
+  { id: 'ing-onion', name: '양파', categoryId: 'cat-vegetable', defaultBuyUnit: '1개', allergens: [] },
+  { id: 'ing-parmesan', name: '파마산치즈', categoryId: 'cat-dairy', defaultBuyUnit: '100g', allergens: [] },
+  {
+    id: 'ing-beef',
+    name: '부챗살(스테이크용)',
+    categoryId: 'cat-meat-seafood',
+    defaultBuyUnit: '800g',
+    allergens: [],
+  },
+  { id: 'ing-pumpkin', name: '단호박', categoryId: 'cat-vegetable', defaultBuyUnit: '1개', allergens: [] },
+  { id: 'ing-butter', name: '버터', categoryId: 'cat-dairy', defaultBuyUnit: '200g', allergens: [] },
+  { id: 'ing-garlic', name: '마늘', categoryId: 'cat-vegetable', defaultBuyUnit: '1망', allergens: ['마늘'] },
+  { id: 'ing-flour', name: '밀가루', categoryId: 'cat-grain', defaultBuyUnit: '1kg', allergens: ['밀가루'] },
+  {
+    id: 'ing-tomato-can',
+    name: '토마토홀(캔)',
+    categoryId: 'cat-vegetable',
+    defaultBuyUnit: '400g',
+    allergens: [],
+  },
+  { id: 'ing-salt', name: '소금', categoryId: 'cat-sauce', defaultBuyUnit: '1통', allergens: [] },
+  { id: 'ing-pepper', name: '후추', categoryId: 'cat-sauce', defaultBuyUnit: '1통', allergens: [] },
+  { id: 'ing-olive-oil', name: '올리브오일', categoryId: 'cat-sauce', defaultBuyUnit: '500ml', allergens: [] },
+  {
+    id: 'ing-tomato-sauce',
+    name: '토마토파스타소스',
+    categoryId: 'cat-sauce',
+    defaultBuyUnit: '1병',
+    allergens: ['마늘'],
+  },
+  { id: 'ing-stock', name: '육수(치킨스톡)', categoryId: 'cat-sauce', defaultBuyUnit: '1L', allergens: [] },
+];
+
+export const seedTags: Tag[] = [
+  { id: 'tag-cream', name: '크림류', type: 'style' },
+  { id: 'tag-tomato', name: '토마토류', type: 'style' },
+  { id: 'tag-meat', name: '고기요리', type: 'category' },
+  { id: 'tag-soup', name: '국물요리', type: 'category' },
+];
+
+export const seedRecipes: Recipe[] = [
+  {
+    id: 'recipe-cream-risotto',
+    name: '마늘 없는 밥 크림 리조또',
+    servingsBase: 2,
+    tagIds: ['tag-cream'],
+    ingredients: [
+      { ingredientId: 'ing-rice', amount: 1.5, unit: '공기' },
+      { ingredientId: 'ing-cream', amount: 200, unit: 'ml' },
+      { ingredientId: 'ing-milk', amount: 200, unit: 'ml' },
+      { ingredientId: 'ing-onion', amount: 0.5, unit: '개' },
+      { ingredientId: 'ing-parmesan', amount: 30, unit: 'g' },
+      { ingredientId: 'ing-butter', amount: 20, unit: 'g' },
+      { ingredientId: 'ing-olive-oil', amount: 1, unit: '큰술' },
+      { ingredientId: 'ing-stock', amount: 300, unit: 'ml' },
+      { ingredientId: 'ing-salt', amount: 1, unit: '약간' },
+      { ingredientId: 'ing-pepper', amount: 1, unit: '약간' },
+    ],
+    steps: [
+      { title: '재료 손질', content: '양파를 잘게 다진다.' },
+      { title: '볶기', content: '버터와 올리브오일을 두른 팬에 양파를 투명해질 때까지 볶는다.', timerSeconds: 180 },
+      { title: '밥 끓이기', content: '밥과 육수를 넣고 저어가며 끓인다.', timerSeconds: 300 },
+      { title: '크림 더하기', content: '생크림과 우유를 넣고 되직해질 때까지 졸인다.', timerSeconds: 240 },
+      { title: '마무리', content: '파마산치즈를 넣고 소금, 후추로 간을 맞춘다.' },
+    ],
+  },
+  {
+    id: 'recipe-tomato-risotto',
+    name: '마늘 없는 밥 토마토 리조또',
+    servingsBase: 2,
+    tagIds: ['tag-tomato'],
+    ingredients: [
+      { ingredientId: 'ing-rice', amount: 1.5, unit: '공기' },
+      { ingredientId: 'ing-tomato-can', amount: 300, unit: 'g' },
+      { ingredientId: 'ing-onion', amount: 0.5, unit: '개' },
+      { ingredientId: 'ing-olive-oil', amount: 1, unit: '큰술' },
+      { ingredientId: 'ing-parmesan', amount: 20, unit: 'g' },
+      { ingredientId: 'ing-stock', amount: 300, unit: 'ml' },
+      { ingredientId: 'ing-salt', amount: 1, unit: '약간' },
+      { ingredientId: 'ing-pepper', amount: 1, unit: '약간' },
+    ],
+    steps: [
+      { title: '재료 손질', content: '양파를 잘게 다진다.' },
+      { title: '볶기', content: '올리브오일을 두른 팬에 양파를 볶는다.', timerSeconds: 180 },
+      { title: '토마토 더하기', content: '토마토홀을 넣고 으깨가며 끓인다.', timerSeconds: 300 },
+      { title: '밥 끓이기', content: '밥과 육수를 넣고 저어가며 끓인다.', timerSeconds: 300 },
+      { title: '마무리', content: '파마산치즈를 넣고 소금, 후추로 간을 맞춘다.' },
+    ],
+  },
+  {
+    id: 'recipe-beef-steak',
+    name: '부챗살 스테이크',
+    servingsBase: 4,
+    tagIds: ['tag-meat'],
+    ingredients: [
+      { ingredientId: 'ing-beef', amount: 800, unit: 'g' },
+      { ingredientId: 'ing-salt', amount: 1, unit: '약간' },
+      { ingredientId: 'ing-pepper', amount: 1, unit: '약간' },
+      { ingredientId: 'ing-olive-oil', amount: 2, unit: '큰술' },
+      { ingredientId: 'ing-butter', amount: 20, unit: 'g' },
+    ],
+    steps: [
+      { title: '상온 보관', content: '조리 30분 전 고기를 실온에 꺼내둔다.', timerSeconds: 1800 },
+      { title: '밑간', content: '소금과 후추로 밑간한다.' },
+      { title: '시어링', content: '달군 팬에 올리브오일을 두르고 각 면을 강불에 굽는다.', timerSeconds: 240 },
+      { title: '버터 베이스팅', content: '버터를 넣고 향을 입히며 마무리한다.', timerSeconds: 60 },
+      { title: '휴지', content: '알루미늄 포일로 덮어 5분간 휴지시킨다.', timerSeconds: 300 },
+    ],
+  },
+  {
+    id: 'recipe-pumpkin-soup',
+    name: '단호박스프',
+    servingsBase: 4,
+    tagIds: ['tag-soup'],
+    ingredients: [
+      { ingredientId: 'ing-pumpkin', amount: 1, unit: '개' },
+      { ingredientId: 'ing-onion', amount: 0.5, unit: '개' },
+      { ingredientId: 'ing-milk', amount: 300, unit: 'ml' },
+      { ingredientId: 'ing-cream', amount: 100, unit: 'ml' },
+      { ingredientId: 'ing-butter', amount: 20, unit: 'g' },
+      { ingredientId: 'ing-stock', amount: 200, unit: 'ml' },
+      { ingredientId: 'ing-salt', amount: 1, unit: '약간' },
+    ],
+    steps: [
+      { title: '재료 손질', content: '단호박은 씨를 제거하고 큼직하게 썰고, 양파는 다진다.' },
+      { title: '찌기', content: '단호박을 부드러워질 때까지 찐다.', timerSeconds: 900 },
+      { title: '볶기', content: '버터에 양파를 볶는다.', timerSeconds: 180 },
+      { title: '끓이기', content: '단호박, 양파, 육수를 넣고 끓인 뒤 믹서로 곱게 간다.', timerSeconds: 300 },
+      { title: '마무리', content: '우유와 생크림을 더해 데우고 소금으로 간을 맞춘다.', timerSeconds: 180 },
+    ],
+  },
+];

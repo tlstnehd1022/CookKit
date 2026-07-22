@@ -7,12 +7,22 @@ import { downloadBackup, restoreBackupFromFile } from '../../data/backup';
 export function SettingsPage() {
   const { settings, updateSettings } = useSettings();
   const { user, logout } = useSession();
-  const [apiKeyDraft, setApiKeyDraft] = useState(settings.anthropicApiKey);
+  const [anthropicKeyDraft, setAnthropicKeyDraft] = useState(settings.anthropicApiKey);
+  const [geminiKeyDraft, setGeminiKeyDraft] = useState(settings.geminiApiKey);
+  const [youtubeKeyDraft, setYoutubeKeyDraft] = useState(settings.youtubeApiKey);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  function saveApiKey() {
-    updateSettings({ anthropicApiKey: apiKeyDraft.trim() });
+  function saveAnthropicKey() {
+    updateSettings({ anthropicApiKey: anthropicKeyDraft.trim() });
+  }
+
+  function saveGeminiKey() {
+    updateSettings({ geminiApiKey: geminiKeyDraft.trim() });
+  }
+
+  function saveYoutubeKey() {
+    updateSettings({ youtubeApiKey: youtubeKeyDraft.trim() });
   }
 
   async function handleImportFile(file: File) {
@@ -31,35 +41,101 @@ export function SettingsPage() {
     <div>
       <h1>설정</h1>
 
-      <div className="section-title">Anthropic API 키 (자연어 → 레시피 변환용)</div>
+      <div className="section-title">AI 제공자 (자연어/유튜브 → 레시피 변환용)</div>
       <div className="card">
         <div className="field">
-          <label>API 키</label>
-          <input
-            type="password"
-            value={apiKeyDraft}
-            onChange={(e) => setApiKeyDraft(e.target.value)}
-            placeholder="sk-ant-..."
-          />
-        </div>
-        <div className="field">
-          <label>사용 모델</label>
-          <select value={settings.model} onChange={(e) => updateSettings({ model: e.target.value })}>
-            {AVAILABLE_MODELS.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.label}
-              </option>
-            ))}
+          <label>사용할 AI</label>
+          <select
+            value={settings.aiProvider}
+            onChange={(e) => updateSettings({ aiProvider: e.target.value as 'anthropic' | 'gemini' })}
+          >
+            <option value="gemini">Google Gemini (무료 쿼터, 추천)</option>
+            <option value="anthropic">Anthropic Claude (유료)</option>
           </select>
         </div>
         <p className="text-muted">
-          ⚠️ 이 키는 브라우저 localStorage에만 저장되며, 레시피 변환 요청 시 브라우저에서 직접 Anthropic API로
+          ⚠️ 여기 입력하는 키는 브라우저 localStorage에만 저장되며, 변환 요청 시 브라우저에서 직접 해당 API로
           전송됩니다. 본인만 사용하는 환경에서만 입력하세요. 공개된 기기나 배포된 앱에서는 사용하지 마세요.
         </p>
-        <button className="btn primary" onClick={saveApiKey}>
-          저장
-        </button>
       </div>
+
+      {settings.aiProvider === 'gemini' && (
+        <>
+          <div className="section-title">Gemini API 키</div>
+          <div className="card">
+            <div className="field">
+              <label>API 키 (Google AI Studio에서 무료 발급)</label>
+              <input
+                type="password"
+                value={geminiKeyDraft}
+                onChange={(e) => setGeminiKeyDraft(e.target.value)}
+                placeholder="AIza..."
+              />
+            </div>
+            <div className="field">
+              <label>사용 모델 ID</label>
+              <input
+                value={settings.geminiModel}
+                onChange={(e) => updateSettings({ geminiModel: e.target.value })}
+                placeholder="gemini-2.5-flash"
+              />
+            </div>
+            <button className="btn primary" onClick={saveGeminiKey}>
+              저장
+            </button>
+          </div>
+
+          <div className="section-title">YouTube Data API 키 (유튜브 변환용, 선택)</div>
+          <div className="card">
+            <div className="field">
+              <label>API 키 (Google Cloud Console에서 무료 발급)</label>
+              <input
+                type="password"
+                value={youtubeKeyDraft}
+                onChange={(e) => setYoutubeKeyDraft(e.target.value)}
+                placeholder="AIza..."
+              />
+            </div>
+            <p className="text-muted">
+              공식 YouTube API는 임의 영상의 자막까지는 제공하지 않아 영상 제목/설명란만 자동으로 가져옵니다. 이
+              키를 입력하지 않으면 유튜브 변환 화면에서 자막/설명을 직접 붙여넣어야 합니다.
+            </p>
+            <button className="btn primary" onClick={saveYoutubeKey}>
+              저장
+            </button>
+          </div>
+        </>
+      )}
+
+      {settings.aiProvider === 'anthropic' && (
+        <>
+          <div className="section-title">Anthropic API 키</div>
+          <div className="card">
+            <div className="field">
+              <label>API 키</label>
+              <input
+                type="password"
+                value={anthropicKeyDraft}
+                onChange={(e) => setAnthropicKeyDraft(e.target.value)}
+                placeholder="sk-ant-..."
+              />
+            </div>
+            <div className="field">
+              <label>사용 모델</label>
+              <select value={settings.model} onChange={(e) => updateSettings({ model: e.target.value })}>
+                {AVAILABLE_MODELS.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button className="btn primary" onClick={saveAnthropicKey}>
+              저장
+            </button>
+          </div>
+        </>
+      )}
 
       <div className="section-title">데이터 백업</div>
       <div className="card">

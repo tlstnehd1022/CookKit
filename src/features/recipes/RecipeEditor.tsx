@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useCategories, useIngredients, useRecipes, useTags, makeId } from '../../data/store';
 import { useSettings } from '../../data/settings';
-import { extractRecipeFromText, extractRecipeFromYoutubeUrl, type ExtractedRecipe } from '../../lib/claudeClient';
+import * as claudeClient from '../../lib/claudeClient';
+import * as geminiClient from '../../lib/geminiClient';
+import type { ExtractedRecipe } from '../../lib/claudeClient';
 import type { Recipe, RecipeIngredient, RecipeStep } from '../../data/types';
 
 export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: () => void }) {
@@ -21,6 +23,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
 
   const [aiDescription, setAiDescription] = useState('');
   const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [youtubeManualText, setYoutubeManualText] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiWarning, setAiWarning] = useState<string | null>(null);
@@ -45,8 +48,14 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     setAiWarning(result.warning ?? null);
   }
 
+  const isGemini = settings.aiProvider === 'gemini';
+
   async function runAiConversion() {
-    if (!settings.anthropicApiKey) {
+    if (isGemini && !settings.geminiApiKey) {
+      setAiError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
+      return;
+    }
+    if (!isGemini && !settings.anthropicApiKey) {
       setAiError('설정 화면에서 Anthropic API 키를 먼저 입력해주세요.');
       return;
     }
@@ -55,7 +64,9 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     setAiError(null);
     setAiWarning(null);
     try {
-      const result = await extractRecipeFromText(settings.anthropicApiKey, settings.model, aiDescription);
+      const result = isGemini
+        ? await geminiClient.extractRecipeFromText(settings.geminiApiKey, settings.geminiModel, aiDescription)
+        : await claudeClient.extractRecipeFromText(settings.anthropicApiKey, settings.model, aiDescription);
       applyExtractedResult(result);
     } catch (err) {
       setAiError(err instanceof Error ? err.message : 'AI 변환에 실패했습니다.');
@@ -65,7 +76,11 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   }
 
   async function runYoutubeConversion() {
-    if (!settings.anthropicApiKey) {
+    if (isGemini && !settings.geminiApiKey) {
+      setAiError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
+      return;
+    }
+    if (!isGemini && !settings.anthropicApiKey) {
       setAiError('설정 화면에서 Anthropic API 키를 먼저 입력해주세요.');
       return;
     }
@@ -74,10 +89,32 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     setAiError(null);
     setAiWarning(null);
     try {
-      const result = await extractRecipeFromYoutubeUrl(settings.anthropicApiKey, settings.model, youtubeUrl.trim());
+      let result: ExtractedRecipe;
+      if (isGemini) {
+        let meta: geminiClient.YoutubeVideoMeta | null = null;
+        if (settings.youtubeApiKey) {
+          try {
+            meta = await geminiClient.fetchYoutubeVideoMeta(settings.youtubeApiKey, youtubeUrl.trim());
+          } catch {
+            // YouTube Data API 조회 실패 시에도 사용자가 붙여넣은 텍스트만으로 계속 진행
+          }
+        }
+        result = await geminiClient.extractRecipeFromYoutubeMeta(
+          settings.geminiApiKey,
+          settings.geminiModel,
+          meta,
+          youtubeManualText,
+        );
+      } else {
+        result = await claudeClient.extractRecipeFromYoutubeUrl(
+          settings.anthropicApiKey,
+          settings.model,
+          youtubeUrl.trim(),
+        );
+      }
       applyExtractedResult(result);
       if (!result.warning) {
-        setAiWarning('유튜브 자막/설명란 기반 자동 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.');
+        setAiWarning('유튜브 정보 기반 자동 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.');
       }
     } catch (err) {
       setAiError(err instanceof Error ? err.message : '유튜브 변환에 실패했습니다.');
@@ -161,13 +198,24 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         </button>
 
         <div className="field" style={{ marginTop: 16 }}>
-          <label>또는 유튜브 링크로 변환 (자막/설명란 기반, 결과가 부정확할 수 있어요)</label>
+          <label>또는 유튜브 링크로 변환 (제목/설명란 기반, 결과가 부정확할 수 있어요)</label>
           <input
             value={youtubeUrl}
             onChange={(e) => setYoutubeUrl(e.target.value)}
             placeholder="https://www.youtube.com/watch?v=..."
           />
         </div>
+        {isGemini && (
+          <div className="field">
+            <label>영상 자막/설명 직접 붙여넣기 (선택, 정확도 향상)</label>
+            <textarea
+              rows={4}
+              value={youtubeManualText}
+              onChange={(e) => setYoutubeManualText(e.target.value)}
+              placeholder="유튜브 자막 텍스트를 복사해서 붙여넣으면 더 정확하게 변환됩니다. (유튜브 정책상 자막 자동 가져오기는 지원하지 않아요)"
+            />
+          </div>
+        )}
         <button className="btn" onClick={runYoutubeConversion} disabled={aiLoading}>
           {aiLoading ? '변환 중...' : '유튜브에서 변환'}
         </button>

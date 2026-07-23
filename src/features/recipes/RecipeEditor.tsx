@@ -4,13 +4,17 @@ import { useSettings } from '../../data/settings';
 import * as claudeClient from '../../lib/claudeClient';
 import * as geminiClient from '../../lib/geminiClient';
 import type { ExtractedRecipe } from '../../lib/claudeClient';
+import type { ExistingContext } from '../../lib/aiChat';
 import type { Recipe, RecipeIngredient, RecipeStep } from '../../data/types';
+import { COMMON_UNITS, CUSTOM_UNIT_VALUE } from '../../data/units';
+import { RecipeChatPanel } from './RecipeChatPanel';
+import type { RecipeSnapshot } from '../../lib/recipeDiff';
 
 export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: () => void }) {
   const { recipes, saveRecipe } = useRecipes();
   const { ingredients, saveIngredient } = useIngredients();
-  const { categories } = useCategories();
-  const { tags } = useTags();
+  const { categories, saveCategory } = useCategories();
+  const { tags, saveTag } = useTags();
   const { settings } = useSettings();
 
   const existing = recipeId ? recipes.find((r) => r.id === recipeId) : undefined;
@@ -21,14 +25,61 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   const [recipeIngredients, setRecipeIngredients] = useState<RecipeIngredient[]>(existing?.ingredients ?? []);
   const [steps, setSteps] = useState<RecipeStep[]>(existing?.steps ?? []);
 
-  const [aiDescription, setAiDescription] = useState('');
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [youtubeManualText, setYoutubeManualText] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiWarning, setAiWarning] = useState<string | null>(null);
 
+  interface FormSnapshot {
+    name: string;
+    servingsBase: number;
+    tagIds: string[];
+    recipeIngredients: RecipeIngredient[];
+    steps: RecipeStep[];
+  }
+  const [undoStack, setUndoStack] = useState<FormSnapshot[]>([]);
+
+  function undoLastApply() {
+    if (undoStack.length === 0) return;
+    const last = undoStack[undoStack.length - 1];
+    setName(last.name);
+    setServingsBase(last.servingsBase);
+    setTagIds(last.tagIds);
+    setRecipeIngredients(last.recipeIngredients);
+    setSteps(last.steps);
+    setUndoStack((prev) => prev.slice(0, -1));
+  }
+
+  const existingContext: ExistingContext = {
+    tags: tags.map((tag) => tag.name),
+    categories: categories.map((category) => category.name),
+    ingredients: ingredients.map((ingredient) => ingredient.name),
+  };
+
+  const currentRecipeSnapshot: RecipeSnapshot = {
+    name,
+    servingsBase,
+    ingredients: recipeIngredients.map((row) => ({
+      name: ingredients.find((ingredient) => ingredient.id === row.ingredientId)?.name ?? '(알 수 없음)',
+      amount: row.amount,
+      unit: row.unit,
+    })),
+    tagNames: tagIds.map((id) => tags.find((tag) => tag.id === id)?.name).filter((n): n is string => Boolean(n)),
+    stepsCount: steps.length,
+  };
+
+  function resolveOrCreateTag(rawName: string): string {
+    const trimmed = rawName.trim();
+    const matched = tags.find((tag) => tag.name === trimmed);
+    if (matched) return matched.id;
+    const id = makeId('tag');
+    saveTag({ id, name: trimmed, type: 'style' });
+    return id;
+  }
+
   function applyExtractedResult(result: ExtractedRecipe) {
+    setUndoStack((prev) => [...prev, { name, servingsBase, tagIds, recipeIngredients, steps }]);
     setName(result.name);
     setServingsBase(result.servingsBase || 1);
     setSteps(
@@ -41,39 +92,17 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     setRecipeIngredients(
       result.ingredients.map((item) => {
         const matched = ingredients.find((ingredient) => ingredient.name.trim() === item.name.trim());
-        const ingredientId = matched?.id ?? createIngredientFromAi(item.name);
+        const ingredientId = matched?.id ?? createIngredientFromAi(item.name, item.categoryName);
         return { ingredientId, amount: item.amount, unit: item.unit };
       }),
     );
+    if (result.tagNames && result.tagNames.length > 0) {
+      setTagIds(result.tagNames.map((tagName) => resolveOrCreateTag(tagName)));
+    }
     setAiWarning(result.warning ?? null);
   }
 
   const isGemini = settings.aiProvider === 'gemini';
-
-  async function runAiConversion() {
-    if (isGemini && !settings.geminiApiKey) {
-      setAiError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
-      return;
-    }
-    if (!isGemini && !settings.anthropicApiKey) {
-      setAiError('설정 화면에서 Anthropic API 키를 먼저 입력해주세요.');
-      return;
-    }
-    if (!aiDescription.trim()) return;
-    setAiLoading(true);
-    setAiError(null);
-    setAiWarning(null);
-    try {
-      const result = isGemini
-        ? await geminiClient.extractRecipeFromText(settings.geminiApiKey, settings.geminiModel, aiDescription)
-        : await claudeClient.extractRecipeFromText(settings.anthropicApiKey, settings.model, aiDescription);
-      applyExtractedResult(result);
-    } catch (err) {
-      setAiError(err instanceof Error ? err.message : 'AI 변환에 실패했습니다.');
-    } finally {
-      setAiLoading(false);
-    }
-  }
 
   async function runYoutubeConversion() {
     if (isGemini && !settings.geminiApiKey) {
@@ -104,12 +133,14 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           settings.geminiModel,
           meta,
           youtubeManualText,
+          existingContext,
         );
       } else {
         result = await claudeClient.extractRecipeFromYoutubeUrl(
           settings.anthropicApiKey,
           settings.model,
           youtubeUrl.trim(),
+          existingContext,
         );
       }
       applyExtractedResult(result);
@@ -123,11 +154,23 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     }
   }
 
-  function createIngredientFromAi(rawName: string): string {
+  function createIngredientFromAi(rawName: string, categoryName?: string | null): string {
     const trimmed = rawName.trim();
     const id = makeId('ing');
-    const fallbackCategoryId = categories.find((c) => c.name === '기타')?.id ?? categories[0]?.id ?? '';
-    saveIngredient({ id, name: trimmed, categoryId: fallbackCategoryId, defaultBuyUnit: '1개', allergens: [] });
+    const trimmedCategoryName = categoryName?.trim();
+    const matchedCategory = trimmedCategoryName
+      ? categories.find((c) => c.name === trimmedCategoryName)
+      : undefined;
+    let categoryId: string;
+    if (matchedCategory) {
+      categoryId = matchedCategory.id;
+    } else if (trimmedCategoryName) {
+      categoryId = makeId('cat');
+      saveCategory({ id: categoryId, name: trimmedCategoryName });
+    } else {
+      categoryId = categories.find((c) => c.name === '기타')?.id ?? categories[0]?.id ?? '';
+    }
+    saveIngredient({ id, name: trimmed, categoryId, defaultBuyUnit: '1개', allergens: [] });
     return id;
   }
 
@@ -182,23 +225,25 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         <h1 style={{ margin: 0 }}>{existing ? '레시피 수정' : '레시피 추가'}</h1>
       </div>
 
-      <div className="section-title">AI로 변환</div>
-      <div className="card">
-        <div className="field">
-          <label>자연어로 레시피를 설명해주세요</label>
-          <textarea
-            rows={4}
-            value={aiDescription}
-            onChange={(e) => setAiDescription(e.target.value)}
-            placeholder="예: 마늘 없는 크림 리조또, 2인분. 양파를 볶다가 밥과 육수를 넣고 끓인 뒤 생크림을 넣어 마무리..."
-          />
-        </div>
-        <button className="btn primary" onClick={runAiConversion} disabled={aiLoading}>
-          {aiLoading ? '변환 중...' : 'AI로 변환'}
+      <div className="section-title">AI로 레시피 만들기/수정하기</div>
+      <RecipeChatPanel
+        onApply={applyExtractedResult}
+        existingContext={existingContext}
+        currentRecipe={currentRecipeSnapshot}
+      />
+      {undoStack.length > 0 && (
+        <button className="btn small" style={{ marginBottom: 12 }} onClick={undoLastApply}>
+          ↩ AI 반영 이전으로 되돌리기 ({undoStack.length})
         </button>
+      )}
 
-        <div className="field" style={{ marginTop: 16 }}>
-          <label>또는 유튜브 링크로 변환 (제목/설명란 기반, 결과가 부정확할 수 있어요)</label>
+      <div className="section-title">또는 유튜브 링크로 변환</div>
+      <div className="card">
+        <p className="text-muted" style={{ marginBottom: 8 }}>
+          영상 제목/설명란 기반이라 결과가 부정확할 수 있어요(실시간 자막 추출 아님, best-effort).
+        </p>
+        <div className="field">
+          <label>유튜브 링크</label>
           <input
             value={youtubeUrl}
             onChange={(e) => setYoutubeUrl(e.target.value)}
@@ -272,11 +317,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
             onChange={(e) => updateIngredientRow(index, { amount: Number(e.target.value) || 0 })}
             style={{ flex: 1, width: 60 }}
           />
-          <input
-            value={row.unit}
-            onChange={(e) => updateIngredientRow(index, { unit: e.target.value })}
-            style={{ flex: 1, width: 60 }}
-          />
+          <UnitPicker unit={row.unit} onChange={(unit) => updateIngredientRow(index, { unit })} />
           <button className="btn small danger" onClick={() => removeIngredientRow(index)}>
             삭제
           </button>
@@ -303,16 +344,36 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
             />
           </div>
           <div className="field">
-            <label>타이머(초, 선택)</label>
-            <input
-              type="number"
-              value={step.timerSeconds ?? ''}
-              onChange={(e) =>
-                updateStepRow(index, {
-                  timerSeconds: e.target.value ? Number(e.target.value) : undefined,
-                })
-              }
-            />
+            <label>타이머(선택)</label>
+            <div className="row" style={{ gap: 6, justifyContent: 'flex-start' }}>
+              <input
+                type="number"
+                min={0}
+                value={Math.floor((step.timerSeconds ?? 0) / 60)}
+                onChange={(e) => {
+                  const minutes = Number(e.target.value) || 0;
+                  const seconds = (step.timerSeconds ?? 0) % 60;
+                  const total = minutes * 60 + seconds;
+                  updateStepRow(index, { timerSeconds: total > 0 ? total : undefined });
+                }}
+                style={{ width: 60 }}
+              />
+              <span>분</span>
+              <input
+                type="number"
+                min={0}
+                max={59}
+                value={(step.timerSeconds ?? 0) % 60}
+                onChange={(e) => {
+                  const seconds = Number(e.target.value) || 0;
+                  const minutes = Math.floor((step.timerSeconds ?? 0) / 60);
+                  const total = minutes * 60 + seconds;
+                  updateStepRow(index, { timerSeconds: total > 0 ? total : undefined });
+                }}
+                style={{ width: 60 }}
+              />
+              <span>초</span>
+            </div>
           </div>
           <button className="btn small danger" onClick={() => removeStepRow(index)}>
             이 단계 삭제
@@ -331,6 +392,36 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           저장
         </button>
       </div>
+    </div>
+  );
+}
+
+function UnitPicker({ unit, onChange }: { unit: string; onChange: (unit: string) => void }) {
+  const isKnown = COMMON_UNITS.includes(unit);
+  const selectValue = isKnown ? unit : CUSTOM_UNIT_VALUE;
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 70 }}>
+      <select
+        value={selectValue}
+        onChange={(e) => {
+          if (e.target.value === CUSTOM_UNIT_VALUE) {
+            onChange('');
+          } else {
+            onChange(e.target.value);
+          }
+        }}
+      >
+        {COMMON_UNITS.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+        <option value={CUSTOM_UNIT_VALUE}>직접입력</option>
+      </select>
+      {!isKnown && (
+        <input value={unit} onChange={(e) => onChange(e.target.value)} placeholder="단위 입력" />
+      )}
     </div>
   );
 }

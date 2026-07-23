@@ -1,10 +1,21 @@
-export const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash';
+// 2.5/2.0 세대 모델은 2026-07-09부터 신규 API 키에 404("no longer available to new users")를
+// 반환하기 시작함 — 새로 발급한 키는 3.x 세대 모델만 사용 가능. 최신 GA 모델로 기본값 설정.
+import {
+  RECIPE_CHAT_SYSTEM_PROMPT,
+  buildExistingContextNote,
+  type ChatResult,
+  type ChatTurn,
+  type ExistingContext,
+} from './aiChat';
+
+export const GEMINI_DEFAULT_MODEL = 'gemini-3.6-flash';
 
 export interface ExtractedRecipe {
   name: string;
   servingsBase: number;
-  ingredients: { name: string; amount: number; unit: string }[];
+  ingredients: { name: string; amount: number; unit: string; categoryName?: string | null }[];
   steps: { title: string; content: string; timerSeconds?: number | null }[];
+  tagNames?: string[] | null;
   warning?: string | null;
 }
 
@@ -19,9 +30,14 @@ const GEMINI_RECIPE_SCHEMA = {
       items: {
         type: 'OBJECT',
         properties: {
-          name: { type: 'STRING', description: '재료 이름' },
+          name: { type: 'STRING', description: '재료 이름 (이미 등록된 재료와 같으면 그 이름 그대로)' },
           amount: { type: 'NUMBER', description: '수량 (숫자만)' },
           unit: { type: 'STRING', description: '단위 (예: g, ml, 개, 큰술)' },
+          categoryName: {
+            type: 'STRING',
+            description: '이 재료의 카테고리 이름. 기존 카테고리 목록 중 하나를 최대한 사용, 없으면 새로 제안.',
+            nullable: true,
+          },
         },
         required: ['name', 'amount', 'unit'],
       },
@@ -41,6 +57,12 @@ const GEMINI_RECIPE_SCHEMA = {
         },
         required: ['title', 'content'],
       },
+    },
+    tagNames: {
+      type: 'ARRAY',
+      items: { type: 'STRING' },
+      description: '이 레시피에 어울리는 스타일/카테고리 태그 이름들. 기존 태그 목록을 최대한 재사용.',
+      nullable: true,
     },
     warning: {
       type: 'STRING',
@@ -78,18 +100,6 @@ async function generateStructuredRecipe(apiKey: string, model: string, prompt: s
     throw new Error('Gemini 응답에서 텍스트를 찾을 수 없습니다.');
   }
   return JSON.parse(text) as ExtractedRecipe;
-}
-
-export async function extractRecipeFromText(
-  apiKey: string,
-  model: string,
-  description: string,
-): Promise<ExtractedRecipe> {
-  return generateStructuredRecipe(
-    apiKey,
-    model,
-    `다음 설명을 레시피 형태(재료+수량+단위, 조리순서)로 구조화해줘. 재료 이름은 한국어로, 일반적으로 쓰이는 명칭으로 정리해줘.\n\n${description}`,
-  );
 }
 
 export interface YoutubeVideoMeta {
@@ -135,6 +145,7 @@ export async function extractRecipeFromYoutubeMeta(
   model: string,
   meta: YoutubeVideoMeta | null,
   manualTranscript: string,
+  existing: ExistingContext,
 ): Promise<ExtractedRecipe> {
   const parts = [
     meta?.title ? `영상 제목: ${meta.title}` : null,
@@ -149,6 +160,76 @@ export async function extractRecipeFromYoutubeMeta(
   return generateStructuredRecipe(
     apiKey,
     model,
-    `다음은 유튜브 요리 영상에서 얻은 정보야. 이 내용을 바탕으로 레시피(재료+수량+단위, 조리순서)를 구조화해줘. 정보가 부족하거나 추측한 부분이 많다면 warning 필드에 한국어로 설명해줘.\n\n${parts.join('\n\n')}`,
+    `다음은 유튜브 요리 영상에서 얻은 정보야. 이 내용을 바탕으로 레시피(재료+수량+단위, 조리순서)를 구조화해줘. 정보가 부족하거나 추측한 부분이 많다면 warning 필드에 한국어로 설명해줘.\n\n${parts.join('\n\n')}\n\n${buildExistingContextNote(existing)}`,
   );
+}
+
+const PROPOSE_RECIPE_FUNCTION = {
+  name: 'propose_recipe',
+  description:
+    '지금까지 파악한 레시피 전체를 구조화된 형태로 사용자 화면에 제안한다. 재료를 사서 쓰는지 직접 ' +
+    '만드는지처럼 애매한 부분이 있으면 이 함수를 호출하기 전에 먼저 사용자에게 질문할 것.',
+  parameters: GEMINI_RECIPE_SCHEMA,
+};
+
+/**
+ * 레시피를 대화로 만들고 다듬는다(처음 설명하는 경우와 기존 초안을 수정하는 경우 모두 동일한 흐름).
+ * 애매한 부분은 AI가 먼저 되물을 수 있고(자유 텍스트 응답), 충분한 정보가 모이면 propose_recipe 함수를
+ * 호출해 구조화된 레시피로 갱신한다.
+ */
+export async function chatAboutRecipe(
+  apiKey: string,
+  model: string,
+  history: ChatTurn[],
+  useWebSearch: boolean,
+  existing: ExistingContext,
+): Promise<ChatResult> {
+  const tools: Record<string, unknown>[] = [{ functionDeclarations: [PROPOSE_RECIPE_FUNCTION] }];
+  if (useWebSearch) {
+    tools.push({ googleSearch: {} });
+  }
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: `${RECIPE_CHAT_SYSTEM_PROMPT}\n\n${buildExistingContextNote(existing)}` }],
+        },
+        contents: history.map((turn) => ({
+          role: turn.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: turn.text }],
+        })),
+        tools,
+        // Gemini 3부터 내장 툴(googleSearch)과 커스텀 함수(propose_recipe)를 같이 쓰려면 명시적으로 켜야 함.
+        ...(useWebSearch ? { toolConfig: { includeServerSideToolInvocations: true } } : {}),
+      }),
+    },
+  );
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Gemini API 요청 실패 (${res.status}): ${body.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  const parts: Array<{ text?: string; functionCall?: { name: string; args: unknown } }> =
+    data.candidates?.[0]?.content?.parts ?? [];
+
+  const textParts = parts.filter((p) => typeof p.text === 'string').map((p) => p.text as string);
+  const proposeCalls = parts.filter((p) => p.functionCall?.name === 'propose_recipe');
+
+  const updatedRecipe =
+    proposeCalls.length > 0
+      ? (proposeCalls[proposeCalls.length - 1].functionCall!.args as ExtractedRecipe)
+      : null;
+
+  return {
+    reply:
+      textParts.join('\n') ||
+      (updatedRecipe ? '레시피 변경안을 준비했어요. 아래에서 확인하고 반영해주세요.' : '(응답을 받지 못했습니다)'),
+    updatedRecipe,
+  };
 }

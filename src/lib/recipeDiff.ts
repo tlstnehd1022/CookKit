@@ -5,7 +5,7 @@ export interface RecipeSnapshot {
   servingsBase: number;
   ingredients: { name: string; amount: number; unit: string }[];
   tagNames: string[];
-  stepsCount: number;
+  steps: { title: string; content: string; timerSeconds?: number }[];
 }
 
 export type DiffLineKind = 'add' | 'remove' | 'change' | 'info';
@@ -62,8 +62,8 @@ export function summarizeRecipeDiff(before: RecipeSnapshot, after: ExtractedReci
     });
   }
 
-  if (before.stepsCount !== after.steps.length) {
-    lines.push({ kind: 'change', text: `조리순서: ${before.stepsCount}단계 → ${after.steps.length}단계` });
+  if (before.steps.length !== after.steps.length) {
+    lines.push({ kind: 'change', text: `조리순서: ${before.steps.length}단계 → ${after.steps.length}단계` });
   }
 
   const beforeTags = new Set(before.tagNames);

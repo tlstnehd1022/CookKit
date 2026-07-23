@@ -44,8 +44,14 @@ export function RecipeChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, loading]);
 
-  async function send() {
-    const text = input.trim();
+  const PRESET_REQUESTS = [
+    { label: '더 맵게', text: '이 레시피를 더 맵게 수정해줘' },
+    { label: '재료 줄이기', text: '재료 가짓수를 줄여서 더 간단하게 만들어줘' },
+    { label: '1인분으로', text: '1인분 기준으로 바꿔줘' },
+  ];
+
+  async function send(overrideText?: string) {
+    const text = (overrideText ?? input).trim();
     if (!text || loading) return;
 
     if (isGemini && !settings.geminiApiKey) {
@@ -70,6 +76,7 @@ export function RecipeChatPanel({
             nextHistory,
             useWebSearch,
             existingContext,
+            currentRecipe,
           )
         : await claudeClient.chatAboutRecipe(
             settings.anthropicApiKey,
@@ -77,6 +84,7 @@ export function RecipeChatPanel({
             nextHistory,
             useWebSearch,
             existingContext,
+            currentRecipe,
           );
       setMessages([...nextHistory, { role: 'assistant', text: result.reply }]);
       if (result.updatedRecipe) {
@@ -120,6 +128,43 @@ export function RecipeChatPanel({
         않고 아래에서 확인 후 반영할 수 있어요. "웹 검색"을 켜면 실제 표준 레시피를 찾아보고 참고합니다
         (조금 느려짐, 기본은 학습된 일반 지식으로만 답함).
       </p>
+
+      {(currentRecipe.name.trim() || currentRecipe.ingredients.length > 0) && (
+        <details className="text-muted" style={{ marginBottom: 8, fontSize: 13 }}>
+          <summary style={{ cursor: 'pointer' }}>
+            ✏️ 지금 폼에 있는 "{currentRecipe.name || '이름 없는 레시피'}" 내용(재료{' '}
+            {currentRecipe.ingredients.length}개, 조리 {currentRecipe.steps.length}단계)을 참고해서 대화해요.
+            (펼쳐보기)
+          </summary>
+          <div style={{ marginTop: 6, paddingLeft: 4 }}>
+            <div>
+              <strong>재료:</strong>{' '}
+              {currentRecipe.ingredients.length > 0
+                ? currentRecipe.ingredients.map((i) => `${i.name} ${i.amount}${i.unit}`).join(', ')
+                : '(없음)'}
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <strong>조리순서:</strong>
+            </div>
+            {currentRecipe.steps.length > 0 ? (
+              <ol style={{ margin: '4px 0', paddingLeft: 18 }}>
+                {currentRecipe.steps.map((step, index) => (
+                  <li key={index}>
+                    {step.title}: {step.content}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <div>(없음)</div>
+            )}
+            {currentRecipe.tagNames.length > 0 && (
+              <div style={{ marginTop: 4 }}>
+                <strong>태그:</strong> {currentRecipe.tagNames.join(', ')}
+              </div>
+            )}
+          </div>
+        </details>
+      )}
 
       <div
         style={{
@@ -185,6 +230,21 @@ export function RecipeChatPanel({
         </label>
       </div>
 
+      {currentRecipe.ingredients.length > 0 && (
+        <div className="chip-row" style={{ marginBottom: 8 }}>
+          {PRESET_REQUESTS.map((preset) => (
+            <button
+              key={preset.label}
+              className="chip selectable"
+              disabled={loading}
+              onClick={() => send(preset.text)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="row" style={{ gap: 6, alignItems: 'flex-end' }}>
         <textarea
           value={input}
@@ -194,7 +254,7 @@ export function RecipeChatPanel({
           rows={2}
           style={{ flex: 1, resize: 'vertical' }}
         />
-        <button className="btn primary" onClick={send} disabled={loading}>
+        <button className="btn primary" onClick={() => send()} disabled={loading}>
           {loading ? '...' : '보내기'}
         </button>
       </div>

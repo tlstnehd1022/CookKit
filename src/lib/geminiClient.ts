@@ -2,11 +2,13 @@
 // 반환하기 시작함 — 새로 발급한 키는 3.x 세대 모델만 사용 가능. 최신 GA 모델로 기본값 설정.
 import {
   RECIPE_CHAT_SYSTEM_PROMPT,
+  buildCurrentRecipeNote,
   buildExistingContextNote,
   type ChatResult,
   type ChatTurn,
   type ExistingContext,
 } from './aiChat';
+import type { RecipeSnapshot } from './recipeDiff';
 
 export const GEMINI_DEFAULT_MODEL = 'gemini-3.6-flash';
 
@@ -183,11 +185,17 @@ export async function chatAboutRecipe(
   history: ChatTurn[],
   useWebSearch: boolean,
   existing: ExistingContext,
+  currentRecipe: RecipeSnapshot,
 ): Promise<ChatResult> {
   const tools: Record<string, unknown>[] = [{ functionDeclarations: [PROPOSE_RECIPE_FUNCTION] }];
   if (useWebSearch) {
     tools.push({ googleSearch: {} });
   }
+
+  const currentRecipeNote = buildCurrentRecipeNote(currentRecipe);
+  const systemPrompt = [RECIPE_CHAT_SYSTEM_PROMPT, buildExistingContextNote(existing), currentRecipeNote]
+    .filter(Boolean)
+    .join('\n\n');
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
@@ -195,9 +203,7 @@ export async function chatAboutRecipe(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: `${RECIPE_CHAT_SYSTEM_PROMPT}\n\n${buildExistingContextNote(existing)}` }],
-        },
+        systemInstruction: { parts: [{ text: systemPrompt }] },
         contents: history.map((turn) => ({
           role: turn.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: turn.text }],

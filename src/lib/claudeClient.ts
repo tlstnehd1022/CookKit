@@ -1,11 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk';
 import {
   RECIPE_CHAT_SYSTEM_PROMPT,
+  buildCurrentRecipeNote,
   buildExistingContextNote,
   type ChatResult,
   type ChatTurn,
   type ExistingContext,
 } from './aiChat';
+import type { RecipeSnapshot } from './recipeDiff';
 
 export const AVAILABLE_MODELS = [
   { id: 'claude-opus-4-8', label: 'Claude Opus 4.8 (기본, 가장 정확함)' },
@@ -78,14 +80,14 @@ const RECIPE_SCHEMA = {
 } as const;
 
 /**
- * 유튜브 링크에서 레시피를 추출한다. Claude의 서버사이드 web_fetch 툴로 영상 페이지(자막/설명란)를
- * 읽어오게 한 뒤 구조화한다. 유튜브는 공식 자막 API가 없어 자막을 못 가져오는 영상도 있을 수 있으니
- * best-effort로 취급하고, 결과는 항상 사용자가 검토 후 저장하는 기존 편집 흐름을 그대로 탄다.
+ * 유튜브 영상에서 이미 추출된 자막 텍스트(/api/youtube-transcript, 별도 서버리스 함수)를 받아
+ * 레시피로 구조화한다. Claude가 직접 영상 페이지를 읽는 대신 자막 텍스트를 입력으로 쓰므로
+ * output_config.format(강제 구조화 응답)만으로 충분하다.
  */
-export async function extractRecipeFromYoutubeUrl(
+export async function extractRecipeFromTranscript(
   apiKey: string,
   model: string,
-  url: string,
+  transcriptText: string,
   existing: ExistingContext,
 ): Promise<ExtractedRecipe> {
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
@@ -93,7 +95,6 @@ export async function extractRecipeFromYoutubeUrl(
   const response = await client.messages.create({
     model,
     max_tokens: 4096,
-    tools: [{ type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 5 }],
     output_config: {
       format: { type: 'json_schema', schema: RECIPE_SCHEMA },
       effort: 'medium',
@@ -102,7 +103,7 @@ export async function extractRecipeFromYoutubeUrl(
       {
         role: 'user',
         content:
-          `다음 유튜브 영상에서 레시피를 추출해줘: ${url}\n\n이 영상 페이지를 확인해서 자막(스크립트)이 있으면 자막 내용을 바탕으로, 자막을 가져올 수 없다면 영상 제목과 설명란 텍스트를 최대한 활용해서 재료(이름+수량+단위)와 조리순서를 정리해줘. 정보가 부족하거나 추측한 부분이 많다면 warning 필드에 그 사실을 한국어로 설명해줘.\n\n` +
+          `다음은 유튜브 요리 영상에서 추출한 자막 텍스트야. 이 내용을 바탕으로 레시피(재료+수량+단위, 조리순서)를 정리해줘. 자막이라 구어체나 요리와 무관한 문구(인사말, 광고 등)가 섞여 있을 수 있으니 그런 부분은 무시하고, 정보가 부족하거나 추측한 부분이 많다면 warning 필드에 그 사실을 한국어로 설명해줘.\n\n자막:\n${transcriptText}\n\n` +
           buildExistingContextNote(existing),
       },
     ],
@@ -131,6 +132,7 @@ export async function chatAboutRecipe(
   history: ChatTurn[],
   useWebSearch: boolean,
   existing: ExistingContext,
+  currentRecipe: RecipeSnapshot,
 ): Promise<ChatResult> {
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 
@@ -143,6 +145,11 @@ export async function chatAboutRecipe(
     content: turn.text,
   }));
 
+  const currentRecipeNote = buildCurrentRecipeNote(currentRecipe);
+  const systemPrompt = [RECIPE_CHAT_SYSTEM_PROMPT, buildExistingContextNote(existing), currentRecipeNote]
+    .filter(Boolean)
+    .join('\n\n');
+
   let updatedRecipe: ExtractedRecipe | null = null;
   let reply = '';
 
@@ -150,7 +157,7 @@ export async function chatAboutRecipe(
     const response = await client.messages.create({
       model,
       max_tokens: 2048,
-      system: `${RECIPE_CHAT_SYSTEM_PROMPT}\n\n${buildExistingContextNote(existing)}`,
+      system: systemPrompt,
       tools,
       messages,
     });

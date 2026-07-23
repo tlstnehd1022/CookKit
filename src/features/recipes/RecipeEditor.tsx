@@ -9,6 +9,7 @@ import type { Recipe, RecipeIngredient, RecipeStep } from '../../data/types';
 import { COMMON_UNITS, CUSTOM_UNIT_VALUE } from '../../data/units';
 import { RecipeChatPanel } from './RecipeChatPanel';
 import type { RecipeSnapshot } from '../../lib/recipeDiff';
+import { fetchYoutubeTranscript } from '../../lib/youtubeTranscript';
 
 export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: () => void }) {
   const { recipes, saveRecipe } = useRecipes();
@@ -30,6 +31,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiWarning, setAiWarning] = useState<string | null>(null);
+  const [youtubeStage, setYoutubeStage] = useState<'idle' | 'extracting' | 'analyzing'>('idle');
 
   interface FormSnapshot {
     name: string;
@@ -66,7 +68,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       unit: row.unit,
     })),
     tagNames: tagIds.map((id) => tags.find((tag) => tag.id === id)?.name).filter((n): n is string => Boolean(n)),
-    stepsCount: steps.length,
+    steps,
   };
 
   function resolveOrCreateTag(rawName: string): string {
@@ -117,7 +119,27 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     setAiLoading(true);
     setAiError(null);
     setAiWarning(null);
+    setYoutubeStage('extracting');
     try {
+      let transcriptText = '';
+      let transcriptLanguage = '';
+      try {
+        const transcriptResult = await fetchYoutubeTranscript(youtubeUrl.trim());
+        transcriptText = transcriptResult.transcript;
+        transcriptLanguage = transcriptResult.language;
+      } catch (err) {
+        // 자막을 아예 못 가져온 경우(자막 없음/비공개 영상 등) — AI 호출 없이 바로 중단하고
+        // 대체 경로(직접 붙여넣기 또는 상단 대화창)로 유도한다.
+        const baseMessage = err instanceof Error ? err.message : '자막을 가져오지 못했습니다.';
+        setAiError(
+          isGemini
+            ? `${baseMessage} 아래 "영상 자막/설명 직접 붙여넣기" 칸에 붙여넣거나, 위쪽 대화창에서 텍스트로 설명해서 만들어보세요.`
+            : `${baseMessage} 위쪽 대화창에서 텍스트로 설명해서 만들어보세요.`,
+        );
+        return;
+      }
+
+      setYoutubeStage('analyzing');
       let result: ExtractedRecipe;
       if (isGemini) {
         let meta: geminiClient.YoutubeVideoMeta | null = null;
@@ -125,32 +147,36 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           try {
             meta = await geminiClient.fetchYoutubeVideoMeta(settings.youtubeApiKey, youtubeUrl.trim());
           } catch {
-            // YouTube Data API 조회 실패 시에도 사용자가 붙여넣은 텍스트만으로 계속 진행
+            // YouTube Data API 조회 실패 시에도 자막 텍스트만으로 계속 진행
           }
         }
+        const combinedTranscript = [transcriptText, youtubeManualText.trim()].filter(Boolean).join('\n\n');
         result = await geminiClient.extractRecipeFromYoutubeMeta(
           settings.geminiApiKey,
           settings.geminiModel,
           meta,
-          youtubeManualText,
+          combinedTranscript,
           existingContext,
         );
       } else {
-        result = await claudeClient.extractRecipeFromYoutubeUrl(
+        result = await claudeClient.extractRecipeFromTranscript(
           settings.anthropicApiKey,
           settings.model,
-          youtubeUrl.trim(),
+          transcriptText,
           existingContext,
         );
       }
       applyExtractedResult(result);
       if (!result.warning) {
-        setAiWarning('유튜브 정보 기반 자동 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.');
+        setAiWarning(
+          `유튜브 자막(${transcriptLanguage || '자동생성'}) 기반 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.`,
+        );
       }
     } catch (err) {
       setAiError(err instanceof Error ? err.message : '유튜브 변환에 실패했습니다.');
     } finally {
       setAiLoading(false);
+      setYoutubeStage('idle');
     }
   }
 
@@ -240,7 +266,9 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       <div className="section-title">또는 유튜브 링크로 변환</div>
       <div className="card">
         <p className="text-muted" style={{ marginBottom: 8 }}>
-          영상 제목/설명란 기반이라 결과가 부정확할 수 있어요(실시간 자막 추출 아님, best-effort).
+          영상 자막을 자동으로 가져와 분석해요(한국어 자막 우선, 없으면 영어, 그래도 없으면 자동생성 자막
+          순으로 시도). 자막이 아예 없는 영상은 지원하지 않으니, 이 경우 위쪽 대화창에서 텍스트로 직접
+          설명해서 만들어주세요.
         </p>
         <div className="field">
           <label>유튜브 링크</label>
@@ -252,17 +280,21 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         </div>
         {isGemini && (
           <div className="field">
-            <label>영상 자막/설명 직접 붙여넣기 (선택, 정확도 향상)</label>
+            <label>영상 자막/설명 직접 붙여넣기 (선택, 자동 추출 실패 시 대체용)</label>
             <textarea
               rows={4}
               value={youtubeManualText}
               onChange={(e) => setYoutubeManualText(e.target.value)}
-              placeholder="유튜브 자막 텍스트를 복사해서 붙여넣으면 더 정확하게 변환됩니다. (유튜브 정책상 자막 자동 가져오기는 지원하지 않아요)"
+              placeholder="자동 추출된 자막에 더하고 싶은 내용이 있거나, 자동 추출이 실패했을 때 여기에 직접 붙여넣으면 됩니다."
             />
           </div>
         )}
         <button className="btn" onClick={runYoutubeConversion} disabled={aiLoading}>
-          {aiLoading ? '변환 중...' : '유튜브에서 변환'}
+          {aiLoading
+            ? youtubeStage === 'extracting'
+              ? '자막 추출 중...'
+              : '레시피 분석 중...'
+            : '유튜브에서 변환'}
         </button>
 
         {aiError && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{aiError}</p>}

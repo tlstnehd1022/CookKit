@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Vercel (created by `vercel link` / `vercel dev`)
+.vercel
+
 # Claude Code local settings
 .claude/settings.local.json
 

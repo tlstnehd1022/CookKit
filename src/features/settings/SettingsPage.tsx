@@ -1,12 +1,14 @@
 import { useRef, useState } from 'react';
 import { useSettings } from '../../data/settings';
 import { useSession } from '../../data/session';
+import { useTheme } from '../../data/theme';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { downloadBackup, restoreBackupFromFile } from '../../data/backup';
 
 export function SettingsPage() {
   const { settings, updateSettings } = useSettings();
   const { user, logout } = useSession();
+  const { theme, toggleTheme } = useTheme();
   const [anthropicKeyDraft, setAnthropicKeyDraft] = useState(settings.anthropicApiKey);
   const [geminiKeyDraft, setGeminiKeyDraft] = useState(settings.geminiApiKey);
   const [youtubeKeyDraft, setYoutubeKeyDraft] = useState(settings.youtubeApiKey);
@@ -63,6 +65,20 @@ export function SettingsPage() {
   return (
     <div>
       <h1>설정</h1>
+
+      <div className="section-title">화면 테마</div>
+      <div className="card">
+        <div className="row">
+          <span>다크 모드</span>
+          <button
+            className={`toggle ${theme === 'dark' ? 'on' : ''}`}
+            onClick={toggleTheme}
+            aria-label="다크 모드 전환"
+          >
+            <span className="knob" />
+          </button>
+        </div>
+      </div>
 
       <div className="section-title">AI 제공자 (자연어/유튜브 → 레시피 변환용)</div>
       <div className="card">

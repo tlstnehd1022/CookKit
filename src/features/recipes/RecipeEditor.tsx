@@ -8,7 +8,7 @@ import type { ExistingContext } from '../../lib/aiChat';
 import type { Recipe, RecipeIngredient, RecipeStep } from '../../data/types';
 import { COMMON_UNITS, CUSTOM_UNIT_VALUE } from '../../data/units';
 import { RecipeChatPanel } from './RecipeChatPanel';
-import type { RecipeSnapshot } from '../../lib/recipeDiff';
+import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
 import { fetchYoutubeTranscript } from '../../lib/youtubeTranscript';
 
 export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: () => void }) {
@@ -32,6 +32,10 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiWarning, setAiWarning] = useState<string | null>(null);
   const [youtubeStage, setYoutubeStage] = useState<'idle' | 'extracting' | 'analyzing'>('idle');
+  const [pendingYoutubeResult, setPendingYoutubeResult] = useState<ExtractedRecipe | null>(null);
+  const [pendingYoutubeDiff, setPendingYoutubeDiff] = useState<DiffLine[]>([]);
+  const [pendingYoutubeSource, setPendingYoutubeSource] = useState<'captions' | 'supadata'>('captions');
+  const [pendingYoutubeLanguage, setPendingYoutubeLanguage] = useState('');
 
   interface FormSnapshot {
     name: string;
@@ -168,20 +172,35 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           existingContext,
         );
       }
-      applyExtractedResult(result);
-      if (!result.warning) {
-        setAiWarning(
-          transcriptSource === 'supadata'
-            ? `자막이 없는 영상이라 AI 음성 인식(Supadata)으로 추출한 결과입니다. 일반 자막보다 부정확할 수 있으니 꼭 확인해주세요.`
-            : `유튜브 자막(${transcriptLanguage || '자동생성'}) 기반 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.`,
-        );
-      }
+      setPendingYoutubeResult(result);
+      setPendingYoutubeDiff(summarizeRecipeDiff(currentRecipeSnapshot, result));
+      setPendingYoutubeSource(transcriptSource);
+      setPendingYoutubeLanguage(transcriptLanguage);
     } catch (err) {
       setAiError(err instanceof Error ? err.message : '유튜브 변환에 실패했습니다.');
     } finally {
       setAiLoading(false);
       setYoutubeStage('idle');
     }
+  }
+
+  function confirmYoutubeApply() {
+    if (!pendingYoutubeResult) return;
+    applyExtractedResult(pendingYoutubeResult);
+    if (!pendingYoutubeResult.warning) {
+      setAiWarning(
+        pendingYoutubeSource === 'supadata'
+          ? '자막이 없는 영상이라 AI 음성 인식(Supadata)으로 추출한 결과입니다. 일반 자막보다 부정확할 수 있으니 꼭 확인해주세요.'
+          : `유튜브 자막(${pendingYoutubeLanguage || '자동생성'}) 기반 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.`,
+      );
+    }
+    setPendingYoutubeResult(null);
+    setPendingYoutubeDiff([]);
+  }
+
+  function discardYoutubeResult() {
+    setPendingYoutubeResult(null);
+    setPendingYoutubeDiff([]);
   }
 
   function createIngredientFromAi(rawName: string, categoryName?: string | null): string {
@@ -300,6 +319,27 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
               : '레시피 분석 중...'
             : '유튜브에서 변환'}
         </button>
+
+        {pendingYoutubeResult && (
+          <div className="card" style={{ background: 'var(--chip-bg)', marginTop: 8 }}>
+            <strong style={{ fontSize: 13 }}>유튜브 변환 결과 — 변경사항</strong>
+            <ul style={{ margin: '6px 0', paddingLeft: 18, fontSize: 13 }}>
+              {pendingYoutubeDiff.map((line, index) => (
+                <li key={index} style={{ color: diffLineColor(line.kind) }}>
+                  {line.text}
+                </li>
+              ))}
+            </ul>
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn small" onClick={discardYoutubeResult}>
+                무시하기
+              </button>
+              <button className="btn small primary" onClick={confirmYoutubeApply}>
+                이대로 반영하기
+              </button>
+            </div>
+          </div>
+        )}
 
         {aiError && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{aiError}</p>}
         {aiWarning && <p className="text-muted" style={{ marginTop: 8 }}>⚠️ {aiWarning}</p>}

@@ -4,20 +4,7 @@ import * as claudeClient from '../../lib/claudeClient';
 import * as geminiClient from '../../lib/geminiClient';
 import type { ChatTurn, ExistingContext } from '../../lib/aiChat';
 import type { ExtractedRecipe } from '../../lib/claudeClient';
-import { summarizeRecipeDiff, type DiffLine, type DiffLineKind, type RecipeSnapshot } from '../../lib/recipeDiff';
-
-function diffLineColor(kind: DiffLineKind): string {
-  switch (kind) {
-    case 'add':
-      return 'var(--success)';
-    case 'remove':
-      return 'var(--danger)';
-    case 'change':
-      return 'var(--accent)';
-    default:
-      return 'var(--text-muted)';
-  }
-}
+import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
 
 export function RecipeChatPanel({
   onApply,

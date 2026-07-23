@@ -115,7 +115,7 @@ export function RecipesPage({
         return (
           <div className="card" key={recipe.id} onClick={() => onSelectRecipe(recipe.id)} style={{ cursor: 'pointer' }}>
             <div className="row">
-              <strong>{recipe.name}</strong>
+              <strong className="recipe-title">{recipe.name}</strong>
               <div className="chip-row" style={{ marginTop: 0 }}>
                 <button
                   className={`btn small ${isSelected(recipe.id) ? 'primary' : ''}`}

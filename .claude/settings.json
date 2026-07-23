@@ -17,7 +17,12 @@
       "Bash(npm view *)",
       "WebFetch(domain:supadata.ai)",
       "WebFetch(domain:apify.com)",
-      "WebFetch(domain:docs.supadata.ai)"
+      "WebFetch(domain:docs.supadata.ai)",
+      "Bash(node \"C:\\\\Users\\\\PEPPER\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--projects-CookKit\\\\08c0d2eb-fe5c-4734-af18-c5333f72ce15\\\\scratchpad\\\\shots.mjs\")",
+      "Bash(node scratch-shots.mjs)",
+      "Bash(rm -f scratch-shots.mjs)",
+      "Bash(pkill -f vite)",
+      "Bash(npm uninstall *)"
     ]
   }
 }

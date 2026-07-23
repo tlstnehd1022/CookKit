@@ -79,3 +79,16 @@ export function summarizeRecipeDiff(before: RecipeSnapshot, after: ExtractedReci
 
   return lines;
 }
+
+export function diffLineColor(kind: DiffLineKind): string {
+  switch (kind) {
+    case 'add':
+      return 'var(--success)';
+    case 'remove':
+      return 'var(--danger)';
+    case 'change':
+      return 'var(--accent)';
+    default:
+      return 'var(--text-muted)';
+  }
+}

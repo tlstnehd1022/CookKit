@@ -13,16 +13,39 @@ export function SettingsPage() {
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  interface SaveStatus {
+    text: string;
+    ok: boolean;
+  }
+  const [anthropicStatus, setAnthropicStatus] = useState<SaveStatus | null>(null);
+  const [geminiStatus, setGeminiStatus] = useState<SaveStatus | null>(null);
+  const [youtubeStatus, setYoutubeStatus] = useState<SaveStatus | null>(null);
+
   function saveAnthropicKey() {
-    updateSettings({ anthropicApiKey: anthropicKeyDraft.trim() });
+    try {
+      updateSettings({ anthropicApiKey: anthropicKeyDraft.trim() });
+      setAnthropicStatus({ text: '저장되었습니다.', ok: true });
+    } catch (err) {
+      setAnthropicStatus({ text: err instanceof Error ? err.message : '저장에 실패했습니다.', ok: false });
+    }
   }
 
   function saveGeminiKey() {
-    updateSettings({ geminiApiKey: geminiKeyDraft.trim() });
+    try {
+      updateSettings({ geminiApiKey: geminiKeyDraft.trim() });
+      setGeminiStatus({ text: '저장되었습니다.', ok: true });
+    } catch (err) {
+      setGeminiStatus({ text: err instanceof Error ? err.message : '저장에 실패했습니다.', ok: false });
+    }
   }
 
   function saveYoutubeKey() {
-    updateSettings({ youtubeApiKey: youtubeKeyDraft.trim() });
+    try {
+      updateSettings({ youtubeApiKey: youtubeKeyDraft.trim() });
+      setYoutubeStatus({ text: '저장되었습니다.', ok: true });
+    } catch (err) {
+      setYoutubeStatus({ text: err instanceof Error ? err.message : '저장에 실패했습니다.', ok: false });
+    }
   }
 
   async function handleImportFile(file: File) {
@@ -68,7 +91,10 @@ export function SettingsPage() {
               <input
                 type="password"
                 value={geminiKeyDraft}
-                onChange={(e) => setGeminiKeyDraft(e.target.value)}
+                onChange={(e) => {
+                  setGeminiKeyDraft(e.target.value);
+                  setGeminiStatus(null);
+                }}
                 placeholder="AIza..."
               />
             </div>
@@ -83,6 +109,12 @@ export function SettingsPage() {
             <button className="btn primary" onClick={saveGeminiKey}>
               저장
             </button>
+            {geminiStatus && (
+              <p style={{ marginTop: 8, color: geminiStatus.ok ? 'var(--success)' : 'var(--danger)' }}>
+                {geminiStatus.ok ? '✅ ' : '⚠️ '}
+                {geminiStatus.text}
+              </p>
+            )}
           </div>
 
           <div className="section-title">YouTube Data API 키 (유튜브 변환용, 선택)</div>
@@ -92,17 +124,27 @@ export function SettingsPage() {
               <input
                 type="password"
                 value={youtubeKeyDraft}
-                onChange={(e) => setYoutubeKeyDraft(e.target.value)}
+                onChange={(e) => {
+                  setYoutubeKeyDraft(e.target.value);
+                  setYoutubeStatus(null);
+                }}
                 placeholder="AIza..."
               />
             </div>
             <p className="text-muted">
-              공식 YouTube API는 임의 영상의 자막까지는 제공하지 않아 영상 제목/설명란만 자동으로 가져옵니다. 이
-              키를 입력하지 않으면 유튜브 변환 화면에서 자막/설명을 직접 붙여넣어야 합니다.
+              공식 YouTube API는 자막까지는 제공하지 않지만, 영상 제목/설명란을 함께 가져와 자막 자동 추출
+              결과와 합쳐서 정확도를 더 높이는 데 씁니다. 자막 자체는 별도 서버리스 함수로 자동 추출되므로,
+              이 키를 입력하지 않아도 유튜브 변환은 정상 동작합니다(완전히 선택 사항).
             </p>
             <button className="btn primary" onClick={saveYoutubeKey}>
               저장
             </button>
+            {youtubeStatus && (
+              <p style={{ marginTop: 8, color: youtubeStatus.ok ? 'var(--success)' : 'var(--danger)' }}>
+                {youtubeStatus.ok ? '✅ ' : '⚠️ '}
+                {youtubeStatus.text}
+              </p>
+            )}
           </div>
         </>
       )}
@@ -116,7 +158,10 @@ export function SettingsPage() {
               <input
                 type="password"
                 value={anthropicKeyDraft}
-                onChange={(e) => setAnthropicKeyDraft(e.target.value)}
+                onChange={(e) => {
+                  setAnthropicKeyDraft(e.target.value);
+                  setAnthropicStatus(null);
+                }}
                 placeholder="sk-ant-..."
               />
             </div>
@@ -133,6 +178,12 @@ export function SettingsPage() {
             <button className="btn primary" onClick={saveAnthropicKey}>
               저장
             </button>
+            {anthropicStatus && (
+              <p style={{ marginTop: 8, color: anthropicStatus.ok ? 'var(--success)' : 'var(--danger)' }}>
+                {anthropicStatus.ok ? '✅ ' : '⚠️ '}
+                {anthropicStatus.text}
+              </p>
+            )}
           </div>
         </>
       )}

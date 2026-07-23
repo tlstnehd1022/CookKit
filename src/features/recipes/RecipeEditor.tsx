@@ -123,10 +123,12 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     try {
       let transcriptText = '';
       let transcriptLanguage = '';
+      let transcriptSource: 'captions' | 'supadata' = 'captions';
       try {
         const transcriptResult = await fetchYoutubeTranscript(youtubeUrl.trim());
         transcriptText = transcriptResult.transcript;
         transcriptLanguage = transcriptResult.language;
+        transcriptSource = transcriptResult.source;
       } catch (err) {
         // 자막을 아예 못 가져온 경우(자막 없음/비공개 영상 등) — AI 호출 없이 바로 중단하고
         // 대체 경로(직접 붙여넣기 또는 상단 대화창)로 유도한다.
@@ -169,7 +171,9 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       applyExtractedResult(result);
       if (!result.warning) {
         setAiWarning(
-          `유튜브 자막(${transcriptLanguage || '자동생성'}) 기반 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.`,
+          transcriptSource === 'supadata'
+            ? `자막이 없는 영상이라 AI 음성 인식(Supadata)으로 추출한 결과입니다. 일반 자막보다 부정확할 수 있으니 꼭 확인해주세요.`
+            : `유튜브 자막(${transcriptLanguage || '자동생성'}) 기반 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.`,
         );
       }
     } catch (err) {
@@ -267,8 +271,8 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       <div className="card">
         <p className="text-muted" style={{ marginBottom: 8 }}>
           영상 자막을 자동으로 가져와 분석해요(한국어 자막 우선, 없으면 영어, 그래도 없으면 자동생성 자막
-          순으로 시도). 자막이 아예 없는 영상은 지원하지 않으니, 이 경우 위쪽 대화창에서 텍스트로 직접
-          설명해서 만들어주세요.
+          순으로 시도). 자막이 아예 없는 영상은 서버에 설정된 경우 AI 음성 인식으로 한 번 더 시도하고, 그마저
+          안 되면 위쪽 대화창에서 텍스트로 직접 설명해서 만들어주세요.
         </p>
         <div className="field">
           <label>유튜브 링크</label>

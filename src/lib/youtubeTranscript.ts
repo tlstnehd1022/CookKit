@@ -1,6 +1,8 @@
 export interface YoutubeTranscriptResult {
   transcript: string;
   language: string;
+  /** 'captions': 유튜브 자막 트랙에서 직접 추출, 'supadata': 자막이 없어 Supadata(AI 음성인식) 폴백 사용 */
+  source: 'captions' | 'supadata';
 }
 
 /**

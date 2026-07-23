@@ -13,7 +13,11 @@
       "Read(//tmp/yttest/package/**)",
       "Bash(cat /tmp/yttest/package/dist/commonjs/index.js | head -120)",
       "Bash(npm run *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npm view *)",
+      "WebFetch(domain:supadata.ai)",
+      "WebFetch(domain:apify.com)",
+      "WebFetch(domain:docs.supadata.ai)"
     ]
   }
 }

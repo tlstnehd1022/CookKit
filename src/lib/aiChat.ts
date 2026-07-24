@@ -11,10 +11,18 @@ export interface ChatResult {
   updatedRecipe: ExtractedRecipe | null;
 }
 
+export interface IngredientPreference {
+  name: string;
+  preferredUnit?: string;
+  preferredMethod?: string;
+}
+
 export interface ExistingContext {
   tags: string[];
   categories: string[];
   ingredients: string[];
+  /** preferredUnit/preferredMethod 중 하나라도 설정된 재료만 담김 — 프롬프트에 참고 정보로 전달 */
+  ingredientPreferences?: IngredientPreference[];
 }
 
 export const RECIPE_CHAT_SYSTEM_PROMPT =
@@ -60,6 +68,20 @@ export function buildExistingContextNote(context: ExistingContext): string {
   const categoriesText = context.categories.length > 0 ? context.categories.join(', ') : '(아직 없음)';
   const ingredientsText = context.ingredients.length > 0 ? context.ingredients.join(', ') : '(아직 없음)';
 
+  const preferences = context.ingredientPreferences ?? [];
+  const preferencesText =
+    preferences.length > 0
+      ? preferences
+          .map((p) => {
+            const parts = [
+              p.preferredUnit ? `선호 단위: ${p.preferredUnit}` : null,
+              p.preferredMethod ? `메모: ${p.preferredMethod}` : null,
+            ].filter(Boolean);
+            return `${p.name} (${parts.join(', ')})`;
+          })
+          .join('\n')
+      : null;
+
   return (
     `[참고 정보]\n` +
     `이미 등록된 레시피 태그: ${tagsText}\n` +
@@ -67,6 +89,11 @@ export function buildExistingContextNote(context: ExistingContext): string {
     `이미 등록된 재료 이름: ${ingredientsText}\n\n` +
     `레시피의 tagNames와 각 재료의 categoryName은 위 목록에 있는 이름을 최대한 그대로 재사용하세요. ` +
     `마땅히 어울리는 게 없을 때만 새 이름을 제안하고, 그럴 땐 답변에서 "~라는 새 태그/카테고리를 제안했어요" ` +
-    `처럼 짧게 언급하세요. 재료도 이미 있는 것과 같은 재료면 목록의 이름을 그대로 사용하세요.`
+    `처럼 짧게 언급하세요. 재료도 이미 있는 것과 같은 재료면 목록의 이름을 그대로 사용하세요.` +
+    (preferencesText
+      ? `\n\n[재료별 개인 선호]\n${preferencesText}\n` +
+        `위 재료가 레시피에 들어갈 때는 가능하면 이 선호 단위/방식을 반영하세요(예: 선호 단위가 있으면 그 ` +
+        `단위로 수량을 표기, 메모가 있으면 조리순서에서 그 방식을 사용).`
+      : '')
   );
 }

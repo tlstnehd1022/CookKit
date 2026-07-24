@@ -22,7 +22,14 @@
       "Bash(node scratch-shots.mjs)",
       "Bash(rm -f scratch-shots.mjs)",
       "Bash(pkill -f vite)",
-      "Bash(npm uninstall *)"
+      "Bash(npm uninstall *)",
+      "Bash(npm install *)",
+      "Bash(npx playwright *)",
+      "Bash(node scratch-smoke.mjs)",
+      "Bash(rm -f scratch-smoke.mjs)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5174/)",
+      "Bash(node scratch-smoke2.mjs)",
+      "Bash(rm -f scratch-smoke2.mjs)"
     ]
   }
 }

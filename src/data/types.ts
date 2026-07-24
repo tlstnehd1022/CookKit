@@ -9,6 +9,10 @@ export interface Ingredient {
   categoryId: string;
   defaultBuyUnit: string;
   allergens: string[];
+  /** 예: '작은술' — 이 재료를 넣을 때 선호하는 계량 단위. AI 레시피 생성/수정 시 참고 정보로 전달됨 */
+  preferredUnit?: string;
+  /** 예: '그라인더로 갈아서', '다진 것 대신 편 썰기로' — 자유 서술형 선호 방식 */
+  preferredMethod?: string;
 }
 
 export interface RecipeIngredient {
@@ -21,6 +25,8 @@ export interface RecipeStep {
   title: string;
   content: string;
   timerSeconds?: number;
+  /** IndexedDB(src/data/imageStore.ts)에 저장된 AI 생성 이미지 참조 — 실제 이미지 데이터는 localStorage에 두지 않음 */
+  imageId?: string;
 }
 
 export interface Recipe {

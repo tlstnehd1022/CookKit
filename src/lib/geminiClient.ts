@@ -11,6 +11,9 @@ import {
 import type { RecipeSnapshot } from './recipeDiff';
 
 export const GEMINI_DEFAULT_MODEL = 'gemini-3.6-flash';
+// 조리 단계 이미지 생성 전용 모델("Nano Banana" 계열) — 텍스트 모델과 별개로 관리.
+// Claude는 이미지 생성을 지원하지 않아 이 기능은 Gemini 전용이다.
+export const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image';
 
 export interface ExtractedRecipe {
   name: string;
@@ -238,4 +241,96 @@ export async function chatAboutRecipe(
       (updatedRecipe ? '레시피 변경안을 준비했어요. 아래에서 확인하고 반영해주세요.' : '(응답을 받지 못했습니다)'),
     updatedRecipe,
   };
+}
+
+/** 레시피 이름 + 조리 단계 내용을 바탕으로 이미지 생성용 프롬프트를 만든다. */
+export function buildStepImagePrompt(recipeName: string, step: { title: string; content: string }): string {
+  return (
+    `요리 레시피 "${recipeName}"의 조리 단계를 보여주는 사실적인 사진 스타일 이미지를 만들어줘. ` +
+    `단계: "${step.title}" — ${step.content}. ` +
+    `텍스트나 글자는 이미지에 넣지 말고, 실제 주방에서 그 단계를 진행하는 모습만 자연스럽게 표현해줘.`
+  );
+}
+
+const IMAGE_GENERATION_TIMEOUT_MS = 60_000;
+// 429(요청 제한)/503(모델 과부하)은 잠시 후 재시도하면 성공하는 경우가 많은 일시적 오류라 자동 재시도한다.
+const RETRYABLE_STATUS_CODES = new Set([429, 503]);
+const IMAGE_GENERATION_MAX_RETRIES = 2; // 최초 시도 포함 총 3회
+
+class GeminiImageError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function requestImageOnce(apiKey: string, prompt: string): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), IMAGE_GENERATION_TIMEOUT_MS);
+
+  let res: Response;
+  try {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ['IMAGE'] },
+        }),
+        signal: controller.signal,
+      },
+    );
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('이미지 생성이 60초 안에 끝나지 않아 중단했습니다. 잠시 후 다시 시도해주세요.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new GeminiImageError(`이미지 생성 요청 실패 (${res.status}): ${body.slice(0, 200)}`, res.status);
+  }
+
+  const data = await res.json();
+  const parts: Array<{ inlineData?: { data?: string; mimeType?: string } }> =
+    data.candidates?.[0]?.content?.parts ?? [];
+  const imagePart = parts.find((p) => p.inlineData?.data);
+
+  if (!imagePart?.inlineData?.data) {
+    throw new Error('이미지 생성 결과를 받지 못했습니다.');
+  }
+
+  const mimeType = imagePart.inlineData.mimeType || 'image/png';
+  return `data:${mimeType};base64,${imagePart.inlineData.data}`;
+}
+
+/**
+ * 조리 단계 이미지를 생성해 base64 데이터 URL로 반환한다(Gemini 전용 — Claude는 이미지 생성 미지원).
+ * 실제 저장은 호출부에서 IndexedDB(src/data/imageStore.ts)에 담당한다. 429/503처럼 일시적인 오류는
+ * 지수 백오프(2초, 4초)로 자동 재시도하고, 그 외 오류는 즉시 던진다.
+ */
+export async function generateStepImage(apiKey: string, prompt: string): Promise<string> {
+  for (let attempt = 0; attempt <= IMAGE_GENERATION_MAX_RETRIES; attempt++) {
+    try {
+      return await requestImageOnce(apiKey, prompt);
+    } catch (err) {
+      const isRetryable = err instanceof GeminiImageError && RETRYABLE_STATUS_CODES.has(err.status);
+      if (!isRetryable || attempt === IMAGE_GENERATION_MAX_RETRIES) {
+        throw err;
+      }
+      await sleep(2000 * 2 ** attempt);
+    }
+  }
+  // 도달하지 않음(루프가 항상 return 또는 throw로 끝남)
+  throw new Error('이미지 생성에 실패했습니다.');
 }

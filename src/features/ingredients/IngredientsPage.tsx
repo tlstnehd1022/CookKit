@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useCategories, useIngredients, usePantryStatus, makeId } from '../../data/store';
 import { CategoryManager } from './CategoryManager';
+import { COMMON_UNITS } from '../../data/units';
 import type { Ingredient } from '../../data/types';
 
 export function IngredientsPage() {
   const { ingredients, saveIngredient, deleteIngredient } = useIngredients();
   const { categories } = useCategories();
   const { pantryStatus, setOwned } = usePantryStatus();
-  const [editingAllergensId, setEditingAllergensId] = useState<string | null>(null);
+  const [editingDetailsId, setEditingDetailsId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -74,7 +75,7 @@ export function IngredientsPage() {
                   ingredient={ingredient}
                   owned={pantryStatus[ingredient.id] ?? false}
                   onToggleOwned={() => setOwned(ingredient.id, !pantryStatus[ingredient.id])}
-                  onEditAllergens={() => setEditingAllergensId(ingredient.id)}
+                  onEditDetails={() => setEditingDetailsId(ingredient.id)}
                   onDelete={() => deleteIngredient(ingredient.id)}
                 />
               ))}
@@ -91,21 +92,21 @@ export function IngredientsPage() {
               ingredient={ingredient}
               owned={pantryStatus[ingredient.id] ?? false}
               onToggleOwned={() => setOwned(ingredient.id, !pantryStatus[ingredient.id])}
-              onEditAllergens={() => setEditingAllergensId(ingredient.id)}
+              onEditDetails={() => setEditingDetailsId(ingredient.id)}
               onDelete={() => deleteIngredient(ingredient.id)}
             />
           ))}
         </div>
       )}
 
-      {editingAllergensId && (
-        <AllergenEditorModal
-          ingredient={ingredients.find((i) => i.id === editingAllergensId)!}
-          onClose={() => setEditingAllergensId(null)}
-          onSave={(allergens) => {
-            const target = ingredients.find((i) => i.id === editingAllergensId);
-            if (target) saveIngredient({ ...target, allergens });
-            setEditingAllergensId(null);
+      {editingDetailsId && (
+        <IngredientDetailModal
+          ingredient={ingredients.find((i) => i.id === editingDetailsId)!}
+          onClose={() => setEditingDetailsId(null)}
+          onSave={(patch) => {
+            const target = ingredients.find((i) => i.id === editingDetailsId);
+            if (target) saveIngredient({ ...target, ...patch });
+            setEditingDetailsId(null);
           }}
         />
       )}
@@ -129,29 +130,29 @@ function IngredientRow({
   ingredient,
   owned,
   onToggleOwned,
-  onEditAllergens,
+  onEditDetails,
   onDelete,
 }: {
   ingredient: Ingredient;
   owned: boolean;
   onToggleOwned: () => void;
-  onEditAllergens: () => void;
+  onEditDetails: () => void;
   onDelete: () => void;
 }) {
+  const hasPreference = Boolean(ingredient.preferredUnit || ingredient.preferredMethod);
   return (
     <div className="row" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {ingredient.name}
         </span>
-        {ingredient.allergens.length > 0 && (
-          <button className="chip allergen" style={{ flexShrink: 0 }} onClick={onEditAllergens}>
+        {ingredient.allergens.length > 0 ? (
+          <button className="chip allergen" style={{ flexShrink: 0 }} onClick={onEditDetails}>
             ⚠ {ingredient.allergens.length}
           </button>
-        )}
-        {ingredient.allergens.length === 0 && (
-          <button className="chip selectable" style={{ flexShrink: 0 }} onClick={onEditAllergens}>
-            알러지
+        ) : (
+          <button className="chip selectable" style={{ flexShrink: 0 }} onClick={onEditDetails}>
+            {hasPreference ? '⚙ 선호' : '설정'}
           </button>
         )}
       </div>
@@ -167,17 +168,34 @@ function IngredientRow({
   );
 }
 
-function AllergenEditorModal({
+interface IngredientDetailPatch {
+  allergens: string[];
+  preferredUnit?: string;
+  preferredMethod?: string;
+}
+
+const METHOD_PRESETS = ['다진 것', '편으로', '그라인더로', '가루로', '생것 그대로'];
+const CUSTOM_METHOD_VALUE = '__custom__';
+
+function IngredientDetailModal({
   ingredient,
   onClose,
   onSave,
 }: {
   ingredient: Ingredient;
   onClose: () => void;
-  onSave: (allergens: string[]) => void;
+  onSave: (patch: IngredientDetailPatch) => void;
 }) {
   const [allergens, setAllergens] = useState<string[]>(ingredient.allergens);
   const [draft, setDraft] = useState('');
+  const [preferredUnit, setPreferredUnit] = useState(ingredient.preferredUnit ?? '');
+
+  const initialMethod = ingredient.preferredMethod ?? '';
+  const isInitialPreset = METHOD_PRESETS.includes(initialMethod);
+  const [selectedMethod, setSelectedMethod] = useState(
+    initialMethod === '' ? '' : isInitialPreset ? initialMethod : CUSTOM_METHOD_VALUE,
+  );
+  const [customMethodText, setCustomMethodText] = useState(isInitialPreset ? '' : initialMethod);
 
   function addAllergen() {
     const trimmed = draft.trim();
@@ -190,7 +208,9 @@ function AllergenEditorModal({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-        <h2>{ingredient.name} — 알러지 유발 성분</h2>
+        <h2>{ingredient.name} — 상세 설정</h2>
+
+        <div className="section-title">알러지 유발 성분</div>
         <div className="chip-row">
           {allergens.map((allergen) => (
             <span className="chip allergen" key={allergen}>
@@ -213,11 +233,67 @@ function AllergenEditorModal({
             </button>
           </div>
         </div>
+
+        <div className="section-title">개인 선호 (AI 레시피 생성/수정 시 참고됨)</div>
+        <div className="field">
+          <label>선호 계량 단위 (선택)</label>
+          <select value={preferredUnit} onChange={(e) => setPreferredUnit(e.target.value)}>
+            <option value="">(설정 안 함)</option>
+            {COMMON_UNITS.map((unit) => (
+              <option key={unit} value={unit}>
+                {unit}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label>선호 방식 (선택)</label>
+          <div className="chip-row">
+            {METHOD_PRESETS.map((method) => (
+              <button
+                key={method}
+                className={`chip selectable ${selectedMethod === method ? 'active' : ''}`}
+                onClick={() => setSelectedMethod((prev) => (prev === method ? '' : method))}
+              >
+                {method}
+              </button>
+            ))}
+            <button
+              className={`chip selectable ${selectedMethod === CUSTOM_METHOD_VALUE ? 'active' : ''}`}
+              onClick={() =>
+                setSelectedMethod((prev) => (prev === CUSTOM_METHOD_VALUE ? '' : CUSTOM_METHOD_VALUE))
+              }
+            >
+              직접입력
+            </button>
+          </div>
+          {selectedMethod === CUSTOM_METHOD_VALUE && (
+            <input
+              style={{ marginTop: 6 }}
+              value={customMethodText}
+              onChange={(e) => setCustomMethodText(e.target.value)}
+              placeholder="예: 다진 마늘 대신 마늘칩 사용"
+            />
+          )}
+        </div>
+
         <div className="row" style={{ marginTop: 16 }}>
           <button className="btn" onClick={onClose}>
             취소
           </button>
-          <button className="btn primary" onClick={() => onSave(allergens)}>
+          <button
+            className="btn primary"
+            onClick={() =>
+              onSave({
+                allergens,
+                preferredUnit: preferredUnit.trim() || undefined,
+                preferredMethod:
+                  selectedMethod === CUSTOM_METHOD_VALUE
+                    ? customMethodText.trim() || undefined
+                    : selectedMethod || undefined,
+              })
+            }
+          >
             저장
           </button>
         </div>

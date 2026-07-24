@@ -10,6 +10,7 @@ import { COMMON_UNITS, CUSTOM_UNIT_VALUE } from '../../data/units';
 import { RecipeChatPanel } from './RecipeChatPanel';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
 import { fetchYoutubeTranscript } from '../../lib/youtubeTranscript';
+import { deleteImage, saveImage, useStoredImage } from '../../data/imageStore';
 
 export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: () => void }) {
   const { recipes, saveRecipe } = useRecipes();
@@ -61,6 +62,13 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     tags: tags.map((tag) => tag.name),
     categories: categories.map((category) => category.name),
     ingredients: ingredients.map((ingredient) => ingredient.name),
+    ingredientPreferences: ingredients
+      .filter((ingredient) => ingredient.preferredUnit || ingredient.preferredMethod)
+      .map((ingredient) => ({
+        name: ingredient.name,
+        preferredUnit: ingredient.preferredUnit,
+        preferredMethod: ingredient.preferredMethod,
+      })),
   };
 
   const currentRecipeSnapshot: RecipeSnapshot = {
@@ -106,6 +114,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       setTagIds(result.tagNames.map((tagName) => resolveOrCreateTag(tagName)));
     }
     setAiWarning(result.warning ?? null);
+    offerBatchImageGenerationForNewSteps(result.steps, result.name);
   }
 
   const isGemini = settings.aiProvider === 'gemini';
@@ -245,11 +254,180 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   }
 
   function removeStepRow(index: number) {
+    const removed = steps[index];
+    if (removed?.imageId) {
+      deleteImage(removed.imageId).catch(() => {
+        // 삭제 실패해도 폼 상태는 그대로 진행 — IndexedDB 정리는 best-effort
+      });
+    }
     setSteps((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function moveStepRow(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= steps.length) return;
+    setSteps((prev) => {
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
   }
 
   function addStepRow() {
     setSteps((prev) => [...prev, { title: '', content: '' }]);
+  }
+
+  const [imageGeneratingIndex, setImageGeneratingIndex] = useState<number | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
+
+  async function generateImageForStep(index: number) {
+    if (!settings.geminiApiKey) {
+      setImageError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
+      return;
+    }
+    const step = steps[index];
+    if (!step) return;
+    setImageError(null);
+    setImageGeneratingIndex(index);
+    try {
+      const prompt = geminiClient.buildStepImagePrompt(name || '이름 없는 레시피', step);
+      const dataUrl = await geminiClient.generateStepImage(settings.geminiApiKey, prompt);
+      const imageId = step.imageId ?? makeId('img');
+      await saveImage(imageId, dataUrl);
+      updateStepRow(index, { imageId });
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : '이미지 생성에 실패했습니다.');
+    } finally {
+      setImageGeneratingIndex(null);
+    }
+  }
+
+  async function removeImageFromStep(index: number) {
+    const step = steps[index];
+    if (!step?.imageId) return;
+    await deleteImage(step.imageId).catch(() => {});
+    updateStepRow(index, { imageId: undefined });
+  }
+
+  function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error ?? new Error('파일을 읽지 못했습니다.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function uploadImageForStep(index: number, file: File) {
+    const step = steps[index];
+    if (!step) return;
+    setImageError(null);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const imageId = step.imageId ?? makeId('img');
+      await saveImage(imageId, dataUrl);
+      updateStepRow(index, { imageId });
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : '사진 업로드에 실패했습니다.');
+    }
+  }
+
+  const BATCH_SIZE = 7;
+  const BATCH_WARN_THRESHOLD = 7;
+
+  async function generateImagesForIndexes(
+    indexes: number[],
+    stepsSource: { title: string; content: string; imageId?: string }[],
+    recipeNameForPrompt: string,
+  ) {
+    const apiKey = settings.geminiApiKey;
+    if (!apiKey || indexes.length === 0) return;
+    setImageError(null);
+    setBatchProgress({ done: 0, total: indexes.length });
+    let doneCount = 0;
+    const failures: string[] = [];
+    for (let i = 0; i < indexes.length; i += BATCH_SIZE) {
+      const batch = indexes.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (stepIndex) => {
+          const step = stepsSource[stepIndex];
+          if (!step) return;
+          try {
+            const prompt = geminiClient.buildStepImagePrompt(recipeNameForPrompt, step);
+            const dataUrl = await geminiClient.generateStepImage(apiKey, prompt);
+            const imageId = step.imageId ?? makeId('img');
+            await saveImage(imageId, dataUrl);
+            updateStepRow(stepIndex, { imageId });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error(`[이미지 생성 실패] 단계 ${stepIndex + 1} (${step.title}):`, message);
+            failures.push(`${stepIndex + 1}단계: ${message}`);
+          } finally {
+            doneCount += 1;
+            setBatchProgress({ done: doneCount, total: indexes.length });
+          }
+        }),
+      );
+    }
+    setBatchProgress(null);
+    if (failures.length > 0) {
+      setImageError(
+        `${indexes.length}개 중 ${failures.length}개 이미지 생성에 실패했습니다.\n` + failures.join('\n'),
+      );
+    }
+  }
+
+  function confirmAndRunBatchForCurrentSteps() {
+    if (!settings.geminiApiKey) {
+      setImageError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
+      return;
+    }
+    if (steps.length === 0) return;
+    const existingCount = steps.filter((s) => s.imageId).length;
+    let targetIndexes = steps.map((_, i) => i);
+    if (existingCount > 0) {
+      const overwrite = confirm(
+        `이미 이미지가 있는 단계가 ${existingCount}개 있어요. 기존 이미지도 다시 만들까요?\n` +
+          `(취소를 누르면 이미지가 없는 단계만 생성해요)`,
+      );
+      if (!overwrite) {
+        targetIndexes = steps.map((_, i) => i).filter((i) => !steps[i].imageId);
+      }
+    }
+    if (targetIndexes.length === 0) {
+      setImageError('생성할 단계가 없습니다.');
+      return;
+    }
+    const manyStepsNote =
+      targetIndexes.length >= BATCH_WARN_THRESHOLD
+        ? ` 조리 단계가 많아(${targetIndexes.length}개) 시간이 좀 더 걸릴 수 있어요.`
+        : '';
+    const proceed = confirm(
+      `${targetIndexes.length}개 단계의 이미지를 생성할까요? 시간이 조금 걸릴 수 있어요.${manyStepsNote}`,
+    );
+    if (!proceed) return;
+    generateImagesForIndexes(targetIndexes, steps, name || '이름 없는 레시피');
+  }
+
+  function offerBatchImageGenerationForNewSteps(
+    newSteps: { title: string; content: string }[],
+    recipeName: string,
+  ) {
+    if (settings.aiProvider !== 'gemini' || !settings.geminiApiKey || newSteps.length === 0) return;
+    const manyStepsNote =
+      newSteps.length >= BATCH_WARN_THRESHOLD
+        ? ` 조리 단계가 많아(${newSteps.length}개) 시간이 좀 더 걸릴 수 있어요.`
+        : '';
+    const proceed = confirm(
+      `레시피가 반영됐어요. 조리 단계 이미지도 자동으로 생성할까요? 시간이 조금 걸릴 수 있어요.${manyStepsNote}`,
+    );
+    if (!proceed) return;
+    generateImagesForIndexes(
+      newSteps.map((_, i) => i),
+      newSteps,
+      recipeName || '이름 없는 레시피',
+    );
   }
 
   function handleSave() {
@@ -404,9 +582,42 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       </button>
       {ingredients.length === 0 && <p className="text-muted">먼저 재료 관리 화면에서 재료를 등록해주세요.</p>}
 
-      <div className="section-title">조리 순서</div>
+      <div className="row">
+        <div className="section-title" style={{ margin: 0 }}>
+          조리 순서
+        </div>
+        {isGemini && steps.length > 0 && (
+          <button
+            className="btn small"
+            disabled={batchProgress !== null || imageGeneratingIndex !== null}
+            onClick={confirmAndRunBatchForCurrentSteps}
+          >
+            🖼 전체 이미지 생성
+          </button>
+        )}
+      </div>
+      {batchProgress && (
+        <p className="text-muted">
+          이미지 생성 중... ({batchProgress.done}/{batchProgress.total})
+        </p>
+      )}
       {steps.map((step, index) => (
         <div className="card" key={index}>
+          <div className="row" style={{ marginBottom: 8 }}>
+            <span className="text-muted">{index + 1}단계</span>
+            <div className="chip-row" style={{ marginTop: 0 }}>
+              <button className="btn small" disabled={index === 0} onClick={() => moveStepRow(index, -1)}>
+                ▲
+              </button>
+              <button
+                className="btn small"
+                disabled={index === steps.length - 1}
+                onClick={() => moveStepRow(index, 1)}
+              >
+                ▼
+              </button>
+            </div>
+          </div>
           <div className="field">
             <label>제목</label>
             <input value={step.title} onChange={(e) => updateStepRow(index, { title: e.target.value })} />
@@ -451,11 +662,53 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
               <span>초</span>
             </div>
           </div>
+
+          <div className="field">
+            <label>조리 단계 이미지 (선택)</label>
+            <StepImagePreview imageId={step.imageId} />
+            <div className="chip-row" style={{ marginTop: 6 }}>
+              {isGemini && (
+                <button
+                  className="btn small"
+                  disabled={imageGeneratingIndex !== null || batchProgress !== null}
+                  onClick={() => generateImageForStep(index)}
+                >
+                  {imageGeneratingIndex === index
+                    ? '생성 중...'
+                    : step.imageId
+                      ? '🎨 다시 생성'
+                      : '🎨 이미지 생성'}
+                </button>
+              )}
+              <label className="btn small" style={{ cursor: 'pointer' }}>
+                📁 사진 업로드
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadImageForStep(index, file);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              {step.imageId && (
+                <button className="btn small danger" onClick={() => removeImageFromStep(index)}>
+                  이미지 삭제
+                </button>
+              )}
+            </div>
+          </div>
+
           <button className="btn small danger" onClick={() => removeStepRow(index)}>
             이 단계 삭제
           </button>
         </div>
       ))}
+      {imageError && (
+        <p style={{ color: 'var(--danger)', whiteSpace: 'pre-wrap' }}>{imageError}</p>
+      )}
       <button className="btn small" onClick={addStepRow}>
         + 조리 단계 추가
       </button>
@@ -497,6 +750,31 @@ function UnitPicker({ unit, onChange }: { unit: string; onChange: (unit: string)
       </select>
       {!isKnown && (
         <input value={unit} onChange={(e) => onChange(e.target.value)} placeholder="단위 입력" />
+      )}
+    </div>
+  );
+}
+
+function StepImagePreview({ imageId }: { imageId?: string }) {
+  const dataUrl = useStoredImage(imageId);
+  if (!imageId) return null;
+  return (
+    <div
+      style={{
+        borderRadius: 'var(--radius)',
+        overflow: 'hidden',
+        border: '1px solid var(--border)',
+        aspectRatio: '4 / 3',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--chip-bg)',
+      }}
+    >
+      {dataUrl ? (
+        <img src={dataUrl} alt="조리 단계 이미지" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        <span className="text-muted">불러오는 중...</span>
       )}
     </div>
   );

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useIngredientsById, useRecipes, useTags } from '../../data/store';
 import { useShoppingSelection } from '../../data/shoppingSelection';
 import { computeRecipeAllergens, scaleAmount } from '../../data/computed';
+import { useStoredImage } from '../../data/imageStore';
 
 export function RecipeDetailPage({
   recipeId,
@@ -107,9 +108,10 @@ function StepCard({
   step,
 }: {
   index: number;
-  step: { title: string; content: string; timerSeconds?: number };
+  step: { title: string; content: string; timerSeconds?: number; imageId?: string };
 }) {
   const [remaining, setRemaining] = useState<number | null>(null);
+  const imageUrl = useStoredImage(step.imageId);
 
   useEffect(() => {
     if (remaining === null) return;
@@ -120,6 +122,19 @@ function StepCard({
 
   return (
     <div className="card">
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt={`${step.title} 이미지`}
+          style={{
+            width: '100%',
+            aspectRatio: '4 / 3',
+            objectFit: 'cover',
+            borderRadius: 'var(--radius)',
+            marginBottom: 10,
+          }}
+        />
+      )}
       <div className="row">
         <strong>
           {index}. {step.title}

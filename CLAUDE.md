@@ -111,6 +111,10 @@
     진짜 구글 계정이어도 재료/레시피 데이터는 예전 고정 네임스페이스(`CURRENT_USER_ID`) 그대로 보임 —
     실제 데이터가 household/user별로 나뉘는 건 데이터 레이어 마이그레이션(Phase 3)부터. 그 다음 API 키
     Supabase Vault 암호화 전환(Phase 4, AI 호출도 서버리스 함수 경유로 전환)이 예정되어 있음
+  - **다음에 이어서 할 일(2026-07-24 기준 미완료)**: `0002_household_rpc.sql`은 SQL Editor에서 실행
+    완료. 남은 건 (1) Supabase 대시보드 **Authentication > URL Configuration > Redirect URLs**에
+    로컬 개발 주소(`http://localhost:5173` 등, 포트는 그때그때 확인) 등록, (2) 로컬에서 실제 구글
+    로그인 → 가구 만들기/참여하기 온보딩까지 실제로 테스트. 둘 다 아직 안 함 — 집 PC에서 이어서 진행 예정
 
 ## 향후 확장 계획 (지금부터 구조는 열어두되 구현은 나중에)
 - **다중 사용자**: 부부가 같이 보고 수정할 수 있게 — 위 "DB 전환(Supabase)" 항목에서 진행 중

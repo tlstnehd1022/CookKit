@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useSettings } from '../../data/settings';
 import { useSession } from '../../data/session';
+import { useHousehold } from '../../data/household';
 import { useTheme } from '../../data/theme';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { downloadBackup, restoreBackupFromFile } from '../../data/backup';
@@ -8,6 +9,7 @@ import { downloadBackup, restoreBackupFromFile } from '../../data/backup';
 export function SettingsPage() {
   const { settings, updateSettings } = useSettings();
   const { user, logout } = useSession();
+  const { household } = useHousehold();
   const { theme, toggleTheme } = useTheme();
   const [anthropicKeyDraft, setAnthropicKeyDraft] = useState(settings.anthropicApiKey);
   const [geminiKeyDraft, setGeminiKeyDraft] = useState(settings.geminiApiKey);
@@ -230,6 +232,20 @@ export function SettingsPage() {
           }}
         />
         {importMessage && <p style={{ marginTop: 8 }}>{importMessage}</p>}
+      </div>
+
+      <div className="section-title">가구</div>
+      <div className="card">
+        {household ? (
+          <>
+            <p className="text-muted">가구 이름: {household.name}</p>
+            <p className="text-muted">
+              초대 코드: <strong>{household.inviteCode}</strong> (가족에게 공유해서 같이 쓰세요)
+            </p>
+          </>
+        ) : (
+          <p className="text-muted">가구 정보를 불러오는 중...</p>
+        )}
       </div>
 
       <div className="section-title">계정</div>

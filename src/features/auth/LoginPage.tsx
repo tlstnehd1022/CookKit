@@ -22,11 +22,8 @@ export function LoginPage() {
         알러지 걱정 없이 함께 만드는 레시피 & 장보기 도우미
       </p>
       <button className="btn primary" style={{ padding: '12px 28px', fontSize: 16 }} onClick={login}>
-        수동으로 로그인
+        Google로 로그인
       </button>
-      <p className="text-muted" style={{ maxWidth: 280, fontSize: 12 }}>
-        지금은 별도 회원가입/비밀번호 없이 고정 계정으로 진행돼요. 나중에 실제 로그인이 추가될 예정입니다.
-      </p>
     </div>
   );
 }

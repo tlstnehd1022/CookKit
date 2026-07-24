@@ -4,7 +4,9 @@ import { RecipesFeature } from './features/recipes/RecipesFeature';
 import { IngredientsPage } from './features/ingredients/IngredientsPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { LoginPage } from './features/auth/LoginPage';
+import { HouseholdOnboarding } from './features/auth/HouseholdOnboarding';
 import { useSession } from './data/session';
+import { useHousehold } from './data/household';
 
 type Tab = 'recipes' | 'shopping' | 'ingredients' | 'settings';
 
@@ -16,11 +18,24 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 ];
 
 function App() {
-  const { user } = useSession();
+  const { user, loaded } = useSession();
+  const { household, loading: householdLoading, refresh: refreshHousehold } = useHousehold();
   const [tab, setTab] = useState<Tab>('recipes');
+
+  if (!loaded) {
+    return null;
+  }
 
   if (!user) {
     return <LoginPage />;
+  }
+
+  if (householdLoading) {
+    return null;
+  }
+
+  if (!household) {
+    return <HouseholdOnboarding onDone={refreshHousehold} />;
   }
 
   return (

@@ -92,13 +92,25 @@
   - **RLS**: household 소속 여부 체크는 `household_members` 테이블을 자기 자신이 참조하면 무한 재귀
     에러가 나서, `is_household_member`/`shares_household_with` 같은 `SECURITY DEFINER` 헬퍼 함수로
     우회함(Supabase 공식 권장 패턴). recipes는 `is_public=true`거나 본인 것만 조회 가능하도록 정책 설정
-  - **알려진 미완성 부분**(주석으로 표시해둠): household 초대코드(invite_code) 검증 로직이 아직 없음 —
-    지금 정책은 "본인 user_id로만 insert 가능"까지만 체크하고 있어, household_id(UUID)를 알면 초대코드
-    없이도 가입 insert 자체는 가능한 상태. 실제 "초대코드로 가입하기" 기능을 만들 때 invite_code 검증 +
-    insert를 함께 처리하는 SECURITY DEFINER RPC 함수로 교체할 것
-  - **다음 단계(아직 시작 안 함)**: `src/lib/supabaseClient.ts` 작성, 로그인 화면을 구글 OAuth로 교체,
-    `src/data/*`(session/repos/store)를 Supabase 호출로 전환, 기존 localStorage 데이터를 JSON
-    내보내기(이미 있는 백업 기능) → Supabase로 가져오는 마이그레이션 스크립트 작성
+  - **Phase 2 완료 — 로그인/가구 온보딩**: `src/lib/supabaseClient.ts`(클라이언트 초기화, `VITE_SUPABASE_URL`/
+    `VITE_SUPABASE_ANON_KEY` 환경변수 필요 — 없으면 명확한 에러로 즉시 실패), `src/data/session.ts`를
+    Supabase Auth 기반으로 재작성(`signInWithOAuth({provider:'google'})`, `onAuthStateChange`로 세션
+    반영 — `login`/`logout`은 이제 비동기, `useSession()`이 반환하는 `loaded` 플래그로 새로고침 직후
+    깜빡임 방지). `src/data/household.ts`(`useHousehold()` — 로그인 사용자가 속한 household 조회),
+    `src/features/auth/HouseholdOnboarding.tsx`(household 없는 신규 유저에게 "가구 만들기"/"초대코드로
+    참여하기" 선택 화면), `App.tsx`가 로그인→household 유무에 따라 로그인 화면/온보딩/본화면을 분기.
+    설정 화면에 가구 이름 + 초대코드 표시 추가(가족에게 공유용). 구글 로그인 리다이렉트까지 자동
+    확인 완료(Playwright로 실제 구글 로그인 화면 도달 확인, 실제 로그인 자체는 사용자가 직접 테스트 필요)
+  - **household 초대코드 검증 RPC**: 원래 5번째 단계로 예정했던 것을 Phase 2에서 앞당겨 구현함(초대코드로
+    가입하는 기능 자체가 이게 없으면 동작할 수 없어서) — `supabase/migrations/0002_household_rpc.sql`의
+    `create_household`/`join_household_by_invite_code` (둘 다 SECURITY DEFINER, 한 계정당 household
+    1개 제한을 함수 안에서도 체크). **`schema.sql`을 다시 실행하지 말고 이 마이그레이션 파일만 추가로
+    SQL Editor에서 실행할 것**(이미 존재하는 테이블/정책이라 전체 재실행하면 에러남 — 앞으로 스키마가
+    바뀔 때마다 `supabase/migrations/000N_*.sql` 형태로 계속 이어붙이는 방식으로 관리)
+  - **아직 안 함(Phase 3+)**: `src/data/repos.ts`/`store.ts`가 여전히 localStorage 그대로라, 로그인은
+    진짜 구글 계정이어도 재료/레시피 데이터는 예전 고정 네임스페이스(`CURRENT_USER_ID`) 그대로 보임 —
+    실제 데이터가 household/user별로 나뉘는 건 데이터 레이어 마이그레이션(Phase 3)부터. 그 다음 API 키
+    Supabase Vault 암호화 전환(Phase 4, AI 호출도 서버리스 함수 경유로 전환)이 예정되어 있음
 
 ## 향후 확장 계획 (지금부터 구조는 열어두되 구현은 나중에)
 - **다중 사용자**: 부부가 같이 보고 수정할 수 있게 — 위 "DB 전환(Supabase)" 항목에서 진행 중

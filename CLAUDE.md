@@ -17,6 +17,10 @@
 - **5차 확장 완료**: 전체 디자인을 "따뜻한 아날로그 + Soft UI" 톤으로 통일 + 다크모드 토글, 재료별 개인
   선호 설정(선호 단위/방식), 조리 단계별 AI 이미지 생성(Gemini 전용, IndexedDB 저장 — 아래 "이미지 저장
   (IndexedDB)" 항목 참고)
+- **6차 확장 진행 중 — Supabase(DB) 전환**: localStorage 단독 구조를 Supabase(Postgres + Auth)로
+  옮기는 작업 착수. 지금까지는 **스키마 설계 + 설정 문서까지만 완료**(`supabase/schema.sql`,
+  `SUPABASE_SETUP.md`, `.env.example`, `@supabase/supabase-js` 설치)이고, 실제 로그인/데이터 레이어
+  코드 마이그레이션은 아직 시작 전. 자세한 내용은 아래 "DB 전환(Supabase)" 항목 참고
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
@@ -72,9 +76,32 @@
     유튜브 "이대로 반영하기"가 공유하는 단일 함수)에서 반영 직후 Gemini 사용 중이면 "조리 단계 이미지도
     자동으로 생성할까요?" 확인 후 위와 같은 방식으로 전체 생성 진행(이 경우는 방금 막 채워진 새 단계라
     기존 이미지 개념이 없어 덮어쓰기 질문은 생략)
+- **DB 전환(Supabase) — 진행 중**: localStorage 단독 구조를 다중 사용자가 가능한 진짜 백엔드로
+  옮기는 작업. 배경: User-Household는 N:1(가족 여러 명이 하나의 household 공유), 재료(ingredients)는
+  household 단위로 공유, 레시피(recipes)는 user 단위 소유(기본 비공개, `is_public`으로 전체공개 전환
+  가능해서 다른 유저가 참조/복사 가능), 로그인은 구글 소셜 로그인.
+  - **현재 상태**: 스키마 설계 + 설정 가이드만 완료, 실제 코드(로그인 화면, 데이터 레이어, 마이그레이션
+    스크립트)는 아직 손대지 않음. `@supabase/supabase-js` 설치 완료, `.env.example`(→ 로컬에서 `.env`로
+    복사해 실제 키 채워넣는 방식, `VITE_` 접두사 필요 — Vite는 이 접두사 붙은 변수만 클라이언트에 노출),
+    `.env`는 `.gitignore`에 이미 포함됨
+  - **스키마**: `supabase/schema.sql`에 전체 SQL 있음 — `profiles`(auth.users와 1:1, 별도 users 테이블
+    대신 Supabase 공식 권장 패턴대로 auth.users를 참조), `households`, `household_members`(N:1 매핑,
+    유저당 household 1개로 제한하는 unique index 포함), `categories`/`ingredients`/`tags`(모두 household
+    단위), `recipes`(user 소유 + `content` jsonb에 인분/재료/조리순서 중첩 저장 — 개인/가구 규모라 별도
+    테이블로 정규화하지 않음), `recipe_tags`, `shopping_selection`(household 공유)
+  - **RLS**: household 소속 여부 체크는 `household_members` 테이블을 자기 자신이 참조하면 무한 재귀
+    에러가 나서, `is_household_member`/`shares_household_with` 같은 `SECURITY DEFINER` 헬퍼 함수로
+    우회함(Supabase 공식 권장 패턴). recipes는 `is_public=true`거나 본인 것만 조회 가능하도록 정책 설정
+  - **알려진 미완성 부분**(주석으로 표시해둠): household 초대코드(invite_code) 검증 로직이 아직 없음 —
+    지금 정책은 "본인 user_id로만 insert 가능"까지만 체크하고 있어, household_id(UUID)를 알면 초대코드
+    없이도 가입 insert 자체는 가능한 상태. 실제 "초대코드로 가입하기" 기능을 만들 때 invite_code 검증 +
+    insert를 함께 처리하는 SECURITY DEFINER RPC 함수로 교체할 것
+  - **다음 단계(아직 시작 안 함)**: `src/lib/supabaseClient.ts` 작성, 로그인 화면을 구글 OAuth로 교체,
+    `src/data/*`(session/repos/store)를 Supabase 호출로 전환, 기존 localStorage 데이터를 JSON
+    내보내기(이미 있는 백업 기능) → Supabase로 가져오는 마이그레이션 스크립트 작성
 
 ## 향후 확장 계획 (지금부터 구조는 열어두되 구현은 나중에)
-- **다중 사용자**: 부부가 같이 보고 수정할 수 있게 (Supabase 등으로 백엔드 추가 예정, 실제 로그인도 이때 같이 붙임)
+- **다중 사용자**: 부부가 같이 보고 수정할 수 있게 — 위 "DB 전환(Supabase)" 항목에서 진행 중
 - **재료 자동 인식**: 영수증/냉장고 사진 찍어서 재료 자동 등록 (Claude API 이미지 인식 활용 예정)
 - **요리 기록**: 언제 어떤 레시피를 해먹었는지 로그 (아래 데이터 모델에 스텁 포함)
 - **손님초대모드(메뉴 세트)**: 여러 레시피를 묶어서 하나의 "메뉴 세트"로 저장/재사용 (아래 데이터 모델에 스텁 포함)

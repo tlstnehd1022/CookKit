@@ -10,7 +10,7 @@ export function CategoryManager({ onClose }: { onClose: () => void }) {
   function addCategory() {
     const trimmed = name.trim();
     if (!trimmed) return;
-    saveCategory({ id: makeId('cat'), name: trimmed });
+    saveCategory({ id: makeId(), name: trimmed });
     setName('');
   }
 

@@ -143,6 +143,18 @@
     - **백업(JSON 내보내기/가져오기)**: `backup.ts`가 이제 스토어의 캐시 스냅샷(`getIngredientsSnapshot()`
       등, React 훅이 아닌 일반 함수)을 읽고, 가져오기는 각 `replaceAllX`를 await하도록 변경. pantryStatus는
       가져올 때 각 재료의 `owned` 필드로 다시 접어넣음(백업 JSON 포맷 자체는 안 바꿈).
+    - **버그(수정 완료) — ID를 uuid로 변경**: `makeId(prefix)`가 localStorage 시절 그대로 `cat-xxx`/
+      `recipe-xxx` 형태의 문자열을 만들고 있어서, Supabase의 모든 `id` 컬럼이 `uuid` 타입인 것과 충돌 —
+      새 재료/태그/카테고리/레시피를 만들 때마다 `invalid input syntax for type uuid` 400 에러로 저장이
+      실패했음(Supabase 대시보드 **Logs → Postgres**에서 발견). `makeId()`를 인자 없이 `crypto.randomUUID()`를
+      반환하도록 변경, 모든 호출부(`makeId('cat')` 등)에서 인자 제거. 앞으로 새 테이블/엔티티를 추가할 때도
+      클라이언트에서 id를 직접 만든다면 반드시 `makeId()`(진짜 UUID)를 쓸 것 — 다른 형식의 문자열 id를
+      쓰면 같은 에러가 재발함.
+    - **에러 메시지 처리 버그(수정 완료)**: Supabase 에러(PostgrestError)는 `Error` 인스턴스가 아니라
+      `message` 속성만 있는 일반 객체라서, `err instanceof Error ? err.message : fallback` 패턴을 쓰면
+      항상 fallback으로 빠져 실제 에러 내용이 안 보임. `src/lib/errorMessage.ts`의 `getErrorMessage()`로
+      통일(Error 인스턴스와 `{message}` 객체 둘 다 처리) — Supabase 호출을 감싸는 catch 블록은 항상 이
+      헬퍼를 쓸 것. 겸사겸사 `console.error`도 같이 남겨서 화면 문구와 별개로 콘솔에서 원본 에러 확인 가능.
     - **아직 안 함(Phase 4)**: API 키(Anthropic/Gemini) 저장을 localStorage 평문 → Supabase Vault
       암호화 + 서버리스 함수 경유로 전환하는 작업, household 신규 데이터 없음(새 household는 빈 상태로
       시작 — 기존 로컬 데이터를 옮기는 마이그레이션 스크립트는 별도로 요청 시 진행)

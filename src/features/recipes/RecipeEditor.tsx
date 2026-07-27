@@ -89,7 +89,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     const trimmed = rawName.trim();
     const matched = tags.find((tag) => tag.name === trimmed);
     if (matched) return matched.id;
-    const id = makeId('tag');
+    const id = makeId();
     await saveTag({ id, name: trimmed, type: 'style' });
     return id;
   }
@@ -216,6 +216,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       setPendingYoutubeResult(null);
       setPendingYoutubeDiff([]);
     } catch (err) {
+      console.error('유튜브 반영 실패:', err);
       setAiError(getErrorMessage(err, '반영 중 오류가 발생했습니다.'));
     } finally {
       setApplyingYoutube(false);
@@ -229,7 +230,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
 
   async function createIngredientFromAi(rawName: string, categoryName?: string | null): Promise<string> {
     const trimmed = rawName.trim();
-    const id = makeId('ing');
+    const id = makeId();
     const trimmedCategoryName = categoryName?.trim();
     const matchedCategory = trimmedCategoryName
       ? categories.find((c) => c.name === trimmedCategoryName)
@@ -238,7 +239,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     if (matchedCategory) {
       categoryId = matchedCategory.id;
     } else if (trimmedCategoryName) {
-      categoryId = makeId('cat');
+      categoryId = makeId();
       await saveCategory({ id: categoryId, name: trimmedCategoryName });
     } else {
       categoryId = categories.find((c) => c.name === '기타')?.id ?? categories[0]?.id ?? '';
@@ -308,7 +309,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     try {
       const prompt = geminiClient.buildStepImagePrompt(name || '이름 없는 레시피', step);
       const dataUrl = await geminiClient.generateStepImage(settings.geminiApiKey, prompt);
-      const imageId = step.imageId ?? makeId('img');
+      const imageId = step.imageId ?? makeId();
       await saveImage(imageId, dataUrl);
       updateStepRow(index, { imageId });
     } catch (err) {
@@ -340,7 +341,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     setImageError(null);
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      const imageId = step.imageId ?? makeId('img');
+      const imageId = step.imageId ?? makeId();
       await saveImage(imageId, dataUrl);
       updateStepRow(index, { imageId });
     } catch (err) {
@@ -371,7 +372,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           try {
             const prompt = geminiClient.buildStepImagePrompt(recipeNameForPrompt, step);
             const dataUrl = await geminiClient.generateStepImage(apiKey, prompt);
-            const imageId = step.imageId ?? makeId('img');
+            const imageId = step.imageId ?? makeId();
             await saveImage(imageId, dataUrl);
             updateStepRow(stepIndex, { imageId });
           } catch (err) {
@@ -450,7 +451,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
 
   async function handleSave() {
     const recipe: Recipe = {
-      id: existing?.id ?? makeId('recipe'),
+      id: existing?.id ?? makeId(),
       name: name.trim() || '이름 없는 레시피',
       servingsBase: servingsBase || 1,
       tagIds,
@@ -463,6 +464,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       await saveRecipe(recipe);
       onDone();
     } catch (err) {
+      console.error('레시피 저장 실패:', err);
       setSaveError(getErrorMessage(err, '레시피 저장에 실패했습니다.'));
     } finally {
       setSaving(false);

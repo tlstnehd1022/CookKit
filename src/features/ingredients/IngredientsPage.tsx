@@ -354,7 +354,7 @@ function AddIngredientModal({
             disabled={!canSave}
             onClick={() =>
               onSave({
-                id: makeId('ing'),
+                id: makeId(),
                 name: name.trim(),
                 categoryId,
                 defaultBuyUnit: defaultBuyUnit.trim() || '1개',

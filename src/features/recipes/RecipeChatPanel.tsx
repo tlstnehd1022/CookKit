@@ -97,6 +97,7 @@ export function RecipeChatPanel({
       setPendingRecipe(null);
       setPendingDiff([]);
     } catch (err) {
+      console.error('레시피 반영 실패:', err);
       setError(getErrorMessage(err, '반영 중 오류가 발생했습니다.'));
     } finally {
       setApplying(false);

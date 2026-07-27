@@ -166,6 +166,11 @@ export function usePantryStatus() {
   return { pantryStatus, setOwned };
 }
 
-export function makeId(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+// Supabase의 id 컬럼이 전부 uuid 타입이라 반드시 진짜 UUID 형식이어야 한다 — 예전
+// localStorage 시절의 "prefix-timestamp-random" 형식 문자열은 Postgres가 uuid로 받아주지
+// 않고 "invalid input syntax for type uuid" 에러를 낸다(신규 재료/태그/카테고리/레시피
+// 생성이 전부 이 에러로 실패하던 원인). crypto.randomUUID()는 최신 브라우저에 내장되어 있어
+// 별도 라이브러리 없이 바로 쓸 수 있다.
+export function makeId(): string {
+  return crypto.randomUUID();
 }

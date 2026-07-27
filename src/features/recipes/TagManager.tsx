@@ -12,7 +12,7 @@ export function TagManager({ onClose }: { onClose: () => void }) {
   function addTag() {
     const trimmed = name.trim();
     if (!trimmed) return;
-    saveTag({ id: makeId('tag'), name: trimmed, type });
+    saveTag({ id: makeId(), name: trimmed, type });
     setName('');
   }
 

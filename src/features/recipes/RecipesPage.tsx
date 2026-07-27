@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useIngredientsById, useRecipes, useTags } from '../../data/store';
 import { collectAllAllergens, computeRecipeAllergens, computeTotalCookMinutes } from '../../data/computed';
 import { useStoredImage } from '../../data/imageStore';
-import type { Recipe, Tag } from '../../data/types';
+import type { Ingredient, Recipe, Tag } from '../../data/types';
 
 // 태그 이름별 대표 이모지 — 대표 이미지(조리 단계 이미지)가 없는 레시피의 플레이스홀더용.
 // 매칭되는 태그가 없으면 기본 이모지로 대체.
@@ -13,6 +13,8 @@ const TAG_PLACEHOLDER_EMOJI: Record<string, string> = {
   국물요리: '🍲',
 };
 const DEFAULT_PLACEHOLDER_EMOJI = '🍽️';
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 export function RecipesPage({
   onSelectRecipe,
@@ -27,18 +29,41 @@ export function RecipesPage({
   const { tags } = useTags();
   const ingredientsById = useIngredientsById();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const [excludedAllergens, setExcludedAllergens] = useState<string[]>([]);
+  const [pantryOnly, setPantryOnly] = useState(false);
+
+  // 검색은 재료 이름까지 훑어야 해서(레시피 개수가 늘어날 걸 감안하면) 매 키 입력마다 바로
+  // 필터링하지 않고 300ms 디바운스 — 지금 데이터 규모에선 사실 없어도 되지만, 나중에 레시피가
+  // 수백 개 이상으로 늘어나면 체감 차이가 날 수 있어서 미리 넣어둠.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const allAllergens = useMemo(
     () => collectAllAllergens(Array.from(ingredientsById.values())),
     [ingredientsById],
   );
 
+  function matchesSearch(recipe: Recipe, query: string, ingredientsMap: Map<string, Ingredient>): boolean {
+    if (!query) return true;
+    if (recipe.name.toLowerCase().includes(query)) return true;
+    return recipe.ingredients.some((item) =>
+      ingredientsMap.get(item.ingredientId)?.name.toLowerCase().includes(query),
+    );
+  }
+
+  function isMakeableWithPantry(recipe: Recipe, ingredientsMap: Map<string, Ingredient>): boolean {
+    if (recipe.ingredients.length === 0) return false;
+    return recipe.ingredients.every((item) => ingredientsMap.get(item.ingredientId)?.owned === true);
+  }
+
+  // 지금은 클라이언트 사이드 필터링(레시피 몇십 개 규모에서는 충분히 빠름). 나중에 레시피가
+  // 수백 개 이상으로 늘어나면 서버 사이드 필터링/페이지네이션으로 옮기는 걸 고려할 것.
   const filtered = recipes.filter((recipe) => {
-    if (search.trim() && !recipe.name.toLowerCase().includes(search.trim().toLowerCase())) {
-      return false;
-    }
+    if (!matchesSearch(recipe, debouncedSearch, ingredientsById)) return false;
     if (activeTagIds.length > 0 && !activeTagIds.every((tagId) => recipe.tagIds.includes(tagId))) {
       return false;
     }
@@ -48,6 +73,7 @@ export function RecipesPage({
         return false;
       }
     }
+    if (pantryOnly && !isMakeableWithPantry(recipe, ingredientsById)) return false;
     return true;
   });
 
@@ -79,14 +105,20 @@ export function RecipesPage({
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="레시피 이름 검색"
+          placeholder="레시피 이름 또는 재료로 검색"
         />
       </div>
 
-      {tags.length > 0 && (
+      {recipes.length > 0 && (
         <>
-          <div className="section-title">태그 필터</div>
-          <div className="chip-row">
+          <div className="section-title">필터</div>
+          <div className="chip-row-scroll">
+            <button
+              className={`chip selectable ${pantryOnly ? 'active' : ''}`}
+              onClick={() => setPantryOnly((prev) => !prev)}
+            >
+              🧺 보유 재료로 가능한 것만
+            </button>
             {tags.map((tag) => (
               <button
                 key={tag.id}
@@ -96,14 +128,6 @@ export function RecipesPage({
                 {tag.name}
               </button>
             ))}
-          </div>
-        </>
-      )}
-
-      {allAllergens.length > 0 && (
-        <>
-          <div className="section-title">알러지 성분 제외</div>
-          <div className="chip-row">
             {allAllergens.map((allergen) => (
               <button
                 key={allergen}
@@ -128,6 +152,7 @@ export function RecipesPage({
               setSearch('');
               setActiveTagIds([]);
               setExcludedAllergens([]);
+              setPantryOnly(false);
             }}
           >
             필터 초기화

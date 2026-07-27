@@ -213,6 +213,20 @@ h2 {
   margin-top: 6px;
 }
 
+.chip-row-scroll {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 6px;
+  margin-top: 6px;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chip-row-scroll .chip {
+  flex-shrink: 0;
+}
+
 .chip {
   background: var(--chip-bg);
   border-radius: 999px;

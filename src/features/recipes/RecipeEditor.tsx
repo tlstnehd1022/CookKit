@@ -85,12 +85,13 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     steps,
   };
 
-  async function resolveOrCreateTag(rawName: string): Promise<string> {
+  async function resolveOrCreateTag(rawName: string, tagCache: Map<string, string>): Promise<string> {
     const trimmed = rawName.trim();
-    const matched = tags.find((tag) => tag.name === trimmed);
-    if (matched) return matched.id;
+    const cached = tagCache.get(trimmed);
+    if (cached) return cached;
     const id = makeId();
     await saveTag({ id, name: trimmed, type: 'style' });
+    tagCache.set(trimmed, id);
     return id;
   }
 
@@ -105,19 +106,31 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         timerSeconds: step.timerSeconds ?? undefined,
       })),
     );
-    // 새 재료/태그는 DB에 실제로 만들어진 뒤에야 레시피 쪽에서 안전하게 참조할 수 있어서
-    // (recipe_tags/재료 참조가 FK로 걸려있음) 여기서 순서대로 기다린다.
-    const newRecipeIngredients = await Promise.all(
-      result.ingredients.map(async (item) => {
-        const matched = ingredients.find((ingredient) => ingredient.name.trim() === item.name.trim());
-        const ingredientId = matched?.id ?? (await createIngredientFromAi(item.name, item.categoryName));
-        return { ingredientId, amount: item.amount, unit: item.unit };
-      }),
-    );
+    // 새 재료/태그/카테고리는 DB에 실제로 만들어진 뒤에야 레시피 쪽에서 안전하게 참조할 수 있어서
+    // (recipe_tags/재료 참조가 FK로 걸려있음) 순서대로 기다린다. 예전엔 Promise.all로 동시에
+    // 처리했는데, 그 경우 "지금 폼에 없는 새 카테고리"를 두 재료가 동시에 필요로 하면 서로의
+    // 생성 결과를 못 보고(둘 다 리액트 state 스냅샷 기준) 같은 이름의 카테고리를 중복 생성하는
+    // 버그가 있었음 — 한 번에 하나씩 처리 + 배치 내에서 직접 채우는 캐시로 해결.
+    const categoryCache = new Map(categories.map((c) => [c.name, c.id]));
+    const ingredientCache = new Map(ingredients.map((i) => [i.name.trim(), i.id]));
+    const newRecipeIngredients: RecipeIngredient[] = [];
+    for (const item of result.ingredients) {
+      const trimmedName = item.name.trim();
+      let ingredientId = ingredientCache.get(trimmedName);
+      if (!ingredientId) {
+        ingredientId = await createIngredientFromAi(item.name, item.categoryName, categoryCache);
+        ingredientCache.set(trimmedName, ingredientId);
+      }
+      newRecipeIngredients.push({ ingredientId, amount: item.amount, unit: item.unit });
+    }
     setRecipeIngredients(newRecipeIngredients);
 
     if (result.tagNames && result.tagNames.length > 0) {
-      const newTagIds = await Promise.all(result.tagNames.map((tagName) => resolveOrCreateTag(tagName)));
+      const tagCache = new Map(tags.map((t) => [t.name, t.id]));
+      const newTagIds: string[] = [];
+      for (const tagName of result.tagNames) {
+        newTagIds.push(await resolveOrCreateTag(tagName, tagCache));
+      }
       setTagIds(newTagIds);
     }
     setAiWarning(result.warning ?? null);
@@ -228,21 +241,26 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     setPendingYoutubeDiff([]);
   }
 
-  async function createIngredientFromAi(rawName: string, categoryName?: string | null): Promise<string> {
+  async function createIngredientFromAi(
+    rawName: string,
+    categoryName: string | null | undefined,
+    categoryCache: Map<string, string>,
+  ): Promise<string> {
     const trimmed = rawName.trim();
     const id = makeId();
     const trimmedCategoryName = categoryName?.trim();
-    const matchedCategory = trimmedCategoryName
-      ? categories.find((c) => c.name === trimmedCategoryName)
-      : undefined;
     let categoryId: string;
-    if (matchedCategory) {
-      categoryId = matchedCategory.id;
-    } else if (trimmedCategoryName) {
-      categoryId = makeId();
-      await saveCategory({ id: categoryId, name: trimmedCategoryName });
+    if (trimmedCategoryName) {
+      const cached = categoryCache.get(trimmedCategoryName);
+      if (cached) {
+        categoryId = cached;
+      } else {
+        categoryId = makeId();
+        await saveCategory({ id: categoryId, name: trimmedCategoryName });
+        categoryCache.set(trimmedCategoryName, categoryId);
+      }
     } else {
-      categoryId = categories.find((c) => c.name === '기타')?.id ?? categories[0]?.id ?? '';
+      categoryId = categoryCache.get('기타') ?? categories.find((c) => c.name === '기타')?.id ?? categories[0]?.id ?? '';
     }
     await saveIngredient({ id, name: trimmed, categoryId, defaultBuyUnit: '1개', allergens: [], owned: false });
     return id;

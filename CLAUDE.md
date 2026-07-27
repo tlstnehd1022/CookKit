@@ -162,6 +162,20 @@
     - **아직 안 함(Phase 4)**: API 키(Anthropic/Gemini) 저장을 localStorage 평문 → Supabase Vault
       암호화 + 서버리스 함수 경유로 전환하는 작업, household 신규 데이터 없음(새 household는 빈 상태로
       시작 — 기존 로컬 데이터를 옮기는 마이그레이션 스크립트는 별도로 요청 시 진행)
+    - **버그(수정 완료) — 카테고리 중복 생성 레이스 컨디션**: 재료 관리 화면에서 같은 이름 카테고리인데도
+      그루핑이 안 되는 문제 발견 — 그루핑 로직(`categoryId` 정확 비교) 자체는 문제 없었고, 원인은
+      `RecipeEditor.tsx`의 `applyExtractedResult`(AI 대화/유튜브 반영 공통 경로)가 새 재료들을
+      `Promise.all`로 동시에 처리하던 것. 아직 없는 새 카테고리를 두 재료가 동시에 필요로 하면 둘 다
+      리액트 state의 같은(오래된) `categories` 스냅샷만 보고 있어서 서로의 생성 결과를 못 보고, 같은
+      이름의 카테고리를 서로 다른 id로 두 번 만들어버림 — 화면에는 이름이 같아 안 구별되지만 실제로는
+      `categoryId`가 갈려 그루핑이 깨진 것처럼 보였음. 새 재료/태그를 순차 처리(`for...of` + `await`)로
+      바꾸고, 배치 안에서 방금 만든 카테고리/태그를 바로 찾을 수 있는 로컬 캐시(`Map`)를 둬서 해결
+      (`createIngredientFromAi`/`resolveOrCreateTag`가 이제 이 캐시를 받아서 씀). 이미 이 버그로
+      생성된 중복 카테고리는 `supabase/migrations/0004_merge_duplicate_categories.sql`로 병합
+      (household 단위로 이름이 같은 카테고리를 대표 하나로 합치고 재료의 `category_id`를 옮긴 뒤
+      나머지 삭제 — SQL Editor에서 1회 실행, 여러 번 실행해도 안전). 앞으로 AI가 여러 개의 새
+      엔티티(카테고리/태그/재료)를 한 응답에서 만들 때는 항상 이 패턴(순차 처리 + 배치 내 캐시)을
+      따를 것 — `Promise.all`로 동시에 새로 만들면 같은 버그가 재발함.
 - **레시피 관리 화면(모바일 개편)**: `RecipesPage.tsx`가 기본으로 2열 그리드 카드 뷰를 보여줌
   (`.recipe-grid`/`.recipe-card`, 기존 "따뜻한 아날로그 + Soft UI" 변수 재사용). 카드 = 대표 이미지
   (첫 조리 단계 이미지 → 없으면 태그 기반 이모지 플레이스홀더, 완성 사진 필드가 나중에 생기면 그게

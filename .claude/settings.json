@@ -30,7 +30,9 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5174/)",
       "Bash(node scratch-smoke2.mjs)",
       "Bash(rm -f scratch-smoke2.mjs)",
-      "Bash(node scratch-auth-smoke.mjs)"
+      "Bash(node scratch-auth-smoke.mjs)",
+      "Bash(pkill -f \"vercel dev\")",
+      "Bash(git commit *)"
     ]
   }
 }

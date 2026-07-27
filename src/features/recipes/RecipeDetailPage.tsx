@@ -21,6 +21,10 @@ export function RecipeDetailPage({
   const recipe = recipes.find((r) => r.id === recipeId);
   const [servings, setServings] = useState(recipe?.servingsBase ?? 1);
   const [showDifficultyReason, setShowDifficultyReason] = useState(false);
+  // 대표 이미지 우선순위: 완성 사진 > 첫 조리 단계 이미지. recipe가 사라지는 경우(삭제 등)에도
+  // 훅 호출 순서가 매 렌더 동일해야 해서 이 useStoredImage는 아래 조기 return보다 위에 둔다.
+  const coverImageId = recipe?.finalImageId ?? recipe?.steps.find((step) => step.imageId)?.imageId;
+  const coverImageUrl = useStoredImage(coverImageId);
 
   useEffect(() => {
     if (recipe) setServings(recipe.servingsBase);
@@ -65,6 +69,19 @@ export function RecipeDetailPage({
       </div>
 
       <h1 style={{ marginTop: 12 }}>{recipe.name}</h1>
+      {coverImageUrl && (
+        <img
+          src={coverImageUrl}
+          alt={`${recipe.name} 완성 사진`}
+          style={{
+            width: '100%',
+            aspectRatio: '4 / 3',
+            objectFit: 'cover',
+            borderRadius: 'var(--radius)',
+            marginBottom: 10,
+          }}
+        />
+      )}
       <button
         className={`btn ${isSelected(recipe.id) ? 'primary' : ''}`}
         style={{ width: '100%', marginBottom: 8 }}

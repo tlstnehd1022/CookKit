@@ -257,12 +257,35 @@ export async function chatAboutRecipe(
   };
 }
 
+// 조리 단계 이미지와 완성 사진이 서로 다른 화풍으로 튀지 않도록 공유하는 스타일 가이드.
+export const IMAGE_STYLE_GUIDE =
+  '스타일: 따뜻한 톤의 자연광, 심플한 나무 도마 또는 밝은 대리석 조리대 배경, 스테인리스 또는 무광 ' +
+  '블랙 냄비/팬, 과하지 않은 자연스러운 홈쿠킹 느낌으로 사진처럼 사실적으로 표현해줘.';
+
 /** 레시피 이름 + 조리 단계 내용을 바탕으로 이미지 생성용 프롬프트를 만든다. */
 export function buildStepImagePrompt(recipeName: string, step: { title: string; content: string }): string {
   return (
     `요리 레시피 "${recipeName}"의 조리 단계를 보여주는 사실적인 사진 스타일 이미지를 만들어줘. ` +
     `단계: "${step.title}" — ${step.content}. ` +
-    `텍스트나 글자는 이미지에 넣지 말고, 실제 주방에서 그 단계를 진행하는 모습만 자연스럽게 표현해줘.`
+    `텍스트나 글자는 이미지에 넣지 말고, 실제 주방에서 그 단계를 진행하는 모습만 자연스럽게 표현해줘. ` +
+    IMAGE_STYLE_GUIDE
+  );
+}
+
+/** 레시피 이름 + 주요 재료/태그를 바탕으로 완성된 요리 사진 생성용 프롬프트를 만든다. */
+export function buildFinalDishImagePrompt(
+  recipeName: string,
+  mainIngredientNames: string[],
+  tagNames: string[],
+): string {
+  const ingredientsText = mainIngredientNames.length > 0 ? `주요 재료: ${mainIngredientNames.join(', ')}. ` : '';
+  const tagsText = tagNames.length > 0 ? `스타일/느낌: ${tagNames.join(', ')}. ` : '';
+  return (
+    `요리 레시피 "${recipeName}"의 완성된 요리를 보여주는 사실적인 음식 사진을 만들어줘. ` +
+    ingredientsText +
+    tagsText +
+    `그릇에 예쁘게 플레이팅된 완성 요리 모습만 보여주고, 텍스트나 글자는 넣지 마. ` +
+    IMAGE_STYLE_GUIDE
   );
 }
 
@@ -329,11 +352,12 @@ async function requestImageOnce(apiKey: string, prompt: string): Promise<string>
 }
 
 /**
- * 조리 단계 이미지를 생성해 base64 데이터 URL로 반환한다(Gemini 전용 — Claude는 이미지 생성 미지원).
- * 실제 저장은 호출부에서 IndexedDB(src/data/imageStore.ts)에 담당한다. 429/503처럼 일시적인 오류는
- * 지수 백오프(2초, 4초)로 자동 재시도하고, 그 외 오류는 즉시 던진다.
+ * 프롬프트로 이미지를 생성해 base64 데이터 URL로 반환한다(Gemini 전용 — Claude는 이미지 생성 미지원).
+ * 실제 저장은 호출부에서 Supabase Storage(src/data/imageStore.ts)에 담당한다. 429/503처럼 일시적인
+ * 오류는 지수 백오프(2초, 4초)로 자동 재시도하고, 그 외 오류는 즉시 던진다. 조리 단계 이미지와 완성
+ * 사진 둘 다 같은 재시도 로직을 공유한다(`generateStepImage`/`generateFinalDishImage` 둘 다 이 함수).
  */
-export async function generateStepImage(apiKey: string, prompt: string): Promise<string> {
+export async function generateImageWithRetry(apiKey: string, prompt: string): Promise<string> {
   for (let attempt = 0; attempt <= IMAGE_GENERATION_MAX_RETRIES; attempt++) {
     try {
       return await requestImageOnce(apiKey, prompt);
@@ -348,3 +372,6 @@ export async function generateStepImage(apiKey: string, prompt: string): Promise
   // 도달하지 않음(루프가 항상 return 또는 throw로 끝남)
   throw new Error('이미지 생성에 실패했습니다.');
 }
+
+export const generateStepImage = generateImageWithRetry;
+export const generateFinalDishImage = generateImageWithRetry;

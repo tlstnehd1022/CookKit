@@ -31,6 +31,11 @@
   스타일/카테고리 태그와 별개 축, 레시피 편집 화면에서 구분된 섹션으로 다중 선택). Recipe에
   `difficulty`/`difficultyReason`/`estimatedMinutes` 필드 추가 — 규칙 기반 자동 계산(아래 "난이도/
   조리시간 자동 판단" 항목 참고), AI 대화형 생성 시에도 propose_recipe가 난이도를 함께 판단해서 채움.
+- **9차 확장 완료 — 이미지 저장 Supabase Storage 전환 + 완성 사진**: 조리 단계 이미지 저장소를 기기
+  로컬 IndexedDB에서 Supabase Storage(household 공유)로 옮겨서 household 구성원이 다른 기기에서도
+  같은 이미지를 볼 수 있게 함. 완성 요리 사진(`Recipe.finalImageId`) AI 생성/업로드 기능 추가, 조리
+  단계 이미지와 완성 사진이 같은 화풍 가이드(`IMAGE_STYLE_GUIDE`)를 공유하도록 통일. 자세한 내용은
+  아래 "이미지 저장(Supabase Storage)" 항목 참고.
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
@@ -59,33 +64,58 @@
     자동 빌드/배포됨(이미 기기 간 코드 동기화를 GitHub로 하고 있어서 자연스럽게 이어짐)
   - 다중 사용자 등으로 "진짜" 백엔드를 붙이게 되면, 이 서버리스 함수가 있던 자리(`api/`)를 그대로 확장해도
     되고 별도 백엔드로 흡수해도 됨 — 지금은 이 기능 하나만을 위한 최소 범위로 한정함
-- **이미지 저장(IndexedDB) — 조리 단계별 AI 이미지 생성용**: Gemini(`gemini-3.1-flash-image`, "Nano Banana"
-  계열)로 조리 단계 이미지를 생성하는 기능은 Claude가 이미지 생성을 지원하지 않아 **Gemini 전용**임
-  (`src/lib/geminiClient.ts`의 `generateStepImage`/`buildStepImagePrompt`). 레시피 편집 화면에서 단계별로
-  "🎨 이미지 생성" 버튼을 눌러 온디맨드로만 생성함(저장 시 전체 자동 생성 안 함 — 속도/비용 고려).
-  생성된 이미지(base64 데이터 URL, 수백KB~1MB대)는 `RecipeStep.imageId`로만 참조하고 실제 데이터는
-  localStorage(5~10MB 한도)가 아닌 **IndexedDB**(`src/data/imageStore.ts`, DB명 `cookkit-images`)에 저장함.
-  `useStoredImage(imageId)` 훅으로 비동기 로드. 스텝을 명시적으로 삭제/이미지 삭제할 때만 IndexedDB에서도
-  같이 지우며, 그 외 경로(AI 적용으로 스텝 통째 교체, undo 등)로 고아 이미지가 남는 것까지는 처리하지
-  않음(개인 사용 규모라 당장은 무시해도 되는 수준으로 판단, 필요해지면 정리 로직 추가할 것).
+- **이미지 저장(Supabase Storage) — 조리 단계별 + 완성 사진 AI 이미지 생성용**: Gemini
+  (`gemini-3.1-flash-image`, "Nano Banana" 계열)로 이미지를 생성하는 기능은 Claude가 이미지 생성을
+  지원하지 않아 **Gemini 전용**임(`src/lib/geminiClient.ts`의 `generateStepImage`/`generateFinalDishImage`
+  — 둘 다 같은 재시도 로직을 공유하는 `generateImageWithRetry`의 별칭, `buildStepImagePrompt`/
+  `buildFinalDishImagePrompt`). 레시피 편집 화면에서 단계별로 "🎨 이미지 생성" 버튼을 눌러 온디맨드로만
+  생성함(저장 시 전체 자동 생성 안 함 — 속도/비용 고려).
+  - **저장 위치(8차 확장에서 IndexedDB → Supabase Storage로 전환)**: 예전엔 기기 로컬 IndexedDB에
+    저장해서 다른 기기/다른 household 구성원이 볼 수 없었음(개인 앱일 땐 문제없었지만 다중 사용자
+    전환 후엔 한계). `recipe-images` 버킷(비공개, RLS로 household 멤버만 접근 — `supabase/migrations/
+    0006_recipe_images_storage.sql`)으로 옮김. 경로 규칙은 `{household_id}/{recipe_id}/{step|final}/
+    {임의 파일명}` — `RecipeStep.imageId`/`Recipe.finalImageId`는 이제 이 Storage 경로(문자열)를
+    가리킨다(`src/data/imageStore.ts`). `saveImage(path, dataUrl)`은 그 경로에 업로드(같은 경로면
+    upsert로 덮어씀 — 재생성 시), `useStoredImage(imageId)` 훅은 비공개 버킷이라 `createSignedUrl`로
+    1시간 유효한 signed URL을 비동기로 발급받아 반환. `deleteImage`/`buildImagePath` 등 함수 시그니처는
+    예전 IndexedDB 버전과 최대한 비슷하게 유지해서 호출부(`RecipeEditor.tsx` 등) 변경을 최소화함.
+    기존 IndexedDB에 있던 이미지는 마이그레이션하지 않음(다시 생성하거나 "이미지 없음"으로 자연스럽게
+    표시 — 개인 사용 규모라 감수 가능한 손실로 판단).
+    - Storage 경로에 새 레시피(아직 한 번도 저장 안 한 초안)의 이미지를 미리 생성/업로드할 수 있어야
+      해서, `RecipeEditor.tsx`가 편집 화면에 들어오는 시점에 `recipe.id`를 미리 고정해둠(`stableRecipeId`
+      — 예전엔 "저장" 버튼을 눌러야 `existing?.id ?? makeId()`로 그때 정해졌음). household id는
+      `store.ts`의 `getCurrentHouseholdId()`(훅이 아닌 일반 함수, `initializeDataLayer`가 기억해둔 값을
+      그대로 반환)로 다시 네트워크 조회 없이 가져옴.
   - 이미지 생성 요청은 60초 타임아웃(`AbortController`)을 걸어둠 — 원래도 이미지 생성은 텍스트보다 느려서
     (수십 초 단위) 정상 범위이지만, 응답이 안 오고 무한 대기하는 상황은 막기 위함
   - 429(요청 제한)/503(`이미지 생성 모델이 현재 수요가 많습니다` 같은 일시적 과부하)는 흔히 발생하는
-    일시적 오류라 지수 백오프(2초→4초)로 최대 3회까지 자동 재시도함(`generateStepImage`). 그 외 오류는
-    바로 실패 처리. 배치 생성 중 실패한 단계는 어떤 에러였는지 화면과 콘솔에 그대로 표시됨
+    일시적 오류라 지수 백오프(2초→4초)로 최대 3회까지 자동 재시도함(`generateImageWithRetry`). 그 외
+    오류는 바로 실패 처리. 배치 생성 중 실패한 항목은 어떤 에러였는지 화면과 콘솔에 그대로 표시됨
   - "🎨 이미지 생성"(AI, Gemini 전용) 옆에 "📁 사진 업로드" 버튼도 있어 사용자가 직접 찍은 사진으로 즉시
     교체 가능(AI 키 불필요, 어떤 AI 제공자를 쓰든 항상 노출). `FileReader.readAsDataURL`로 읽어서 동일하게
-    IndexedDB에 저장 — AI 생성이든 업로드든 저장 경로는 같음
+    Storage에 저장 — AI 생성이든 업로드든 저장 경로는 같음
+  - **스타일 일관성**: `geminiClient.ts`의 `IMAGE_STYLE_GUIDE` 상수(따뜻한 톤 자연광, 나무 도마/대리석
+    조리대, 무광 블랙/스테인리스 조리도구, 자연스러운 홈쿠킹 느낌)를 `buildStepImagePrompt`/
+    `buildFinalDishImagePrompt` 둘 다 공유해서, 조리 단계 이미지와 완성 사진이 서로 다른 화풍으로 튀지
+    않게 함.
+  - **완성 사진**(`Recipe.finalImageId`): 레시피 편집 화면 상단(기본 정보 아래)에 "완성 사진" 섹션이
+    별도로 있어 조리 단계와 무관하게 1장 생성/업로드 가능. `buildFinalDishImagePrompt`는 레시피 이름 +
+    현재 폼의 재료 이름 목록 + 태그 이름 목록을 참고해서 프롬프트를 만듦. 레시피 상세 화면
+    (`RecipeDetailPage.tsx`, 제목 아래)과 목록 카드(`RecipesPage.tsx`)의 대표 이미지 우선순위는
+    **완성 사진 > 첫 조리 단계 이미지 > (목록만) 태그 기반 플레이스홀더 이모지** — 상세 화면은 둘 다
+    없으면 그냥 이미지 영역을 안 보여줌(플레이스홀더 없음).
   - **일괄 생성**: "조리 순서" 섹션 제목 옆 "🖼 전체 이미지 생성" 버튼(Gemini 전용)으로 현재 폼의 모든
-    단계 이미지를 한 번에 생성 가능. 이미 이미지가 있는 단계가 있으면 먼저 "기존 이미지도 다시 만들까요?"
-    확인(아니오 선택 시 이미지 없는 단계만 대상), 이후 "시간이 조금 걸릴 수 있어요" 안내와 함께 진행
-    여부 확인(`confirm()`). 내부적으로 7개씩 묶어 `Promise.all`로 병렬 처리하고 배치 사이는 순차 진행
-    (Gemini 무료 티어 분당 요청 제한 고려), 대상이 7개 이상이면 "시간이 좀 더 걸릴 수 있다"는 문구 추가.
-    진행 중에는 "이미지 생성 중... (n/총)" 진행률 표시
+    단계 이미지 + 완성 사진 1장을 한 번에 생성 가능(`runBatchImageGeneration`). 이미 이미지가 있는
+    항목(단계+완성 사진 포함)이 있으면 먼저 "기존 이미지도 다시 만들까요?" 확인(아니오 선택 시 이미지
+    없는 항목만 대상), 이후 "시간이 조금 걸릴 수 있어요" 안내와 함께 진행 여부 확인(`confirm()`). 단계
+    이미지는 내부적으로 7개씩 묶어 `Promise.all`로 병렬 처리하고 배치 사이는 순차 진행(Gemini 무료
+    티어 분당 요청 제한 고려), 완성 사진은 그 뒤에 별도로 1장 순차 생성. 대상이 7개 이상이면 "시간이
+    좀 더 걸릴 수 있다"는 문구 추가, 진행 중에는 "이미지 생성 중... (n/총)" 진행률 표시(총 개수에
+    완성 사진 1개도 포함).
   - **채팅/유튜브로 레시피 반영 시에도 동일 플로우 제안**: `applyExtractedResult`(대화 "이대로 반영하기"와
-    유튜브 "이대로 반영하기"가 공유하는 단일 함수)에서 반영 직후 Gemini 사용 중이면 "조리 단계 이미지도
-    자동으로 생성할까요?" 확인 후 위와 같은 방식으로 전체 생성 진행(이 경우는 방금 막 채워진 새 단계라
-    기존 이미지 개념이 없어 덮어쓰기 질문은 생략)
+    유튜브 "이대로 반영하기"가 공유하는 단일 함수)에서 반영 직후 Gemini 사용 중이면 "조리 단계 이미지와
+    완성 사진도 자동으로 생성할까요?" 확인 후 위와 같은 방식으로 전체 생성 진행(이 경우는 방금 막
+    채워진 새 단계라 기존 이미지 개념이 없어 덮어쓰기 질문은 생략, 완성 사진은 항상 새로 생성 대상)
 - **DB 전환(Supabase) — 진행 중**: localStorage 단독 구조를 다중 사용자가 가능한 진짜 백엔드로
   옮기는 작업. 배경: User-Household는 N:1(가족 여러 명이 하나의 household 공유), 재료(ingredients)는
   household 단위로 공유, 레시피(recipes)는 user 단위 소유(기본 비공개, `is_public`으로 전체공개 전환
@@ -264,11 +294,6 @@
   안드로이드 위주)는 기술적으로 가능. 매번 AI 호출하면 느리고 비용 드니, 자주 쓰는 명령(시작/다음/얼마나 남았어)은
   키워드 매칭으로 즉시 처리하고 자유 질문("이거 얼마나 끓여야해?")만 기존 AI 채팅으로 넘기는 하이브리드 구조 추천.
   MVP는 TTS(타이머 완료 음성 알림)부터, STT는 다음 단계로
-- **레시피 완성 사진 첨부**: AI가 생성하는 단계별 이미지(구현 완료 — 아래 "이미지 저장(IndexedDB)" 참고)와
-  별개로, 사용자가 직접 찍은 완성 요리
-  사진을 레시피에 첨부해서 보여주는 기능. `Recipe`에 사진 데이터(또는 참조) 필드 추가 필요. 레시피당 한 장
-  정도면 위 단계별 이미지보다는 용량 부담이 적지만, 여러 장 누적되면 결국 같은 이슈(localStorage 용량
-  한계 → IndexedDB 전환)를 공유하므로 같이 검토할 것
 
 ## 핵심 기능 요구사항
 
@@ -369,8 +394,9 @@ Recipe {
   difficulty?: 'easy' | 'medium' | 'hard'  // 규칙 기반 자동 계산 또는 사용자 수동 설정
   difficultyReason?: string  // 판단 근거 한 문장(수동 설정 시 'MANUAL_DIFFICULTY_REASON' 상수 문구)
   estimatedMinutes?: number  // 예상 조리시간(분), 규칙 기반 자동 계산 또는 수동 입력
+  finalImageId?: string  // 완성 사진(AI 생성 또는 업로드), Supabase Storage 경로 참조
   // allergens는 저장하지 않음 — ingredients를 통해 항상 파생(computed) 계산
-  // imageId는 IndexedDB(src/data/imageStore.ts)에 저장된 AI 생성 이미지 참조(실제 이미지 데이터 아님)
+  // imageId/finalImageId는 Supabase Storage(src/data/imageStore.ts)에 저장된 이미지 경로 참조(실제 데이터 아님)
 }
 
 Ingredient {

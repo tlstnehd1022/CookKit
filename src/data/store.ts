@@ -86,6 +86,12 @@ export function resetDataLayer(): void {
   initializedForHouseholdId = null;
 }
 
+/** 현재 초기화된 household id(훅이 아닌 일반 함수 — imageStore.ts처럼 React 렌더 바깥/이미지
+ * Storage 경로를 만들 때 다시 네트워크 조회 없이 바로 참조하는 용도). 아직 초기화 전이면 null. */
+export function getCurrentHouseholdId(): string | null {
+  return initializedForHouseholdId;
+}
+
 /** 네 스토어 모두 initializeDataLayer의 같은 Promise.all에서 동시에 로딩 상태에 들어가므로 하나만 봐도 된다. */
 export function useDataLayerLoading(): boolean {
   return useSyncExternalStore(ingredientsStore.subscribe, ingredientsStore.getLoading);

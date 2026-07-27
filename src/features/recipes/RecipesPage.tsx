@@ -229,8 +229,9 @@ export function RecipesPage({
 }
 
 function useRecipeCardInfo(recipe: Recipe, tags: Tag[]) {
+  // 대표 이미지 우선순위: 완성 사진 > 첫 조리 단계 이미지 > (없으면 태그 기반 플레이스홀더)
   const firstStepImageId = recipe.steps.find((step) => step.imageId)?.imageId;
-  const imageUrl = useStoredImage(firstStepImageId);
+  const imageUrl = useStoredImage(recipe.finalImageId ?? firstStepImageId);
   const recipeTags = tags.filter((tag) => recipe.tagIds.includes(tag.id));
   const totalMinutes = computeTotalCookMinutes(recipe);
   const placeholderEmoji =

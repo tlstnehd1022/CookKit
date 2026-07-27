@@ -27,7 +27,7 @@ export interface RecipeStep {
   title: string;
   content: string;
   timerSeconds?: number;
-  /** IndexedDB(src/data/imageStore.ts)에 저장된 AI 생성 이미지 참조 — 실제 이미지 데이터는 localStorage에 두지 않음 */
+  /** Supabase Storage(src/data/imageStore.ts)에 저장된 이미지 경로 참조 — 실제 이미지 데이터는 별도 저장 */
   imageId?: string;
 }
 
@@ -48,6 +48,8 @@ export interface Recipe {
   difficultyReason?: string;
   /** 규칙 기반 자동 계산(src/lib/recipeTime.ts) 또는 사용자가 수동 입력한 예상 조리시간(분) */
   estimatedMinutes?: number;
+  /** 완성된 요리 사진(AI 생성 또는 업로드) — Supabase Storage 경로(src/data/imageStore.ts) */
+  finalImageId?: string;
 }
 
 export type TagType = 'style' | 'category' | 'cuisine';

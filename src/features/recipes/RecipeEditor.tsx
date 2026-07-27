@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useCategories, useIngredients, useRecipes, useTags, makeId } from '../../data/store';
+import { useCategories, useIngredients, useRecipes, useTags, makeId, getCurrentHouseholdId } from '../../data/store';
 import { useSettings } from '../../data/settings';
 import * as claudeClient from '../../lib/claudeClient';
 import * as geminiClient from '../../lib/geminiClient';
@@ -10,7 +10,7 @@ import { COMMON_UNITS, CUSTOM_UNIT_VALUE } from '../../data/units';
 import { RecipeChatPanel } from './RecipeChatPanel';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
 import { fetchYoutubeTranscript } from '../../lib/youtubeTranscript';
-import { deleteImage, saveImage, useStoredImage } from '../../data/imageStore';
+import { buildImagePath, deleteImage, saveImage, useStoredImage } from '../../data/imageStore';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { computeDifficulty, DIFFICULTY_LABEL, MANUAL_DIFFICULTY_REASON } from '../../lib/recipeDifficulty';
 import { estimateCookMinutes } from '../../lib/recipeTime';
@@ -23,6 +23,11 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   const { settings } = useSettings();
 
   const existing = recipeId ? recipes.find((r) => r.id === recipeId) : undefined;
+  // 이미지(조리 단계/완성 사진)를 Storage에 저장할 때 경로에 recipe_id가 필요한데, 새 레시피는
+  // 원래 저장 시점에야 id가 생겼음 — 그러면 저장 전 초안 상태에서 이미지를 미리 생성/업로드할 수
+  // 없으므로, 편집 화면에 들어오는 시점에 id를 미리 고정해둔다(기존 레시피는 그 id를 그대로 씀).
+  const [stableRecipeId] = useState(() => existing?.id ?? makeId());
+  const householdId = getCurrentHouseholdId();
 
   const [name, setName] = useState(existing?.name ?? '');
   const [servingsBase, setServingsBase] = useState(existing?.servingsBase ?? 2);
@@ -355,10 +360,16 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   const [imageGeneratingIndex, setImageGeneratingIndex] = useState<number | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
+  const [finalImageId, setFinalImageId] = useState<string | undefined>(existing?.finalImageId);
+  const [finalImageGenerating, setFinalImageGenerating] = useState(false);
 
   async function generateImageForStep(index: number) {
     if (!settings.geminiApiKey) {
       setImageError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
+      return;
+    }
+    if (!householdId) {
+      setImageError('household 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
       return;
     }
     const step = steps[index];
@@ -368,7 +379,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     try {
       const prompt = geminiClient.buildStepImagePrompt(name || '이름 없는 레시피', step);
       const dataUrl = await geminiClient.generateStepImage(settings.geminiApiKey, prompt);
-      const imageId = step.imageId ?? makeId();
+      const imageId = step.imageId ?? buildImagePath(householdId, stableRecipeId, 'step');
       await saveImage(imageId, dataUrl);
       updateStepRow(index, { imageId });
     } catch (err) {
@@ -385,6 +396,74 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     updateStepRow(index, { imageId: undefined });
   }
 
+  function currentMainIngredientNames(): string[] {
+    return recipeIngredients
+      .map((row) => ingredients.find((i) => i.id === row.ingredientId)?.name)
+      .filter((n): n is string => Boolean(n));
+  }
+
+  function currentTagNames(): string[] {
+    return tagIds.map((id) => tags.find((t) => t.id === id)?.name).filter((n): n is string => Boolean(n));
+  }
+
+  /** 완성 사진을 생성해 저장하고 finalImageId를 갱신한다. 배치 생성/단일 버튼 양쪽에서 공유. */
+  async function generateFinalImageInternal(recipeNameForPrompt: string): Promise<void> {
+    if (!settings.geminiApiKey || !householdId) {
+      throw new Error('Gemini API 키 또는 household 정보가 없습니다.');
+    }
+    const prompt = geminiClient.buildFinalDishImagePrompt(
+      recipeNameForPrompt || '이름 없는 레시피',
+      currentMainIngredientNames(),
+      currentTagNames(),
+    );
+    const dataUrl = await geminiClient.generateFinalDishImage(settings.geminiApiKey, prompt);
+    const path = finalImageId ?? buildImagePath(householdId, stableRecipeId, 'final');
+    await saveImage(path, dataUrl);
+    setFinalImageId(path);
+  }
+
+  async function generateFinalImage() {
+    if (!settings.geminiApiKey) {
+      setImageError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
+      return;
+    }
+    if (!householdId) {
+      setImageError('household 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
+      return;
+    }
+    setImageError(null);
+    setFinalImageGenerating(true);
+    try {
+      await generateFinalImageInternal(name);
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : '완성 사진 생성에 실패했습니다.');
+    } finally {
+      setFinalImageGenerating(false);
+    }
+  }
+
+  async function uploadFinalImage(file: File) {
+    if (!householdId) {
+      setImageError('household 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
+      return;
+    }
+    setImageError(null);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const path = finalImageId ?? buildImagePath(householdId, stableRecipeId, 'final');
+      await saveImage(path, dataUrl);
+      setFinalImageId(path);
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : '사진 업로드에 실패했습니다.');
+    }
+  }
+
+  async function removeFinalImage() {
+    if (!finalImageId) return;
+    await deleteImage(finalImageId).catch(() => {});
+    setFinalImageId(undefined);
+  }
+
   function readFileAsDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -395,12 +474,16 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   }
 
   async function uploadImageForStep(index: number, file: File) {
+    if (!householdId) {
+      setImageError('household 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
+      return;
+    }
     const step = steps[index];
     if (!step) return;
     setImageError(null);
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      const imageId = step.imageId ?? makeId();
+      const imageId = step.imageId ?? buildImagePath(householdId, stableRecipeId, 'step');
       await saveImage(imageId, dataUrl);
       updateStepRow(index, { imageId });
     } catch (err) {
@@ -411,15 +494,20 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   const BATCH_SIZE = 7;
   const BATCH_WARN_THRESHOLD = 7;
 
-  async function generateImagesForIndexes(
+  /** 조리 단계 이미지(+ 선택적으로 완성 사진 1개)를 한 번에 생성한다. 진행률(batchProgress)은
+   * 둘을 합친 총 개수 기준으로 표시된다. */
+  async function runBatchImageGeneration(
     indexes: number[],
     stepsSource: { title: string; content: string; imageId?: string }[],
     recipeNameForPrompt: string,
+    includeFinal: boolean,
   ) {
     const apiKey = settings.geminiApiKey;
-    if (!apiKey || indexes.length === 0) return;
+    if (!apiKey || !householdId) return;
+    if (indexes.length === 0 && !includeFinal) return;
     setImageError(null);
-    setBatchProgress({ done: 0, total: indexes.length });
+    const total = indexes.length + (includeFinal ? 1 : 0);
+    setBatchProgress({ done: 0, total });
     let doneCount = 0;
     const failures: string[] = [];
     for (let i = 0; i < indexes.length; i += BATCH_SIZE) {
@@ -431,7 +519,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           try {
             const prompt = geminiClient.buildStepImagePrompt(recipeNameForPrompt, step);
             const dataUrl = await geminiClient.generateStepImage(apiKey, prompt);
-            const imageId = step.imageId ?? makeId();
+            const imageId = step.imageId ?? buildImagePath(householdId, stableRecipeId, 'step');
             await saveImage(imageId, dataUrl);
             updateStepRow(stepIndex, { imageId });
           } catch (err) {
@@ -440,16 +528,26 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
             failures.push(`${stepIndex + 1}단계: ${message}`);
           } finally {
             doneCount += 1;
-            setBatchProgress({ done: doneCount, total: indexes.length });
+            setBatchProgress({ done: doneCount, total });
           }
         }),
       );
     }
+    if (includeFinal) {
+      try {
+        await generateFinalImageInternal(recipeNameForPrompt);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[완성 사진 생성 실패]', message);
+        failures.push(`완성 사진: ${message}`);
+      } finally {
+        doneCount += 1;
+        setBatchProgress({ done: doneCount, total });
+      }
+    }
     setBatchProgress(null);
     if (failures.length > 0) {
-      setImageError(
-        `${indexes.length}개 중 ${failures.length}개 이미지 생성에 실패했습니다.\n` + failures.join('\n'),
-      );
+      setImageError(`${total}개 중 ${failures.length}개 이미지 생성에 실패했습니다.\n` + failures.join('\n'));
     }
   }
 
@@ -458,50 +556,50 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       setImageError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
       return;
     }
-    if (steps.length === 0) return;
-    const existingCount = steps.filter((s) => s.imageId).length;
+    if (steps.length === 0 && !finalImageId) return;
+    const existingStepCount = steps.filter((s) => s.imageId).length;
+    const existingCount = existingStepCount + (finalImageId ? 1 : 0);
     let targetIndexes = steps.map((_, i) => i);
+    let includeFinal = true;
     if (existingCount > 0) {
       const overwrite = confirm(
-        `이미 이미지가 있는 단계가 ${existingCount}개 있어요. 기존 이미지도 다시 만들까요?\n` +
-          `(취소를 누르면 이미지가 없는 단계만 생성해요)`,
+        `이미 이미지가 있는 항목이 ${existingCount}개 있어요(조리 단계 + 완성 사진 포함). ` +
+          `기존 이미지도 다시 만들까요?\n(취소를 누르면 이미지가 없는 항목만 생성해요)`,
       );
       if (!overwrite) {
         targetIndexes = steps.map((_, i) => i).filter((i) => !steps[i].imageId);
+        includeFinal = !finalImageId;
       }
     }
-    if (targetIndexes.length === 0) {
-      setImageError('생성할 단계가 없습니다.');
+    const totalCount = targetIndexes.length + (includeFinal ? 1 : 0);
+    if (totalCount === 0) {
+      setImageError('생성할 이미지가 없습니다.');
       return;
     }
     const manyStepsNote =
-      targetIndexes.length >= BATCH_WARN_THRESHOLD
-        ? ` 조리 단계가 많아(${targetIndexes.length}개) 시간이 좀 더 걸릴 수 있어요.`
-        : '';
-    const proceed = confirm(
-      `${targetIndexes.length}개 단계의 이미지를 생성할까요? 시간이 조금 걸릴 수 있어요.${manyStepsNote}`,
-    );
+      totalCount >= BATCH_WARN_THRESHOLD ? ` 항목이 많아(${totalCount}개) 시간이 좀 더 걸릴 수 있어요.` : '';
+    const proceed = confirm(`${totalCount}개 이미지를 생성할까요? 시간이 조금 걸릴 수 있어요.${manyStepsNote}`);
     if (!proceed) return;
-    generateImagesForIndexes(targetIndexes, steps, name || '이름 없는 레시피');
+    runBatchImageGeneration(targetIndexes, steps, name || '이름 없는 레시피', includeFinal);
   }
 
   function offerBatchImageGenerationForNewSteps(
     newSteps: { title: string; content: string }[],
     recipeName: string,
   ) {
-    if (settings.aiProvider !== 'gemini' || !settings.geminiApiKey || newSteps.length === 0) return;
+    if (settings.aiProvider !== 'gemini' || !settings.geminiApiKey) return;
+    const totalCount = newSteps.length + 1; // +1은 완성 사진
     const manyStepsNote =
-      newSteps.length >= BATCH_WARN_THRESHOLD
-        ? ` 조리 단계가 많아(${newSteps.length}개) 시간이 좀 더 걸릴 수 있어요.`
-        : '';
+      totalCount >= BATCH_WARN_THRESHOLD ? ` 항목이 많아(${totalCount}개) 시간이 좀 더 걸릴 수 있어요.` : '';
     const proceed = confirm(
-      `레시피가 반영됐어요. 조리 단계 이미지도 자동으로 생성할까요? 시간이 조금 걸릴 수 있어요.${manyStepsNote}`,
+      `레시피가 반영됐어요. 조리 단계 이미지와 완성 사진도 자동으로 생성할까요? 시간이 조금 걸릴 수 있어요.${manyStepsNote}`,
     );
     if (!proceed) return;
-    generateImagesForIndexes(
+    runBatchImageGeneration(
       newSteps.map((_, i) => i),
       newSteps,
       recipeName || '이름 없는 레시피',
+      true,
     );
   }
 
@@ -510,7 +608,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
 
   async function handleSave() {
     const recipe: Recipe = {
-      id: existing?.id ?? makeId(),
+      id: stableRecipeId,
       name: name.trim() || '이름 없는 레시피',
       servingsBase: servingsBase || 1,
       tagIds,
@@ -519,6 +617,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       difficulty,
       difficultyReason,
       estimatedMinutes,
+      finalImageId,
     };
     setSaving(true);
     setSaveError(null);
@@ -626,6 +725,40 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           value={servingsBase}
           onChange={(e) => setServingsBase(Number(e.target.value) || 1)}
         />
+      </div>
+
+      <div className="section-title">완성 사진 (선택)</div>
+      <div className="field">
+        <ImagePreview imageId={finalImageId} />
+        <div className="chip-row" style={{ marginTop: 6 }}>
+          {isGemini && (
+            <button
+              className="btn small"
+              disabled={finalImageGenerating || batchProgress !== null}
+              onClick={generateFinalImage}
+            >
+              {finalImageGenerating ? '생성 중...' : finalImageId ? '🎨 다시 생성' : '🎨 이미지 생성'}
+            </button>
+          )}
+          <label className="btn small" style={{ cursor: 'pointer' }}>
+            📁 사진 업로드
+            <input
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadFinalImage(file);
+                e.target.value = '';
+              }}
+            />
+          </label>
+          {finalImageId && (
+            <button className="btn small danger" onClick={removeFinalImage}>
+              이미지 삭제
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="section-title">난이도 / 예상 조리시간</div>
@@ -858,7 +991,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
 
           <div className="field">
             <label>조리 단계 이미지 (선택)</label>
-            <StepImagePreview imageId={step.imageId} />
+            <ImagePreview imageId={step.imageId} />
             <div className="chip-row" style={{ marginTop: 6 }}>
               {isGemini && (
                 <button
@@ -949,7 +1082,7 @@ function UnitPicker({ unit, onChange }: { unit: string; onChange: (unit: string)
   );
 }
 
-function StepImagePreview({ imageId }: { imageId?: string }) {
+function ImagePreview({ imageId }: { imageId?: string }) {
   const dataUrl = useStoredImage(imageId);
   if (!imageId) return null;
   return (
@@ -966,7 +1099,7 @@ function StepImagePreview({ imageId }: { imageId?: string }) {
       }}
     >
       {dataUrl ? (
-        <img src={dataUrl} alt="조리 단계 이미지" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <img src={dataUrl} alt="레시피 이미지" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       ) : (
         <span className="text-muted">불러오는 중...</span>
       )}

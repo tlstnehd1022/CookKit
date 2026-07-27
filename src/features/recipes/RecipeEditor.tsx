@@ -11,6 +11,7 @@ import { RecipeChatPanel } from './RecipeChatPanel';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
 import { fetchYoutubeTranscript } from '../../lib/youtubeTranscript';
 import { deleteImage, saveImage, useStoredImage } from '../../data/imageStore';
+import { getErrorMessage } from '../../lib/errorMessage';
 
 export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: () => void }) {
   const { recipes, saveRecipe } = useRecipes();
@@ -37,6 +38,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   const [pendingYoutubeDiff, setPendingYoutubeDiff] = useState<DiffLine[]>([]);
   const [pendingYoutubeSource, setPendingYoutubeSource] = useState<'captions' | 'supadata'>('captions');
   const [pendingYoutubeLanguage, setPendingYoutubeLanguage] = useState('');
+  const [applyingYoutube, setApplyingYoutube] = useState(false);
 
   interface FormSnapshot {
     name: string;
@@ -200,16 +202,24 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
 
   async function confirmYoutubeApply() {
     if (!pendingYoutubeResult) return;
-    await applyExtractedResult(pendingYoutubeResult);
-    if (!pendingYoutubeResult.warning) {
-      setAiWarning(
-        pendingYoutubeSource === 'supadata'
-          ? '자막이 없는 영상이라 AI 음성 인식(Supadata)으로 추출한 결과입니다. 일반 자막보다 부정확할 수 있으니 꼭 확인해주세요.'
-          : `유튜브 자막(${pendingYoutubeLanguage || '자동생성'}) 기반 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.`,
-      );
+    setApplyingYoutube(true);
+    setAiError(null);
+    try {
+      await applyExtractedResult(pendingYoutubeResult);
+      if (!pendingYoutubeResult.warning) {
+        setAiWarning(
+          pendingYoutubeSource === 'supadata'
+            ? '자막이 없는 영상이라 AI 음성 인식(Supadata)으로 추출한 결과입니다. 일반 자막보다 부정확할 수 있으니 꼭 확인해주세요.'
+            : `유튜브 자막(${pendingYoutubeLanguage || '자동생성'}) 기반 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.`,
+        );
+      }
+      setPendingYoutubeResult(null);
+      setPendingYoutubeDiff([]);
+    } catch (err) {
+      setAiError(getErrorMessage(err, '반영 중 오류가 발생했습니다.'));
+    } finally {
+      setApplyingYoutube(false);
     }
-    setPendingYoutubeResult(null);
-    setPendingYoutubeDiff([]);
   }
 
   function discardYoutubeResult() {
@@ -453,7 +463,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       await saveRecipe(recipe);
       onDone();
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : '레시피 저장에 실패했습니다.');
+      setSaveError(getErrorMessage(err, '레시피 저장에 실패했습니다.'));
     } finally {
       setSaving(false);
     }
@@ -525,11 +535,11 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
               ))}
             </ul>
             <div className="row" style={{ gap: 6 }}>
-              <button className="btn small" onClick={discardYoutubeResult}>
+              <button className="btn small" onClick={discardYoutubeResult} disabled={applyingYoutube}>
                 무시하기
               </button>
-              <button className="btn small primary" onClick={confirmYoutubeApply}>
-                이대로 반영하기
+              <button className="btn small primary" onClick={confirmYoutubeApply} disabled={applyingYoutube}>
+                {applyingYoutube ? '반영 중...' : '이대로 반영하기'}
               </button>
             </div>
           </div>

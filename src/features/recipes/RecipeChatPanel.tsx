@@ -5,13 +5,14 @@ import * as geminiClient from '../../lib/geminiClient';
 import type { ChatTurn, ExistingContext } from '../../lib/aiChat';
 import type { ExtractedRecipe } from '../../lib/claudeClient';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
+import { getErrorMessage } from '../../lib/errorMessage';
 
 export function RecipeChatPanel({
   onApply,
   existingContext,
   currentRecipe,
 }: {
-  onApply: (result: ExtractedRecipe) => void;
+  onApply: (result: ExtractedRecipe) => Promise<void>;
   existingContext: ExistingContext;
   currentRecipe: RecipeSnapshot;
 }) {
@@ -22,6 +23,7 @@ export function RecipeChatPanel({
   const [input, setInput] = useState('');
   const [useWebSearch, setUseWebSearch] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingRecipe, setPendingRecipe] = useState<ExtractedRecipe | null>(null);
   const [pendingDiff, setPendingDiff] = useState<DiffLine[]>([]);
@@ -85,12 +87,20 @@ export function RecipeChatPanel({
     }
   }
 
-  function confirmApply() {
+  async function confirmApply() {
     if (!pendingRecipe) return;
-    onApply(pendingRecipe);
-    setMessages((prev) => [...prev, { role: 'assistant', text: '✅ 아래 폼에 반영했어요.' }]);
-    setPendingRecipe(null);
-    setPendingDiff([]);
+    setApplying(true);
+    setError(null);
+    try {
+      await onApply(pendingRecipe);
+      setMessages((prev) => [...prev, { role: 'assistant', text: '✅ 아래 폼에 반영했어요.' }]);
+      setPendingRecipe(null);
+      setPendingDiff([]);
+    } catch (err) {
+      setError(getErrorMessage(err, '반영 중 오류가 발생했습니다.'));
+    } finally {
+      setApplying(false);
+    }
   }
 
   function discardPending() {
@@ -198,11 +208,11 @@ export function RecipeChatPanel({
             ))}
           </ul>
           <div className="row" style={{ gap: 6 }}>
-            <button className="btn small" onClick={discardPending}>
+            <button className="btn small" onClick={discardPending} disabled={applying}>
               무시하기
             </button>
-            <button className="btn small primary" onClick={confirmApply}>
-              이대로 반영하기
+            <button className="btn small primary" onClick={confirmApply} disabled={applying}>
+              {applying ? '반영 중...' : '이대로 반영하기'}
             </button>
           </div>
         </div>

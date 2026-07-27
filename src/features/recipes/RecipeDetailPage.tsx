@@ -13,7 +13,7 @@ export function RecipeDetailPage({
   onBack: () => void;
   onEdit: () => void;
 }) {
-  const { recipes } = useRecipes();
+  const { recipes, deleteRecipe } = useRecipes();
   const { tags } = useTags();
   const ingredientsById = useIngredientsById();
   const { isSelected, toggle } = useShoppingSelection();
@@ -47,6 +47,17 @@ export function RecipeDetailPage({
         <div className="chip-row" style={{ marginTop: 0 }}>
           <button className="btn small" onClick={onEdit}>
             수정
+          </button>
+          <button
+            className="btn small danger"
+            onClick={() => {
+              if (confirm(`'${recipe.name}' 레시피를 삭제할까요?`)) {
+                deleteRecipe(recipe.id);
+                onBack();
+              }
+            }}
+          >
+            삭제
           </button>
         </div>
       </div>

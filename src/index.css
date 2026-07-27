@@ -141,6 +141,64 @@ h2 {
   box-shadow: var(--shadow-soft);
 }
 
+.recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.recipe-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.recipe-card:hover {
+  box-shadow: var(--shadow-soft-hover);
+}
+
+.recipe-card-image,
+.recipe-card-placeholder {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  display: block;
+}
+
+.recipe-card-image {
+  object-fit: cover;
+  background: var(--chip-bg);
+}
+
+.recipe-card-placeholder {
+  background: var(--chip-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+}
+
+.recipe-card-body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.recipe-card-body .recipe-title {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .row {
   display: flex;
   align-items: center;

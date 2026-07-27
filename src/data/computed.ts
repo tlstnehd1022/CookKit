@@ -26,3 +26,9 @@ export function scaleAmount(amount: number, servingsBase: number, servings: numb
   const scaled = (amount / servingsBase) * servings;
   return Math.round(scaled * 100) / 100;
 }
+
+/** 조리 단계 타이머가 있는 단계들의 시간을 모두 더한 대략적인 총 조리시간(분) — 타이머 없는 단계는 집계 안 됨. */
+export function computeTotalCookMinutes(recipe: Recipe): number {
+  const totalSeconds = recipe.steps.reduce((sum, step) => sum + (step.timerSeconds ?? 0), 0);
+  return Math.round(totalSeconds / 60);
+}

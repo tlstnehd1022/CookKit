@@ -104,6 +104,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     tagIds: recipeTags.map((rt) => rt.tag_id),
     ingredients: content.ingredients ?? [],
     steps: content.steps ?? [],
+    createdAt: row.created_at as string | undefined,
   };
 }
 

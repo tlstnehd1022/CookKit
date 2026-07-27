@@ -38,6 +38,8 @@ export interface Recipe {
   tagIds: string[];
   ingredients: RecipeIngredient[];
   steps: RecipeStep[];
+  /** DB의 recipes.created_at — 정렬(최근 추가순)용. 로컬에서 새로 만든 뒤 아직 저장 전이면 없을 수 있음 */
+  createdAt?: string;
 }
 
 export type TagType = 'style' | 'category';

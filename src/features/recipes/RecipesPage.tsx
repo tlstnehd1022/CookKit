@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useIngredientsById, useRecipes, useTags } from '../../data/store';
 import { collectAllAllergens, computeRecipeAllergens, computeTotalCookMinutes } from '../../data/computed';
 import { useStoredImage } from '../../data/imageStore';
+import { useRecipeViewMode } from '../../data/viewMode';
 import type { Ingredient, Recipe, Tag } from '../../data/types';
 
 // 태그 이름별 대표 이모지 — 대표 이미지(조리 단계 이미지)가 없는 레시피의 플레이스홀더용.
@@ -16,6 +17,10 @@ const DEFAULT_PLACEHOLDER_EMOJI = '🍽️';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
+type SortMode = 'recent' | 'name';
+// '자주 해먹은 순'은 CookingLog(요리 기록)가 아직 미구현이라 이번엔 제외 — 나중에 요리 기록
+// 기능이 생기면 SortMode에 'frequent' 등을 추가하고 기록 횟수로 정렬하면 됨.
+
 export function RecipesPage({
   onSelectRecipe,
   onAddRecipe,
@@ -28,11 +33,13 @@ export function RecipesPage({
   const { recipes } = useRecipes();
   const { tags } = useTags();
   const ingredientsById = useIngredientsById();
+  const { mode: viewMode, setMode: setViewMode } = useRecipeViewMode();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const [excludedAllergens, setExcludedAllergens] = useState<string[]>([]);
   const [pantryOnly, setPantryOnly] = useState(false);
+  const [sortMode, setSortMode] = useState<SortMode>('recent');
 
   // 검색은 재료 이름까지 훑어야 해서(레시피 개수가 늘어날 걸 감안하면) 매 키 입력마다 바로
   // 필터링하지 않고 300ms 디바운스 — 지금 데이터 규모에선 사실 없어도 되지만, 나중에 레시피가
@@ -60,8 +67,9 @@ export function RecipesPage({
     return recipe.ingredients.every((item) => ingredientsMap.get(item.ingredientId)?.owned === true);
   }
 
-  // 지금은 클라이언트 사이드 필터링(레시피 몇십 개 규모에서는 충분히 빠름). 나중에 레시피가
-  // 수백 개 이상으로 늘어나면 서버 사이드 필터링/페이지네이션으로 옮기는 걸 고려할 것.
+  // 지금은 클라이언트 사이드 필터링/정렬(레시피 몇십 개 규모에서는 충분히 빠름). 나중에 레시피가
+  // 수백 개 이상으로 늘어나면 서버 사이드 필터링/정렬 + 페이지네이션으로 옮기는 걸 고려할 것
+  // (CLAUDE.md "레시피 관리 화면(모바일 개편)" 항목에도 같은 내용 기록해둠).
   const filtered = recipes.filter((recipe) => {
     if (!matchesSearch(recipe, debouncedSearch, ingredientsById)) return false;
     if (activeTagIds.length > 0 && !activeTagIds.every((tagId) => recipe.tagIds.includes(tagId))) {
@@ -75,6 +83,14 @@ export function RecipesPage({
     }
     if (pantryOnly && !isMakeableWithPantry(recipe, ingredientsById)) return false;
     return true;
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortMode === 'name') return a.name.localeCompare(b.name, 'ko');
+    // 최근 추가순 — createdAt이 없는 경우(이론상 없어야 하지만 방어적으로) 맨 뒤로 보냄
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
   });
 
   function toggleTag(tagId: string) {
@@ -92,6 +108,13 @@ export function RecipesPage({
       <div className="row">
         <h1>레시피 관리</h1>
         <div className="chip-row" style={{ marginTop: 0 }}>
+          <button
+            className="btn small"
+            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+            title={viewMode === 'grid' ? '리스트로 보기' : '그리드로 보기'}
+          >
+            {viewMode === 'grid' ? '☰' : '▦'}
+          </button>
           <button className="btn small" onClick={onManageTags}>
             태그 관리
           </button>
@@ -141,8 +164,23 @@ export function RecipesPage({
         </>
       )}
 
-      <div className="section-title">레시피 목록 ({filtered.length})</div>
-      {filtered.length === 0 && recipes.length > 0 && (
+      <div className="row">
+        <div className="section-title" style={{ margin: 0 }}>
+          레시피 목록 ({sorted.length})
+        </div>
+        {recipes.length > 0 && (
+          <select
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as SortMode)}
+            style={{ width: 'auto', fontSize: 13, padding: '4px 8px' }}
+          >
+            <option value="recent">최근 추가순</option>
+            <option value="name">이름순</option>
+          </select>
+        )}
+      </div>
+
+      {sorted.length === 0 && recipes.length > 0 && (
         <div className="empty-hint" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           조건에 맞는 레시피가 없어요.
           <button
@@ -168,27 +206,40 @@ export function RecipesPage({
         </div>
       )}
 
-      <div className="recipe-grid">
-        {filtered.map((recipe) => (
-          <RecipeCard
-            key={recipe.id}
-            recipe={recipe}
-            tags={tags}
-            onClick={() => onSelectRecipe(recipe.id)}
-          />
-        ))}
-      </div>
+      {viewMode === 'grid' ? (
+        <div className="recipe-grid">
+          {sorted.map((recipe) => (
+            <RecipeCard key={recipe.id} recipe={recipe} tags={tags} onClick={() => onSelectRecipe(recipe.id)} />
+          ))}
+        </div>
+      ) : (
+        <div className="recipe-list">
+          {sorted.map((recipe) => (
+            <RecipeListItem
+              key={recipe.id}
+              recipe={recipe}
+              tags={tags}
+              onClick={() => onSelectRecipe(recipe.id)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function RecipeCard({ recipe, tags, onClick }: { recipe: Recipe; tags: Tag[]; onClick: () => void }) {
+function useRecipeCardInfo(recipe: Recipe, tags: Tag[]) {
   const firstStepImageId = recipe.steps.find((step) => step.imageId)?.imageId;
   const imageUrl = useStoredImage(firstStepImageId);
   const recipeTags = tags.filter((tag) => recipe.tagIds.includes(tag.id));
   const totalMinutes = computeTotalCookMinutes(recipe);
   const placeholderEmoji =
     recipeTags.map((tag) => TAG_PLACEHOLDER_EMOJI[tag.name]).find(Boolean) ?? DEFAULT_PLACEHOLDER_EMOJI;
+  return { imageUrl, recipeTags, totalMinutes, placeholderEmoji };
+}
+
+function RecipeCard({ recipe, tags, onClick }: { recipe: Recipe; tags: Tag[]; onClick: () => void }) {
+  const { imageUrl, recipeTags, totalMinutes, placeholderEmoji } = useRecipeCardInfo(recipe, tags);
 
   return (
     <div className="recipe-card" onClick={onClick}>
@@ -209,6 +260,28 @@ function RecipeCard({ recipe, tags, onClick }: { recipe: Recipe; tags: Tag[]; on
           </div>
         )}
         <span className="text-muted" style={{ fontSize: 12 }}>
+          {recipe.servingsBase}인분{totalMinutes > 0 ? ` · 약 ${totalMinutes}분` : ''}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function RecipeListItem({ recipe, tags, onClick }: { recipe: Recipe; tags: Tag[]; onClick: () => void }) {
+  const { imageUrl, recipeTags, totalMinutes, placeholderEmoji } = useRecipeCardInfo(recipe, tags);
+
+  return (
+    <div className="recipe-list-item" onClick={onClick}>
+      {imageUrl ? (
+        <img src={imageUrl} alt={recipe.name} className="recipe-list-thumb" />
+      ) : (
+        <div className="recipe-list-thumb-placeholder">{placeholderEmoji}</div>
+      )}
+      <div className="recipe-list-body">
+        <strong className="recipe-title">{recipe.name}</strong>
+        <span className="text-muted" style={{ fontSize: 12 }}>
+          {recipeTags.slice(0, 2).map((tag) => tag.name).join(', ')}
+          {recipeTags.length > 0 ? ' · ' : ''}
           {recipe.servingsBase}인분{totalMinutes > 0 ? ` · 약 ${totalMinutes}분` : ''}
         </span>
       </div>

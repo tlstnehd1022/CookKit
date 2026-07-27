@@ -43,7 +43,9 @@
       "Bash(node scratch-phase3-smoke.mjs)",
       "Bash(rm -f scratch-phase3-smoke.mjs)",
       "Bash(node scratch-email-login-smoke.mjs)",
-      "Bash(rm -f scratch-email-login-smoke.mjs scratch-email-form.png)"
+      "Bash(rm -f scratch-email-login-smoke.mjs scratch-email-form.png)",
+      "Bash(node scratch-login-ux-smoke.mjs)",
+      "Bash(rm -f scratch-login-ux-smoke.mjs)"
     ]
   }
 }

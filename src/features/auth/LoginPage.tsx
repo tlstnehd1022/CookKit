@@ -11,31 +11,48 @@ function translateAuthError(err: unknown): string {
   return message;
 }
 
+type View = 'main' | 'emailForm' | 'confirmSent';
+
 export function LoginPage() {
   const { login } = useSession();
-  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [view, setView] = useState<View>('main');
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [confirmedEmail, setConfirmedEmail] = useState('');
+
+  function switchMode(next: 'signin' | 'signup') {
+    setMode(next);
+    setError(null);
+  }
+
+  function backToMain() {
+    setView('main');
+    setMode('signin');
+    setEmail('');
+    setPassword('');
+    setError(null);
+  }
 
   async function handleEmailSubmit() {
     if (!email.trim() || !password) return;
     setLoading(true);
     setError(null);
-    setMessage(null);
     try {
       if (mode === 'signin') {
         const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
+        // 성공하면 onAuthStateChange가 세션을 반영해서 App.tsx가 알아서 다음 화면으로 넘어감
       } else {
         const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
         if (error) throw error;
-        // 프로젝트 설정에 따라 이메일 인증이 필요할 수 있음 — 그 경우 세션 없이 유저만 생성됨
+        // 프로젝트의 "Confirm email" 설정이 켜져 있으면 세션 없이 유저만 생성됨 — 이 경우
+        // 화면을 명확히 전환해서 "뭔가 일어났다"는 게 바로 보이게 한다(예전엔 작은 문구만 떠서 헷갈렸음).
         if (!data.session) {
-          setMessage('확인 이메일을 보냈어요. 메일함에서 링크를 눌러 인증을 완료한 뒤 로그인해주세요.');
+          setConfirmedEmail(email.trim());
+          setView('confirmSent');
         }
       }
     } catch (err) {
@@ -43,6 +60,33 @@ export function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (view === 'confirmSent') {
+    return (
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 16,
+          padding: 24,
+          textAlign: 'center',
+        }}
+      >
+        <div style={{ fontSize: 40 }}>📬</div>
+        <h1 style={{ fontSize: 22, margin: 0 }}>이메일을 확인해주세요</h1>
+        <p className="text-muted" style={{ maxWidth: 280 }}>
+          <strong>{confirmedEmail}</strong>로 인증 메일을 보냈어요. 메일함(스팸함도 확인해주세요)에서
+          링크를 눌러 인증을 완료하면 로그인할 수 있어요.
+        </p>
+        <button className="btn" onClick={backToMain}>
+          로그인 화면으로 돌아가기
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -67,14 +111,17 @@ export function LoginPage() {
         Google로 로그인
       </button>
 
-      {!showEmailForm && (
-        <button className="btn small" onClick={() => setShowEmailForm(true)}>
+      {view === 'main' && (
+        <button className="btn small" onClick={() => setView('emailForm')}>
           이메일로 로그인
         </button>
       )}
 
-      {showEmailForm && (
+      {view === 'emailForm' && (
         <div className="field" style={{ width: '100%', maxWidth: 280, textAlign: 'left' }}>
+          <h2 style={{ fontSize: 15, margin: '0 0 4px' }}>
+            {mode === 'signin' ? '이메일로 로그인' : '이메일로 계정 만들기'}
+          </h2>
           <label>이메일</label>
           <input
             type="email"
@@ -91,13 +138,12 @@ export function LoginPage() {
             onKeyDown={(e) => e.key === 'Enter' && handleEmailSubmit()}
           />
           <div className="row" style={{ marginTop: 12 }}>
+            <button className="btn small" onClick={backToMain}>
+              ← 뒤로
+            </button>
             <button
               className="btn small"
-              onClick={() => {
-                setMode(mode === 'signin' ? 'signup' : 'signin');
-                setError(null);
-                setMessage(null);
-              }}
+              onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
             >
               {mode === 'signin' ? '계정 만들기' : '로그인으로'}
             </button>
@@ -110,11 +156,6 @@ export function LoginPage() {
             </button>
           </div>
           {error && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{error}</p>}
-          {message && (
-            <p className="text-muted" style={{ marginTop: 8 }}>
-              {message}
-            </p>
-          )}
         </div>
       )}
     </div>

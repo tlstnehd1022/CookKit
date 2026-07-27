@@ -157,7 +157,7 @@ create table public.tags (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   name text not null,
-  type text not null default 'style' check (type in ('style', 'category')),
+  type text not null default 'style' check (type in ('style', 'category', 'cuisine')),
   created_at timestamptz not null default now()
 );
 

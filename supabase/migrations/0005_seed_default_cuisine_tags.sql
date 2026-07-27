@@ -10,6 +10,12 @@
 -- 이미 같은 이름의 cuisine 태그가 있는 household는 건드리지 않으므로 여러 번 실행해도 안전함.
 -- ============================================================================
 
+-- 0) schema.sql의 tags.type 체크 제약이 'style'/'category'만 허용하고 있어서(TagType에
+-- 'cuisine' 추가할 때 이 제약을 같이 안 고쳐서 생긴 누락) 'cuisine' insert가 전부 막혀 있었음.
+-- 제약을 지우고 'cuisine'까지 허용하도록 다시 만든다.
+alter table public.tags drop constraint if exists tags_type_check;
+alter table public.tags add constraint tags_type_check check (type in ('style', 'category', 'cuisine'));
+
 -- 1) 기존 household에 기본 cuisine 태그가 없으면 채워넣기(이름 중복 방지)
 insert into public.tags (household_id, name, type)
 select h.id, v.name, 'cuisine'

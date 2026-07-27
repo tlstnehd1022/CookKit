@@ -238,13 +238,19 @@
   보고 기존 태그를 재사용하므로(`resolveOrCreateTag`), 이미 등록된 cuisine 태그 이름을 그대로 다시
   제안하면 자동으로 재사용됨 — 다만 AI가 새 cuisine 태그를 제안하도록 유도하는 프롬프트는 아직 추가하지
   않음(필요해지면 `buildExistingContextNote`/시스템 프롬프트에 안내 추가할 것).
-  - **버그(수정 완료) — 국가/스타일 섹션이 비어서 고를 게 없었음**: cuisine 태그는 household에 하나도
-    없는 상태로 시작해서(schema에 기본 시드 없음), 레시피 편집 화면의 "국가/스타일" 섹션을 열어도
-    선택할 태그가 없어 "고를 수가 없다"는 문제로 이어짐. `supabase/migrations/0005_seed_default_cuisine_tags.sql`로
-    해결 — (1) 기존 household들에 기본 태그 5개(한식/양식/중식/일식/퓨전)를 한 번 채워넣고(이미 같은
-    이름이 있으면 건너뜀, 여러 번 실행해도 안전), (2) `create_household` RPC를 갱신해서 앞으로 새로
-    만들어지는 household도 가입/생성 시 자동으로 이 5개를 받도록 함. **SQL Editor에서 이 마이그레이션
-    실행 필요**(0004처럼 실행 안 하면 화면에서 여전히 빈 섹션으로 보임).
+  - **버그(수정 완료) — 국가/스타일 섹션이 비어서 고를 게 없었음**: 두 가지가 겹친 문제였음. (1) DB의
+    `tags.type` 체크 제약이 `schema.sql`에 `check (type in ('style', 'category'))`로 박혀있는 채
+    남아있어서 — TagType에 `'cuisine'`을 추가할 때 이 DB 제약을 같이 안 고친 누락 — cuisine 태그
+    insert 자체가 `new row for relation "tags" violates check constraint "tags_type_check"` 에러로
+    전부 막혀 있었음. (2) 그래서 household에 cuisine 태그가 하나도 없어 레시피 편집 화면의 "국가/스타일"
+    섹션을 열어도 선택할 게 없었음. `supabase/migrations/0005_seed_default_cuisine_tags.sql`로 해결 —
+    제약을 `'cuisine'`까지 허용하도록 재생성한 뒤, 기존 household들에 기본 태그 5개(한식/양식/중식/
+    일식/퓨전)를 채워넣고(이미 같은 이름이 있으면 건너뜀, 여러 번 실행해도 안전), `create_household`
+    RPC도 갱신해서 앞으로 새로 만들어지는 household도 자동으로 받도록 함. `schema.sql`의 제약 정의도
+    같이 고쳐서 앞으로 새 Supabase 프로젝트를 처음부터 설치할 때는 이 문제가 재발하지 않음. **SQL
+    Editor에서 이 마이그레이션 실행 필요**(0004처럼 실행 안 하면 화면에서 여전히 빈 섹션으로 보임).
+    앞으로 Tag/TagType처럼 DB에 `check` 제약이 걸린 필드에 새 값을 추가할 때는 TypeScript 타입만 고치고
+    끝내지 말고 반드시 해당 제약도 같이 마이그레이션할 것 — 이번에 놓친 지점.
 
 ## 향후 확장 계획 (지금부터 구조는 열어두되 구현은 나중에)
 - **로그인 화면 UX 개선**: 이메일 로그인 흐름을 화면 전환(예: 확인 이메일 발송 화면)까지는 개선했지만,

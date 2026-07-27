@@ -1,22 +1,30 @@
-import { categoriesRepo, ingredientsRepo, pantryRepo, recipesRepo, tagsRepo } from './repos';
 import {
+  getCategoriesSnapshot,
+  getIngredientsSnapshot,
+  getRecipesSnapshot,
+  getTagsSnapshot,
   replaceAllCategories,
   replaceAllIngredients,
   replaceAllRecipes,
   replaceAllTags,
-  replacePantryStatus,
 } from './store';
-import type { BackupSnapshot } from './types';
+import type { BackupSnapshot, PantryStatus } from './types';
 
 export function buildBackupSnapshot(): BackupSnapshot {
+  const ingredients = getIngredientsSnapshot();
+  // pantryStatus는 이제 별도 저장소가 아니라 Ingredient.owned에서 파생됨 —
+  // 백업 파일 포맷(BackupSnapshot)은 그대로 유지하기 위해 여기서 다시 map으로 풀어낸다.
+  const pantryStatus: PantryStatus = Object.fromEntries(
+    ingredients.map((ingredient) => [ingredient.id, ingredient.owned]),
+  );
   return {
     version: 1,
     exportedAt: new Date().toISOString(),
-    recipes: recipesRepo.getAll(),
-    ingredients: ingredientsRepo.getAll(),
-    tags: tagsRepo.getAll(),
-    categories: categoriesRepo.getAll(),
-    pantryStatus: pantryRepo.get(),
+    recipes: getRecipesSnapshot(),
+    ingredients,
+    tags: getTagsSnapshot(),
+    categories: getCategoriesSnapshot(),
+    pantryStatus,
   };
 }
 
@@ -51,9 +59,13 @@ export async function restoreBackupFromFile(file: File): Promise<void> {
   if (!isValidSnapshot(parsed)) {
     throw new Error('올바른 CookKit 백업 파일 형식이 아닙니다.');
   }
-  replaceAllIngredients(parsed.ingredients);
-  replaceAllRecipes(parsed.recipes);
-  replaceAllTags(parsed.tags);
-  replaceAllCategories(parsed.categories);
-  replacePantryStatus(parsed.pantryStatus);
+  // pantryStatus 맵을 다시 각 재료의 owned 필드로 접어넣는다(현재 데이터 모델에 맞춤).
+  const ingredientsWithOwned = parsed.ingredients.map((ingredient) => ({
+    ...ingredient,
+    owned: parsed.pantryStatus[ingredient.id] ?? false,
+  }));
+  await replaceAllIngredients(ingredientsWithOwned);
+  await replaceAllRecipes(parsed.recipes);
+  await replaceAllTags(parsed.tags);
+  await replaceAllCategories(parsed.categories);
 }

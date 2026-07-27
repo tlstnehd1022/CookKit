@@ -38,7 +38,10 @@
       "Bash(mv .env.bak .env)",
       "Bash(node scratch-err-check.mjs)",
       "Bash(rm -f scratch-err-check.mjs)",
-      "Bash(pkill -f \"vite preview\")"
+      "Bash(pkill -f \"vite preview\")",
+      "Bash(grep -rln \"from '\\\\.\\\\./data/repos'\\\\|from '\\\\./repos'\\\\|from '\\\\.\\\\./\\\\.\\\\./data/repos'\" src --include=*.ts --include=*.tsx)",
+      "Bash(node scratch-phase3-smoke.mjs)",
+      "Bash(rm -f scratch-phase3-smoke.mjs)"
     ]
   }
 }

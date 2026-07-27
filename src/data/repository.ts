@@ -1,15 +1,10 @@
-// 데이터 레이어 추상화: 지금은 localStorage 어댑터만 존재하지만,
-// 나중에 Supabase 등 실제 DB로 전환할 때 이 인터페이스를 구현하는
-// 어댑터만 새로 만들면 상위 코드(store, features)는 그대로 재사용 가능.
+// 데이터 레이어 추상화. Supabase는 네트워크 호출이라 태생적으로 비동기이므로
+// (localStorage 시절과 달리) 이 인터페이스도 비동기로 정의한다 — 상위 코드(store.ts)가
+// 로딩 상태를 흡수해서 features 쪽 컴포넌트는 거의 그대로 재사용 가능하다.
 export interface CrudRepository<T extends { id: string }> {
-  getAll(): T[];
-  get(id: string): T | undefined;
-  save(item: T): void;
-  delete(id: string): void;
-  replaceAll(items: T[]): void;
-}
-
-export interface KeyValueRepository<T> {
-  get(): T;
-  set(value: T): void;
+  getAll(): Promise<T[]>;
+  get(id: string): Promise<T | undefined>;
+  save(item: T): Promise<void>;
+  delete(id: string): Promise<void>;
+  replaceAll(items: T[]): Promise<void>;
 }

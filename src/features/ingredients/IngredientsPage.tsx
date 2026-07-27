@@ -359,6 +359,7 @@ function AddIngredientModal({
                 categoryId,
                 defaultBuyUnit: defaultBuyUnit.trim() || '1개',
                 allergens: [],
+                owned: false,
               })
             }
           >

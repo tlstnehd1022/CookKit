@@ -1,14 +1,38 @@
 import { useSyncExternalStore } from 'react';
-import { shoppingSelectionRepo } from './repos';
+import { supabase } from '../lib/supabaseClient';
 
-// "장보기에 담은 레시피" 목록. 레시피 화면과 장보기 화면이 이 저장소를 공유해서,
-// 레시피 상세에서 담은 내용이 탭을 전환해도 그대로 유지되도록 한다.
-let cache: string[] = shoppingSelectionRepo.get();
+// "장보기에 담은 레시피" 목록. household 공유 테이블(shopping_selection)이라 가족 중
+// 누가 담아도 서로에게 바로 보인다. App.tsx가 로그인+household 확정 후
+// initializeShoppingSelection()을 한 번 호출해서 연결한다.
+let currentHouseholdId: string | null = null;
+let cache: string[] = [];
 const listeners = new Set<() => void>();
 
 function notify() {
-  cache = shoppingSelectionRepo.get();
   listeners.forEach((listener) => listener());
+}
+
+async function refresh() {
+  if (!currentHouseholdId) return;
+  const { data, error } = await supabase
+    .from('shopping_selection')
+    .select('recipe_id')
+    .eq('household_id', currentHouseholdId);
+  if (error) throw error;
+  cache = (data ?? []).map((row) => row.recipe_id as string);
+  notify();
+}
+
+export async function initializeShoppingSelection(householdId: string): Promise<void> {
+  if (currentHouseholdId === householdId) return;
+  currentHouseholdId = householdId;
+  await refresh();
+}
+
+export function resetShoppingSelection(): void {
+  currentHouseholdId = null;
+  cache = [];
+  notify();
 }
 
 export function useShoppingSelection() {
@@ -20,13 +44,22 @@ export function useShoppingSelection() {
     () => cache,
   );
 
-  function toggle(recipeId: string) {
-    const current = shoppingSelectionRepo.get();
-    const next = current.includes(recipeId)
-      ? current.filter((id) => id !== recipeId)
-      : [...current, recipeId];
-    shoppingSelectionRepo.set(next);
-    notify();
+  async function toggle(recipeId: string) {
+    if (!currentHouseholdId) return;
+    if (cache.includes(recipeId)) {
+      const { error } = await supabase
+        .from('shopping_selection')
+        .delete()
+        .eq('household_id', currentHouseholdId)
+        .eq('recipe_id', recipeId);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from('shopping_selection')
+        .insert({ household_id: currentHouseholdId, recipe_id: recipeId });
+      if (error) throw error;
+    }
+    await refresh();
   }
 
   function isSelected(recipeId: string) {

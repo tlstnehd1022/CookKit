@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ShoppingListPage } from './features/shopping-list/ShoppingListPage';
 import { RecipesFeature } from './features/recipes/RecipesFeature';
 import { IngredientsPage } from './features/ingredients/IngredientsPage';
@@ -7,6 +7,8 @@ import { LoginPage } from './features/auth/LoginPage';
 import { HouseholdOnboarding } from './features/auth/HouseholdOnboarding';
 import { useSession } from './data/session';
 import { useHousehold } from './data/household';
+import { initializeDataLayer, resetDataLayer, useDataLayerLoading } from './data/store';
+import { initializeShoppingSelection, resetShoppingSelection } from './data/shoppingSelection';
 
 type Tab = 'recipes' | 'shopping' | 'ingredients' | 'settings';
 
@@ -20,7 +22,20 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 function App() {
   const { user, loaded } = useSession();
   const { household, loading: householdLoading, refresh: refreshHousehold } = useHousehold();
+  const dataLoading = useDataLayerLoading();
   const [tab, setTab] = useState<Tab>('recipes');
+
+  useEffect(() => {
+    if (!user) {
+      resetDataLayer();
+      resetShoppingSelection();
+      return;
+    }
+    if (household) {
+      initializeDataLayer(household.id, user.id);
+      initializeShoppingSelection(household.id);
+    }
+  }, [user, household]);
 
   if (!loaded) {
     return null;
@@ -36,6 +51,14 @@ function App() {
 
   if (!household) {
     return <HouseholdOnboarding onDone={refreshHousehold} />;
+  }
+
+  if (dataLoading) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p className="text-muted">불러오는 중...</p>
+      </div>
+    );
   }
 
   return (

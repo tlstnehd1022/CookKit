@@ -83,16 +83,16 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     steps,
   };
 
-  function resolveOrCreateTag(rawName: string): string {
+  async function resolveOrCreateTag(rawName: string): Promise<string> {
     const trimmed = rawName.trim();
     const matched = tags.find((tag) => tag.name === trimmed);
     if (matched) return matched.id;
     const id = makeId('tag');
-    saveTag({ id, name: trimmed, type: 'style' });
+    await saveTag({ id, name: trimmed, type: 'style' });
     return id;
   }
 
-  function applyExtractedResult(result: ExtractedRecipe) {
+  async function applyExtractedResult(result: ExtractedRecipe) {
     setUndoStack((prev) => [...prev, { name, servingsBase, tagIds, recipeIngredients, steps }]);
     setName(result.name);
     setServingsBase(result.servingsBase || 1);
@@ -103,15 +103,20 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         timerSeconds: step.timerSeconds ?? undefined,
       })),
     );
-    setRecipeIngredients(
-      result.ingredients.map((item) => {
+    // 새 재료/태그는 DB에 실제로 만들어진 뒤에야 레시피 쪽에서 안전하게 참조할 수 있어서
+    // (recipe_tags/재료 참조가 FK로 걸려있음) 여기서 순서대로 기다린다.
+    const newRecipeIngredients = await Promise.all(
+      result.ingredients.map(async (item) => {
         const matched = ingredients.find((ingredient) => ingredient.name.trim() === item.name.trim());
-        const ingredientId = matched?.id ?? createIngredientFromAi(item.name, item.categoryName);
+        const ingredientId = matched?.id ?? (await createIngredientFromAi(item.name, item.categoryName));
         return { ingredientId, amount: item.amount, unit: item.unit };
       }),
     );
+    setRecipeIngredients(newRecipeIngredients);
+
     if (result.tagNames && result.tagNames.length > 0) {
-      setTagIds(result.tagNames.map((tagName) => resolveOrCreateTag(tagName)));
+      const newTagIds = await Promise.all(result.tagNames.map((tagName) => resolveOrCreateTag(tagName)));
+      setTagIds(newTagIds);
     }
     setAiWarning(result.warning ?? null);
     offerBatchImageGenerationForNewSteps(result.steps, result.name);
@@ -193,9 +198,9 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     }
   }
 
-  function confirmYoutubeApply() {
+  async function confirmYoutubeApply() {
     if (!pendingYoutubeResult) return;
-    applyExtractedResult(pendingYoutubeResult);
+    await applyExtractedResult(pendingYoutubeResult);
     if (!pendingYoutubeResult.warning) {
       setAiWarning(
         pendingYoutubeSource === 'supadata'
@@ -212,7 +217,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     setPendingYoutubeDiff([]);
   }
 
-  function createIngredientFromAi(rawName: string, categoryName?: string | null): string {
+  async function createIngredientFromAi(rawName: string, categoryName?: string | null): Promise<string> {
     const trimmed = rawName.trim();
     const id = makeId('ing');
     const trimmedCategoryName = categoryName?.trim();
@@ -224,11 +229,11 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       categoryId = matchedCategory.id;
     } else if (trimmedCategoryName) {
       categoryId = makeId('cat');
-      saveCategory({ id: categoryId, name: trimmedCategoryName });
+      await saveCategory({ id: categoryId, name: trimmedCategoryName });
     } else {
       categoryId = categories.find((c) => c.name === '기타')?.id ?? categories[0]?.id ?? '';
     }
-    saveIngredient({ id, name: trimmed, categoryId, defaultBuyUnit: '1개', allergens: [] });
+    await saveIngredient({ id, name: trimmed, categoryId, defaultBuyUnit: '1개', allergens: [], owned: false });
     return id;
   }
 
@@ -430,7 +435,10 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     );
   }
 
-  function handleSave() {
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  async function handleSave() {
     const recipe: Recipe = {
       id: existing?.id ?? makeId('recipe'),
       name: name.trim() || '이름 없는 레시피',
@@ -439,8 +447,16 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       ingredients: recipeIngredients,
       steps,
     };
-    saveRecipe(recipe);
-    onDone();
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await saveRecipe(recipe);
+      onDone();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : '레시피 저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -713,12 +729,13 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         + 조리 단계 추가
       </button>
 
+      {saveError && <p style={{ color: 'var(--danger)' }}>{saveError}</p>}
       <div className="row" style={{ marginTop: 20 }}>
         <button className="btn" onClick={onDone}>
           취소
         </button>
-        <button className="btn primary" onClick={handleSave} disabled={!name.trim()}>
-          저장
+        <button className="btn primary" onClick={handleSave} disabled={!name.trim() || saving}>
+          {saving ? '저장 중...' : '저장'}
         </button>
       </div>
     </div>

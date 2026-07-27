@@ -1,54 +1,16 @@
-import type { CrudRepository, KeyValueRepository } from './repository';
-
-// 로컬 저장소 어댑터. DB(Supabase 등) 전환 시 이 파일만 교체하면 된다 —
-// CrudRepository/KeyValueRepository 인터페이스를 유지하는 새 어댑터를 만들고
-// store.ts에서 생성하는 인스턴스만 바꾸면 features 코드는 수정할 필요 없음.
-export function createLocalStorageRepository<T extends { id: string }>(
-  storageKey: string,
-): CrudRepository<T> {
-  function readAll(): T[] {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function writeAll(items: T[]): void {
-    localStorage.setItem(storageKey, JSON.stringify(items));
-  }
-
-  return {
-    getAll: readAll,
-    get(id) {
-      return readAll().find((item) => item.id === id);
-    },
-    save(item) {
-      const items = readAll();
-      const index = items.findIndex((existing) => existing.id === item.id);
-      if (index >= 0) {
-        items[index] = item;
-      } else {
-        items.push(item);
-      }
-      writeAll(items);
-    },
-    delete(id) {
-      writeAll(readAll().filter((item) => item.id !== id));
-    },
-    replaceAll(items) {
-      writeAll(items);
-    },
-  };
+// 기기 로컬 설정(API 키, 테마 등)에만 쓰는 단순 동기 key-value 저장소.
+// household 공유 데이터(재료/레시피/태그/카테고리)는 supabaseAdapter.ts로 이전했다 —
+// 그쪽은 네트워크 호출이라 비동기(repository.ts의 CrudRepository)이고, 이건 기기 로컬이라
+// 여전히 동기로 남겨둔다(설정 화면이 매 입력마다 await할 필요는 없음).
+export interface LocalKeyValueRepository<T> {
+  get(): T;
+  set(value: T): void;
 }
 
 export function createLocalStorageKeyValue<T>(
   storageKey: string,
   defaultValue: T,
-): KeyValueRepository<T> {
+): LocalKeyValueRepository<T> {
   return {
     get() {
       const raw = localStorage.getItem(storageKey);

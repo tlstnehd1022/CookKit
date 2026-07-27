@@ -13,6 +13,8 @@ export interface Ingredient {
   preferredUnit?: string;
   /** 예: '그라인더로 갈아서', '다진 것 대신 편 썰기로' — 자유 서술형 선호 방식 */
   preferredMethod?: string;
+  /** 보유 여부(household 공유) — 예전엔 별도 PantryStatus 맵이었으나 DB 전환 후 재료 행에 통합 */
+  owned: boolean;
 }
 
 export interface RecipeIngredient {

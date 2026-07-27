@@ -18,9 +18,9 @@
   선호 설정(선호 단위/방식), 조리 단계별 AI 이미지 생성(Gemini 전용, IndexedDB 저장 — 아래 "이미지 저장
   (IndexedDB)" 항목 참고)
 - **6차 확장 진행 중 — Supabase(DB) 전환**: localStorage 단독 구조를 Supabase(Postgres + Auth)로
-  옮기는 작업 착수. 지금까지는 **스키마 설계 + 설정 문서까지만 완료**(`supabase/schema.sql`,
-  `SUPABASE_SETUP.md`, `.env.example`, `@supabase/supabase-js` 설치)이고, 실제 로그인/데이터 레이어
-  코드 마이그레이션은 아직 시작 전. 자세한 내용은 아래 "DB 전환(Supabase)" 항목 참고
+  옮기는 작업. **스키마 설계(Phase 1)/구글 로그인+가구 온보딩(Phase 2)/재료·레시피·장보기 데이터
+  레이어 전환(Phase 3)까지 완료**, 실사용 테스트(로그인/가구 생성)도 확인함. 남은 건 API 키 암호화
+  저장(Phase 4)뿐. 자세한 내용은 아래 "DB 전환(Supabase)" 항목 참고
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
@@ -107,14 +107,39 @@
     1개 제한을 함수 안에서도 체크). **`schema.sql`을 다시 실행하지 말고 이 마이그레이션 파일만 추가로
     SQL Editor에서 실행할 것**(이미 존재하는 테이블/정책이라 전체 재실행하면 에러남 — 앞으로 스키마가
     바뀔 때마다 `supabase/migrations/000N_*.sql` 형태로 계속 이어붙이는 방식으로 관리)
-  - **아직 안 함(Phase 3+)**: `src/data/repos.ts`/`store.ts`가 여전히 localStorage 그대로라, 로그인은
-    진짜 구글 계정이어도 재료/레시피 데이터는 예전 고정 네임스페이스(`CURRENT_USER_ID`) 그대로 보임 —
-    실제 데이터가 household/user별로 나뉘는 건 데이터 레이어 마이그레이션(Phase 3)부터. 그 다음 API 키
-    Supabase Vault 암호화 전환(Phase 4, AI 호출도 서버리스 함수 경유로 전환)이 예정되어 있음
-  - **다음에 이어서 할 일(2026-07-24 기준 미완료)**: `0002_household_rpc.sql`은 SQL Editor에서 실행
-    완료. 남은 건 (1) Supabase 대시보드 **Authentication > URL Configuration > Redirect URLs**에
-    로컬 개발 주소(`http://localhost:5173` 등, 포트는 그때그때 확인) 등록, (2) 로컬에서 실제 구글
-    로그인 → 가구 만들기/참여하기 온보딩까지 실제로 테스트. 둘 다 아직 안 함 — 집 PC에서 이어서 진행 예정
+  - **Phase 2 실사용 테스트 완료**: 리다이렉트 URL 등록(로컬+Vercel 배포 주소 둘 다), 구글 로그인,
+    가구 만들기까지 실제로 확인함. 중간에 겪은 이슈 2개는 재발 방지용으로 기록: (1) Vercel에
+    `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`를 안 넣어서 배포본이 완전히 빈 화면으로만 떴던 문제 —
+    `main.tsx`가 이제 `theme`/`App`을 정적 import 대신 동적 import로 불러오게 고쳐서, 앱 시작 중 에러가
+    나도 최소한 에러 메시지는 뜨도록 함(빈 화면 방지). (2) 구글 로그인 시
+    `error=server_error&error_code=unexpected_failure&"Unable to exchange external code"` —
+    Supabase의 Google Provider에 등록된 Client Secret이 잘못돼서(복사 시 공백 등) 발생, Google Cloud
+    Console에서 Client Secret을 다시 발급/복사해 재등록하니 해결됨. Supabase Auth Logs에서 `/callback`
+    요청의 상세(JSON) 안 `msg`/`error` 필드를 봐야 진짜 원인이 나옴(요약 로그의 status 302만으로는
+    성공/실패 구분 불가)
+  - **Phase 3 완료 — 데이터 레이어 Supabase 전환**: `CrudRepository<T>`를 동기(`getAll(): T[]`)에서
+    비동기(`getAll(): Promise<T[]>`)로 변경(Supabase는 네트워크 호출이라 태생적으로 동기 구현이 불가능
+    — localStorage 시절과의 근본적인 차이). `src/data/supabaseAdapter.ts`(신규)가 실제 구현체:
+    categories/tags/ingredients는 household 단위 공용 팩토리(`createHouseholdRepository`)로, recipes는
+    `recipe_tags` 조인 + `is_public` 로직 때문에 별도 구현. `src/data/store.ts`를 전면 재작성해서
+    `initializeDataLayer(householdId, userId)`를 로그인+household 확정 후 `App.tsx`에서 한 번 호출 —
+    그 전까지는 각 스토어가 빈 배열+로딩 상태. `useIngredients()`/`useRecipes()` 등 훅 시그니처는 그대로라
+    features 쪽 컴포넌트는 대부분 안 건드림(단, `saveX`/`deleteX`가 이제 Promise를 반환하므로 결과를
+    기다려야 하는 곳 — `RecipeEditor.tsx`의 태그/재료 자동 생성 후 레시피 저장 흐름 — 은 async/await로
+    수정함, 안 그러면 방금 만든 재료/태그가 DB에 실제로 커밋되기 전에 레시피가 그걸 참조하려다 FK
+    위반이 날 수 있음). `src/data/repos.ts`는 완전히 안 쓰게 돼서 삭제.
+    - **PantryStatus 통합**: 예전엔 별도 `PantryStatus` 맵(ingredientId→boolean)이었는데, household 공유
+      스키마에서는 `ingredients.owned` 컬럼 하나로 통합(`supabase/migrations/0003_ingredients_owned.sql`).
+      `usePantryStatus()`는 이제 `ingredients` 목록에서 파생시키는 방식으로 내부 구현만 바뀌고 반환 타입은
+      그대로라 `IngredientsPage.tsx`/`ShoppingListPage.tsx`는 무수정.
+    - **shopping_selection**: household 공유 테이블이라 `src/data/shoppingSelection.ts`도 Supabase 직접
+      호출로 재작성, `initializeShoppingSelection(householdId)`를 `App.tsx`에서 데이터 레이어와 함께 초기화.
+    - **백업(JSON 내보내기/가져오기)**: `backup.ts`가 이제 스토어의 캐시 스냅샷(`getIngredientsSnapshot()`
+      등, React 훅이 아닌 일반 함수)을 읽고, 가져오기는 각 `replaceAllX`를 await하도록 변경. pantryStatus는
+      가져올 때 각 재료의 `owned` 필드로 다시 접어넣음(백업 JSON 포맷 자체는 안 바꿈).
+    - **아직 안 함(Phase 4)**: API 키(Anthropic/Gemini) 저장을 localStorage 평문 → Supabase Vault
+      암호화 + 서버리스 함수 경유로 전환하는 작업, household 신규 데이터 없음(새 household는 빈 상태로
+      시작 — 기존 로컬 데이터를 옮기는 마이그레이션 스크립트는 별도로 요청 시 진행)
 
 ## 향후 확장 계획 (지금부터 구조는 열어두되 구현은 나중에)
 - **다중 사용자**: 부부가 같이 보고 수정할 수 있게 — 위 "DB 전환(Supabase)" 항목에서 진행 중
@@ -234,7 +259,8 @@ Ingredient {
   defaultBuyUnit (예: '1팩', '800g'),
   allergens: string[] (예: ['마늘'], ['밀가루']),
   preferredUnit?: string (예: '작은술' — AI 레시피 생성 시 참고),
-  preferredMethod?: string (예: '그라인더로 갈아서' — AI 레시피 생성 시 참고)
+  preferredMethod?: string (예: '그라인더로 갈아서' — AI 레시피 생성 시 참고),
+  owned: boolean (보유 여부 — household 공유, Supabase ingredients.owned 컬럼)
 }
 
 Category {
@@ -245,11 +271,10 @@ Tag {
   id, name, type ('style' | 'category')  // 크림류, 고기요리 등 관리 가능한 목록
 }
 
-PantryStatus {
-  ingredientId -> boolean (보유 여부)  // 사용자별 storage 네임스페이스 하위에 저장
-}
+// PantryStatus는 더 이상 별도 저장소가 아니라 Ingredient.owned에서 파생되는 뷰(Record<id, boolean>).
+// usePantryStatus() 훅의 반환 타입 호환을 위해 store.ts에서 계산만 함 — DB에 따로 저장 안 함.
 
-ShoppingSelection: string[]  // 장보기에 담긴 recipeId 목록 (레시피 화면과 장보기 화면이 공유하는 저장소)
+ShoppingSelection: string[]  // 장보기에 담긴 recipeId 목록 (household 공유 테이블, shopping_selection)
 
 // --- 아래는 지금 구현하지 않지만 구조만 남겨둘 것 ---
 CookingLog {  // 향후: 요리 기록

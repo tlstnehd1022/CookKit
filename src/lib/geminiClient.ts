@@ -291,7 +291,11 @@ export function buildFinalDishImagePrompt(
 
 const IMAGE_GENERATION_TIMEOUT_MS = 60_000;
 // 429(요청 제한)/503(모델 과부하)은 잠시 후 재시도하면 성공하는 경우가 많은 일시적 오류라 자동 재시도한다.
-const RETRYABLE_STATUS_CODES = new Set([429, 503]);
+// 408은 실제 HTTP 응답이 아니라 우리 쪽 60초 타임아웃(AbortError)에 붙이는 sentinel 상태코드 —
+// "🖼 전체 이미지 생성"처럼 여러 장을 한 번에 동시 요청(Promise.all)하면 개별 요청이 평소보다
+// 느려져 60초를 넘기는 경우가 흔해서(모델 자체 문제가 아니라 동시 부하로 인한 지연), 이것도
+// 일시적 오류로 보고 재시도 대상에 포함한다.
+const RETRYABLE_STATUS_CODES = new Set([408, 429, 503]);
 const IMAGE_GENERATION_MAX_RETRIES = 2; // 최초 시도 포함 총 3회
 
 class GeminiImageError extends Error {
@@ -326,7 +330,10 @@ async function requestImageOnce(apiKey: string, prompt: string): Promise<string>
     );
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error('이미지 생성이 60초 안에 끝나지 않아 중단했습니다. 잠시 후 다시 시도해주세요.');
+      throw new GeminiImageError(
+        '이미지 생성이 60초 안에 끝나지 않아 중단했습니다. 잠시 후 다시 시도해주세요.',
+        408,
+      );
     }
     throw err;
   } finally {

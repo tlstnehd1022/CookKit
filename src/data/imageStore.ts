@@ -15,6 +15,17 @@ export function buildImagePath(householdId: string, recipeId: string, kind: Imag
   return `${householdId}/${recipeId}/${kind}/${crypto.randomUUID()}`;
 }
 
+/**
+ * imageId가 지금 Storage 경로 형식(household_id/recipe_id/kind/파일명)인지 확인한다.
+ * 이 마이그레이션 이전(IndexedDB 시절)에 저장된 imageId는 폴더 구조 없는 단일 UUID라 슬래시가
+ * 없음 — 그런 값은 새 Storage에 실제로 존재하지 않으므로(마이그레이션 안 함) 재사용하면 안 되고,
+ * "다시 생성"/재업로드 시 새 경로로 교체해야 한다(재사용하면 household_id 세그먼트가 없어서
+ * household 단위 RLS 검사를 통과하지 못해 업로드 자체가 거부됨).
+ */
+export function isStorageImagePath(imageId?: string): imageId is string {
+  return Boolean(imageId && imageId.includes('/'));
+}
+
 function dataUrlToBlob(dataUrl: string): Blob {
   const [header, base64] = dataUrl.split(',');
   const mimeType = header.match(/data:(.*);base64/)?.[1] ?? 'image/png';
@@ -53,7 +64,9 @@ export function useStoredImage(imageId?: string): string | null {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!imageId) {
+    if (!isStorageImagePath(imageId)) {
+      // imageId가 없거나 마이그레이션 이전의 낡은 형식(슬래시 없는 단일 UUID)이면 Storage에
+      // 실제로 존재하지 않으므로 조회 시도 자체를 생략한다(불필요한 404 방지).
       setUrl(null);
       return;
     }

@@ -81,6 +81,24 @@
     예전 IndexedDB 버전과 최대한 비슷하게 유지해서 호출부(`RecipeEditor.tsx` 등) 변경을 최소화함.
     기존 IndexedDB에 있던 이미지는 마이그레이션하지 않음(다시 생성하거나 "이미지 없음"으로 자연스럽게
     표시 — 개인 사용 규모라 감수 가능한 손실로 판단).
+    - **버그(수정 완료) — 낡은 imageId 재사용 시 RLS 거부**: 실사용 테스트에서 "다시 생성"을 누르면
+      계속 `new row violates row-level security policy` 에러가 났음. 원인은 이 마이그레이션 이전에
+      만들어진 `imageId`(IndexedDB 시절, 폴더 구조 없는 단일 UUID)가 스텝에 이미 남아있는 상태에서
+      `step.imageId ?? buildImagePath(...)` 패턴이 그 낡은 값을 "이미 있는 이미지"로 착각해 그대로
+      재사용했기 때문 — household_id 폴더가 없는 경로라 RLS의 `is_household_member` 체크를 통과할
+      수 없어 업로드 자체가 거부됨. `isStorageImagePath(imageId)`(슬래시 포함 여부로 새 형식인지
+      판별)로 낡은 형식이면 재사용하지 않고 새 경로를 만들도록 수정(`saveImage`/`useStoredImage`
+      호출부 전체). 디버깅은 브라우저 개발자도구 Network 탭에서 실패한 `storage/v1/object/...`
+      요청의 실제 경로를 직접 확인해서 찾음(폴더 구조가 아예 없는 것을 보고 원인 특정) — 이번에도
+      Supabase 관련 버그는 "화면 에러 메시지"보다 "실제 요청/응답"을 봐야 진짜 원인이 나온다는
+      패턴이 반복됨.
+    - **버그(수정 완료) — 이미지 배치 생성 시 60초 타임아웃 다발**: "전체 이미지 생성"으로 여러 장을
+      `Promise.all`로 동시 요청하면 개별 요청이 평소보다 느려져(동시 부하) 원래도 넉넉하지 않던
+      60초 타임아웃을 넘기는 경우가 실사용에서 빈번히 발생(7개 중 5개 타임아웃). 타임아웃(AbortError)은
+      기존엔 429/503과 달리 재시도 대상이 아니었어서 즉시 실패 처리됐던 게 원인 — `geminiClient.ts`의
+      `requestImageOnce`가 타임아웃 시 `GeminiImageError(..., 408)`(408은 실제 HTTP 응답이 아니라
+      우리가 붙이는 sentinel 상태코드)를 던지도록 바꾸고 `RETRYABLE_STATUS_CODES`에 408 추가 —
+      이제 타임아웃도 429/503과 같은 지수 백오프(2초→4초)로 자동 재시도됨.
     - Storage 경로에 새 레시피(아직 한 번도 저장 안 한 초안)의 이미지를 미리 생성/업로드할 수 있어야
       해서, `RecipeEditor.tsx`가 편집 화면에 들어오는 시점에 `recipe.id`를 미리 고정해둠(`stableRecipeId`
       — 예전엔 "저장" 버튼을 눌러야 `existing?.id ?? makeId()`로 그때 정해졌음). household id는

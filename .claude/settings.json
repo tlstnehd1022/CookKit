@@ -32,7 +32,13 @@
       "Bash(rm -f scratch-smoke2.mjs)",
       "Bash(node scratch-auth-smoke.mjs)",
       "Bash(pkill -f \"vercel dev\")",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(mv .env .env.bak)",
+      "Read(//tmp/**)",
+      "Bash(mv .env.bak .env)",
+      "Bash(node scratch-err-check.mjs)",
+      "Bash(rm -f scratch-err-check.mjs)",
+      "Bash(pkill -f \"vite preview\")"
     ]
   }
 }

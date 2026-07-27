@@ -92,6 +92,9 @@ interface RecipeContent {
   servingsBase: number;
   ingredients: Recipe['ingredients'];
   steps: Recipe['steps'];
+  difficulty?: Recipe['difficulty'];
+  difficultyReason?: string;
+  estimatedMinutes?: number;
 }
 
 function rowToRecipe(row: Record<string, unknown>): Recipe {
@@ -105,6 +108,9 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     ingredients: content.ingredients ?? [],
     steps: content.steps ?? [],
     createdAt: row.created_at as string | undefined,
+    difficulty: content.difficulty,
+    difficultyReason: content.difficultyReason,
+    estimatedMinutes: content.estimatedMinutes,
   };
 }
 
@@ -122,6 +128,9 @@ export function createRecipesRepository(userId: string): CrudRepository<Recipe> 
         servingsBase: recipe.servingsBase,
         ingredients: recipe.ingredients,
         steps: recipe.steps,
+        difficulty: recipe.difficulty,
+        difficultyReason: recipe.difficultyReason,
+        estimatedMinutes: recipe.estimatedMinutes,
       } satisfies RecipeContent,
       // is_public은 일부러 안 보냄 — upsert 시 지정 안 한 컬럼은 UPDATE 대상에서 빠져서
       // 기존 공개 설정이 그대로 유지된다(새 레시피는 컬럼 기본값 false로 시작).

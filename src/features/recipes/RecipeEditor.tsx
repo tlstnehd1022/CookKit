@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useCategories, useIngredients, useRecipes, useTags, makeId } from '../../data/store';
 import { useSettings } from '../../data/settings';
 import * as claudeClient from '../../lib/claudeClient';
 import * as geminiClient from '../../lib/geminiClient';
 import type { ExtractedRecipe } from '../../lib/claudeClient';
 import type { ExistingContext } from '../../lib/aiChat';
-import type { Recipe, RecipeIngredient, RecipeStep } from '../../data/types';
+import type { Difficulty, Recipe, RecipeIngredient, RecipeStep } from '../../data/types';
 import { COMMON_UNITS, CUSTOM_UNIT_VALUE } from '../../data/units';
 import { RecipeChatPanel } from './RecipeChatPanel';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
 import { fetchYoutubeTranscript } from '../../lib/youtubeTranscript';
 import { deleteImage, saveImage, useStoredImage } from '../../data/imageStore';
 import { getErrorMessage } from '../../lib/errorMessage';
+import { computeDifficulty, DIFFICULTY_LABEL, MANUAL_DIFFICULTY_REASON } from '../../lib/recipeDifficulty';
+import { estimateCookMinutes } from '../../lib/recipeTime';
 
 export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: () => void }) {
   const { recipes, saveRecipe } = useRecipes();
@@ -27,6 +29,37 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   const [tagIds, setTagIds] = useState<string[]>(existing?.tagIds ?? []);
   const [recipeIngredients, setRecipeIngredients] = useState<RecipeIngredient[]>(existing?.ingredients ?? []);
   const [steps, setSteps] = useState<RecipeStep[]>(existing?.steps ?? []);
+
+  // 난이도/예상 조리시간은 규칙 기반으로 자동 계산되지만, 사용자가 직접 값을 바꾸면
+  // 그 뒤로는(이 편집 세션 동안) 재료/조리순서가 바뀌어도 자동 계산이 덮어쓰지 않는다.
+  // difficultyTouched의 초기값은 저장된 difficultyReason이 "사용자가 직접 설정함"인지로 판단 —
+  // 예전에 수동으로 설정해둔 레시피를 다시 열었을 때도 그 설정을 존중하기 위함.
+  const [difficulty, setDifficulty] = useState<Difficulty>(existing?.difficulty ?? 'easy');
+  const [difficultyReason, setDifficultyReason] = useState(existing?.difficultyReason ?? '');
+  const [difficultyTouched, setDifficultyTouched] = useState(
+    existing?.difficultyReason === MANUAL_DIFFICULTY_REASON,
+  );
+  const [showDifficultyReason, setShowDifficultyReason] = useState(false);
+  const [estimatedMinutes, setEstimatedMinutes] = useState(
+    existing?.estimatedMinutes ?? estimateCookMinutes(existing?.steps ?? []),
+  );
+  const [estimatedMinutesTouched, setEstimatedMinutesTouched] = useState(false);
+
+  useEffect(() => {
+    if (estimatedMinutesTouched) return;
+    setEstimatedMinutes(estimateCookMinutes(steps));
+  }, [steps, estimatedMinutesTouched]);
+
+  useEffect(() => {
+    if (difficultyTouched) return;
+    const result = computeDifficulty({
+      ingredientCount: recipeIngredients.length,
+      cookMinutes: estimatedMinutes,
+      stepCount: steps.length,
+    });
+    setDifficulty(result.difficulty);
+    setDifficultyReason(result.reason);
+  }, [recipeIngredients, steps, estimatedMinutes, difficultyTouched]);
 
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [youtubeManualText, setYoutubeManualText] = useState('');
@@ -106,6 +139,14 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         timerSeconds: step.timerSeconds ?? undefined,
       })),
     );
+    if (result.difficulty) {
+      // AI가 판단한 난이도는 재료 개수 같은 단순 규칙보다 맥락(기술/도구 난이도)을 더 잘 반영하므로
+      // 규칙 기반 자동 재계산(useEffect)이 곧바로 덮어쓰지 않도록 touched로 표시해서 존중한다.
+      // 사용자가 "↻ 자동 판단으로 되돌리기"를 누르면 다시 규칙 기반 계산으로 전환 가능.
+      setDifficulty(result.difficulty);
+      setDifficultyReason(result.difficultyReason?.trim() || DIFFICULTY_LABEL[result.difficulty]);
+      setDifficultyTouched(true);
+    }
     // 새 재료/태그/카테고리는 DB에 실제로 만들어진 뒤에야 레시피 쪽에서 안전하게 참조할 수 있어서
     // (recipe_tags/재료 참조가 FK로 걸려있음) 순서대로 기다린다. 예전엔 Promise.all로 동시에
     // 처리했는데, 그 경우 "지금 폼에 없는 새 카테고리"를 두 재료가 동시에 필요로 하면 서로의
@@ -475,6 +516,9 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       tagIds,
       ingredients: recipeIngredients,
       steps,
+      difficulty,
+      difficultyReason,
+      estimatedMinutes,
     };
     setSaving(true);
     setSaveError(null);
@@ -584,18 +628,121 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         />
       </div>
 
-      <div className="section-title">태그</div>
-      <div className="chip-row">
-        {tags.map((tag) => (
-          <button
-            key={tag.id}
-            className={`chip selectable ${tagIds.includes(tag.id) ? 'active' : ''}`}
-            onClick={() => toggleTag(tag.id)}
-          >
-            {tag.name}
-          </button>
-        ))}
+      <div className="section-title">난이도 / 예상 조리시간</div>
+      <div className="row" style={{ alignItems: 'flex-start', gap: 12 }}>
+        <div className="field" style={{ flex: 1 }}>
+          <label>난이도</label>
+          <div className="row" style={{ gap: 6 }}>
+            <select
+              value={difficulty}
+              onChange={(e) => {
+                const value = e.target.value as Difficulty;
+                setDifficulty(value);
+                setDifficultyReason(MANUAL_DIFFICULTY_REASON);
+                setDifficultyTouched(true);
+              }}
+              style={{ flex: 1 }}
+            >
+              {(Object.keys(DIFFICULTY_LABEL) as Difficulty[]).map((value) => (
+                <option key={value} value={value}>
+                  {DIFFICULTY_LABEL[value]}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="chip selectable"
+              title={difficultyReason}
+              onClick={() => setShowDifficultyReason((v) => !v)}
+            >
+              ⓘ
+            </button>
+          </div>
+          {showDifficultyReason && (
+            <p className="text-muted" style={{ marginTop: 4 }}>
+              {difficultyReason}
+            </p>
+          )}
+          {difficultyTouched && (
+            <button className="btn small" style={{ marginTop: 6 }} onClick={() => setDifficultyTouched(false)}>
+              ↻ 자동 판단으로 되돌리기
+            </button>
+          )}
+        </div>
+        <div className="field" style={{ flex: 1 }}>
+          <label>예상 조리시간(분)</label>
+          <input
+            type="number"
+            min={0}
+            value={estimatedMinutes}
+            onChange={(e) => {
+              setEstimatedMinutes(Number(e.target.value) || 0);
+              setEstimatedMinutesTouched(true);
+            }}
+          />
+          {estimatedMinutesTouched && (
+            <button
+              className="btn small"
+              style={{ marginTop: 6 }}
+              onClick={() => setEstimatedMinutesTouched(false)}
+            >
+              ↻ 자동 계산으로 되돌리기
+            </button>
+          )}
+        </div>
       </div>
+
+      <div className="section-title">스타일 태그</div>
+      <div className="chip-row">
+        {tags
+          .filter((tag) => tag.type === 'style')
+          .map((tag) => (
+            <button
+              key={tag.id}
+              className={`chip selectable ${tagIds.includes(tag.id) ? 'active' : ''}`}
+              onClick={() => toggleTag(tag.id)}
+            >
+              {tag.name}
+            </button>
+          ))}
+      </div>
+
+      {tags.some((tag) => tag.type === 'category') && (
+        <>
+          <div className="section-title">카테고리 태그</div>
+          <div className="chip-row">
+            {tags
+              .filter((tag) => tag.type === 'category')
+              .map((tag) => (
+                <button
+                  key={tag.id}
+                  className={`chip selectable ${tagIds.includes(tag.id) ? 'active' : ''}`}
+                  onClick={() => toggleTag(tag.id)}
+                >
+                  {tag.name}
+                </button>
+              ))}
+          </div>
+        </>
+      )}
+
+      <div className="section-title">국가/스타일 (선택)</div>
+      <div className="chip-row">
+        {tags
+          .filter((tag) => tag.type === 'cuisine')
+          .map((tag) => (
+            <button
+              key={tag.id}
+              className={`chip selectable ${tagIds.includes(tag.id) ? 'active' : ''}`}
+              onClick={() => toggleTag(tag.id)}
+            >
+              {tag.name}
+            </button>
+          ))}
+      </div>
+      {tags.filter((tag) => tag.type === 'cuisine').length === 0 && (
+        <p className="text-muted">태그 관리에서 국가/스타일 태그를 추가할 수 있어요(예: 한식, 양식).</p>
+      )}
 
       <div className="section-title">재료</div>
       {recipeIngredients.map((row, index) => (

@@ -22,6 +22,8 @@ export interface ExtractedRecipe {
   steps: { title: string; content: string; timerSeconds?: number | null }[];
   tagNames?: string[] | null;
   warning?: string | null;
+  difficulty?: 'easy' | 'medium' | 'hard' | null;
+  difficultyReason?: string | null;
 }
 
 // Gemini의 responseSchema는 JSON Schema와 비슷하지만 타입이 대문자이고 nullable 필드를 별도로 표기한다.
@@ -72,6 +74,18 @@ const GEMINI_RECIPE_SCHEMA = {
     warning: {
       type: 'STRING',
       description: '추출 결과가 불확실하거나 정보가 부족했을 경우 사용자에게 보여줄 경고 메시지. 문제없으면 생략.',
+      nullable: true,
+    },
+    difficulty: {
+      type: 'STRING',
+      description:
+        '난이도 판단. easy=30분 이내·재료 5가지 이하·특수 도구 불필요, medium=1시간 이내·기본 도구로 가능, ' +
+        'hard=1시간 이상 걸리거나 특수 기술/도구가 필요. 값은 "easy", "medium", "hard" 중 하나.',
+      nullable: true,
+    },
+    difficultyReason: {
+      type: 'STRING',
+      description: '난이도를 이렇게 판단한 근거를 한국어 한 문장으로.',
       nullable: true,
     },
   },

@@ -25,6 +25,12 @@
   목표. 2열 그리드 카드 뷰(기본) + 리스트 뷰 토글, 검색(이름+재료, 300ms 디바운스), 필터를 가로 스크롤
   한 줄로 통합(태그+알러지 제외+"🧺 보유 재료로 가능한 것만"), 정렬(최근 추가순/이름순), 빈 상태 처리.
   자세한 내용은 아래 "레시피 관리 화면(모바일 개편)" 항목 참고
+- **8차 확장 완료 — 카테고리 중복 버그 수정 + 태그 국가/스타일 축 + 난이도/조리시간 자동 판단**: 재료
+  카테고리 그루핑 버그의 진짜 원인(중복 생성 레이스 컨디션)을 찾아 수정하고 정리 스크립트 추가(위
+  "버그(수정 완료) — 카테고리 중복 생성 레이스 컨디션" 참고). Tag에 `cuisine` 타입 추가(한식/양식 등,
+  스타일/카테고리 태그와 별개 축, 레시피 편집 화면에서 구분된 섹션으로 다중 선택). Recipe에
+  `difficulty`/`difficultyReason`/`estimatedMinutes` 필드 추가 — 규칙 기반 자동 계산(아래 "난이도/
+  조리시간 자동 판단" 항목 참고), AI 대화형 생성 시에도 propose_recipe가 난이도를 함께 판단해서 채움.
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
@@ -197,6 +203,41 @@
     걸 방지하려고 뺐음 — 담기는 상세 화면에 이미 있고, 삭제는 상세 화면(`RecipeDetailPage.tsx`)의
     "수정" 옆으로 옮김. 알러지 배지도 카드에서는 뺐음(이미 알러지 제외 필터가 있어 중복 판단) — 필요해지면
     다시 넣을 수 있음
+- **난이도/조리시간 자동 판단**: `Recipe.difficulty`('easy'|'medium'|'hard') / `difficultyReason`(판단
+  근거 한 문장) / `estimatedMinutes`(예상 조리시간 분)를 추가. 실제 저장은 다른 중첩 데이터와 마찬가지로
+  `recipes.content` jsonb 안에 담김(`supabaseAdapter.ts`).
+  - **조리시간**(`src/lib/recipeTime.ts` `estimateCookMinutes`): 조리 단계의 `timerSeconds` 합계를 분으로
+    환산, 타이머가 없는 단계는 단계당 2분으로 보정해서 더함.
+  - **난이도**(`src/lib/recipeDifficulty.ts` `computeDifficulty`): 재료 개수(5개 이하 0점/6~10개 1점/
+    11개 이상 2점) + 조리시간(30분 이하 0점/60분 이하 1점/그 이상 2점) + 조리단계 개수(5개 이하 0점/6개
+    이상 1점)를 합산 — 0~1점 easy, 2~3점 medium, 4점 이상 hard. 판단 근거 문장을 `difficultyReason`에 자동
+    채움.
+  - **RecipeEditor.tsx**: 두 값 모두 재료/조리순서가 바뀔 때마다 `useEffect`로 자동 재계산되다가, 사용자가
+    직접 값을 바꾸면(`difficultyTouched`/`estimatedMinutesTouched`) 그 편집 세션 동안은 자동 계산이
+    덮어쓰지 않음 — "↻ 자동 판단/계산으로 되돌리기" 버튼으로 다시 자동 모드로 전환 가능. 난이도를 수동
+    설정하면 `difficultyReason`이 `MANUAL_DIFFICULTY_REASON`("사용자가 직접 설정함") 상수로 바뀌고, 이
+    문구가 저장돼 있으면 다음에 그 레시피를 다시 열었을 때도 수동 설정을 존중해서 자동 재계산하지 않음
+    (문구가 없으면 — 즉 예전에 자동 계산된 값이면 — 열 때마다 최신 재료/조리순서 기준으로 다시 계산됨).
+  - **AI 대화형 생성**(`propose_recipe`): `claudeClient.ts`/`geminiClient.ts`의 스키마에 `difficulty`/
+    `difficultyReason` 필드를 추가하고 `aiChat.ts`의 `RECIPE_CHAT_SYSTEM_PROMPT`에 판단 기준(easy=30분
+    이내·재료 5가지 이하·특수 도구 불필요, medium=1시간 이내·기본 도구, hard=1시간 이상 또는 특수 기술/
+    도구 필요)을 안내해 AI가 직접 판단하게 함. `extractRecipeFromTranscript`/`extractRecipeFromYoutubeMeta`도
+    같은 스키마(`RECIPE_SCHEMA`/`GEMINI_RECIPE_SCHEMA`)를 공유해서 자동으로 같은 필드를 채움. AI가 준
+    난이도는 규칙 기반 점수보다 맥락(기술/도구 난이도)을 더 반영한다고 보고 적용 시 `difficultyTouched`를
+    true로 표시해 규칙 기반 재계산이 곧바로 덮어쓰지 않게 함(다만 이 표시는 편집 세션 한정 — 위와 달리
+    `MANUAL_DIFFICULTY_REASON` 문구를 쓰지 않으므로 다음에 다시 열면 규칙 기반으로 재계산됨).
+  - **UI**: 레시피 편집 화면(기본 정보 아래)과 상세 화면(태그 옆) 둘 다 난이도/예상 조리시간 배지 + ⓘ
+    아이콘(탭/호버 시 `difficultyReason` 표시)을 노출.
+  - **시드 데이터**: `src/data/seed.ts`의 4개 시드 레시피도 같은 함수로 난이도/조리시간을 계산해 채워둠
+    (단, 이 시드는 현재 앱 어디서도 import되지 않는 미사용 참고 데이터 — Supabase 전환 후 새 household는
+    빈 상태로 시작하기 때문).
+- **태그 국가/스타일 축**: `TagType`에 `'cuisine'` 추가(기존 `'style'`/`'category'`와 별개 축, 예:
+  한식/양식/중식/일식). `TagManager.tsx`에 태그 관리 섹션과 새 태그 추가 시 선택 옵션으로 추가.
+  `RecipeEditor.tsx`의 태그 선택 UI를 스타일/카테고리(있을 때만)/국가·스타일 세 섹션으로 분리(모두 다중
+  선택, cuisine은 선택 사항). AI(`propose_recipe`)가 `tagNames`로 제안하는 태그는 타입 구분 없이 이름만
+  보고 기존 태그를 재사용하므로(`resolveOrCreateTag`), 이미 등록된 cuisine 태그 이름을 그대로 다시
+  제안하면 자동으로 재사용됨 — 다만 AI가 새 cuisine 태그를 제안하도록 유도하는 프롬프트는 아직 추가하지
+  않음(필요해지면 `buildExistingContextNote`/시스템 프롬프트에 안내 추가할 것).
 
 ## 향후 확장 계획 (지금부터 구조는 열어두되 구현은 나중에)
 - **로그인 화면 UX 개선**: 이메일 로그인 흐름을 화면 전환(예: 확인 이메일 발송 화면)까지는 개선했지만,
@@ -308,10 +349,13 @@
 ## 데이터 모델 (최신)
 ```
 Recipe {
-  id, name, servingsBase, tagIds[] (카테고리/스타일 태그),
+  id, name, servingsBase, tagIds[] (스타일/카테고리/국가·스타일 태그 모두 포함),
   ingredients: [{ ingredientId, amount, unit }],
   steps: [{ title, content, timerSeconds?, imageId? }],
   createdAt?: string  // DB recipes.created_at 매핑, 레시피 목록 "최근 추가순" 정렬용
+  difficulty?: 'easy' | 'medium' | 'hard'  // 규칙 기반 자동 계산 또는 사용자 수동 설정
+  difficultyReason?: string  // 판단 근거 한 문장(수동 설정 시 'MANUAL_DIFFICULTY_REASON' 상수 문구)
+  estimatedMinutes?: number  // 예상 조리시간(분), 규칙 기반 자동 계산 또는 수동 입력
   // allergens는 저장하지 않음 — ingredients를 통해 항상 파생(computed) 계산
   // imageId는 IndexedDB(src/data/imageStore.ts)에 저장된 AI 생성 이미지 참조(실제 이미지 데이터 아님)
 }
@@ -330,7 +374,7 @@ Category {
 }
 
 Tag {
-  id, name, type ('style' | 'category')  // 크림류, 고기요리 등 관리 가능한 목록
+  id, name, type ('style' | 'category' | 'cuisine')  // 크림류/고기요리(style·category), 한식/양식 등(cuisine)
 }
 
 // PantryStatus는 더 이상 별도 저장소가 아니라 Ingredient.owned에서 파생되는 뷰(Record<id, boolean>).

@@ -31,6 +31,8 @@ export interface RecipeStep {
   imageId?: string;
 }
 
+export type Difficulty = 'easy' | 'medium' | 'hard';
+
 export interface Recipe {
   id: string;
   name: string;
@@ -40,9 +42,15 @@ export interface Recipe {
   steps: RecipeStep[];
   /** DB의 recipes.created_at — 정렬(최근 추가순)용. 로컬에서 새로 만든 뒤 아직 저장 전이면 없을 수 있음 */
   createdAt?: string;
+  /** 규칙 기반 자동 판단(src/lib/recipeDifficulty.ts) 또는 사용자가 수동 설정 */
+  difficulty?: Difficulty;
+  /** 판단 근거. 사용자가 수동으로 바꾸면 '사용자가 직접 설정함'으로 갱신됨 */
+  difficultyReason?: string;
+  /** 규칙 기반 자동 계산(src/lib/recipeTime.ts) 또는 사용자가 수동 입력한 예상 조리시간(분) */
+  estimatedMinutes?: number;
 }
 
-export type TagType = 'style' | 'category';
+export type TagType = 'style' | 'category' | 'cuisine';
 
 export interface Tag {
   id: string;

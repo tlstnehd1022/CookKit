@@ -1,4 +1,6 @@
 import type { Category, Ingredient, Recipe, Tag } from './types';
+import { computeDifficulty } from '../lib/recipeDifficulty';
+import { estimateCookMinutes } from '../lib/recipeTime';
 
 // 참고자료(요리_재료_관리.html, 리조또_레시피_모음.md)가 프로젝트에 없어
 // CLAUDE.md에 적힌 레시피 이름과 카테고리만 보고 합리적으로 추정한 시드 데이터.
@@ -102,7 +104,19 @@ export const seedTags: Tag[] = [
   { id: 'tag-soup', name: '국물요리', type: 'category' },
 ];
 
-export const seedRecipes: Recipe[] = [
+// 난이도/예상 조리시간은 규칙 기반 자동 계산(src/lib/recipeDifficulty.ts, src/lib/recipeTime.ts)으로
+// 채운다 — 앱에서 이 레시피들을 열어 직접 확인 후 필요하면 수정하면 된다.
+function withComputedStats(recipe: Omit<Recipe, 'difficulty' | 'difficultyReason' | 'estimatedMinutes'>): Recipe {
+  const estimatedMinutes = estimateCookMinutes(recipe.steps);
+  const { difficulty, reason } = computeDifficulty({
+    ingredientCount: recipe.ingredients.length,
+    cookMinutes: estimatedMinutes,
+    stepCount: recipe.steps.length,
+  });
+  return { ...recipe, estimatedMinutes, difficulty, difficultyReason: reason };
+}
+
+const rawSeedRecipes: Omit<Recipe, 'difficulty' | 'difficultyReason' | 'estimatedMinutes'>[] = [
   {
     id: 'recipe-cream-risotto',
     name: '마늘 없는 밥 크림 리조또',
@@ -194,3 +208,5 @@ export const seedRecipes: Recipe[] = [
     ],
   },
 ];
+
+export const seedRecipes: Recipe[] = rawSeedRecipes.map(withComputedStats);

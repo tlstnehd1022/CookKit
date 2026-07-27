@@ -3,6 +3,7 @@ import { useIngredientsById, useRecipes, useTags } from '../../data/store';
 import { useShoppingSelection } from '../../data/shoppingSelection';
 import { computeRecipeAllergens, scaleAmount } from '../../data/computed';
 import { useStoredImage } from '../../data/imageStore';
+import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
 
 export function RecipeDetailPage({
   recipeId,
@@ -19,6 +20,7 @@ export function RecipeDetailPage({
   const { isSelected, toggle } = useShoppingSelection();
   const recipe = recipes.find((r) => r.id === recipeId);
   const [servings, setServings] = useState(recipe?.servingsBase ?? 1);
+  const [showDifficultyReason, setShowDifficultyReason] = useState(false);
 
   useEffect(() => {
     if (recipe) setServings(recipe.servingsBase);
@@ -71,6 +73,19 @@ export function RecipeDetailPage({
         {isSelected(recipe.id) ? '🛒 장보기에 담김 (빼기)' : '🛒 장보기에 담기'}
       </button>
       <div className="chip-row">
+        {recipe.difficulty && <span className="chip">{DIFFICULTY_LABEL[recipe.difficulty]}</span>}
+        {recipe.estimatedMinutes != null && recipe.estimatedMinutes > 0 && (
+          <span className="chip">약 {recipe.estimatedMinutes}분</span>
+        )}
+        {recipe.difficultyReason && (
+          <button
+            className="chip selectable"
+            title={recipe.difficultyReason}
+            onClick={() => setShowDifficultyReason((v) => !v)}
+          >
+            ⓘ
+          </button>
+        )}
         {recipeTags.map((tag) => (
           <span className="chip" key={tag.id}>
             {tag.name}
@@ -82,6 +97,11 @@ export function RecipeDetailPage({
           </span>
         ))}
       </div>
+      {showDifficultyReason && recipe.difficultyReason && (
+        <p className="text-muted" style={{ marginTop: -6, marginBottom: 8 }}>
+          {recipe.difficultyReason}
+        </p>
+      )}
 
       <div className="section-title">인분 조절</div>
       <div className="stepper">

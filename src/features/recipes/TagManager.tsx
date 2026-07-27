@@ -65,6 +65,28 @@ export function TagManager({ onClose }: { onClose: () => void }) {
             />
           ))}
 
+        <div className="section-title">국가/스타일 태그 (한식·양식 등)</div>
+        {tags
+          .filter((tag) => tag.type === 'cuisine')
+          .map((tag) => (
+            <TagRow
+              key={tag.id}
+              name={tag.name}
+              isRenaming={renamingId === tag.id}
+              renameDraft={renameDraft}
+              onRenameDraftChange={setRenameDraft}
+              onStartRename={() => {
+                setRenamingId(tag.id);
+                setRenameDraft(tag.name);
+              }}
+              onConfirmRename={() => {
+                saveTag({ ...tag, name: renameDraft.trim() || tag.name });
+                setRenamingId(null);
+              }}
+              onDelete={() => deleteTag(tag.id)}
+            />
+          ))}
+
         <div className="section-title">새 태그 추가</div>
         <div className="field">
           <div className="row">
@@ -72,6 +94,7 @@ export function TagManager({ onClose }: { onClose: () => void }) {
             <select value={type} onChange={(e) => setType(e.target.value as TagType)}>
               <option value="style">스타일</option>
               <option value="category">카테고리</option>
+              <option value="cuisine">국가/스타일</option>
             </select>
             <button className="btn small" onClick={addTag}>
               추가

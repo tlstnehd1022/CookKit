@@ -35,7 +35,10 @@ export const RECIPE_CHAT_SYSTEM_PROMPT =
   '수량이 불명확한지) propose_recipe를 호출하기 전에 먼저 한국어로 짧게 되물어보세요. ' +
   '충분한 정보가 모이면 propose_recipe 도구를 호출해 현재까지 파악한 레시피 전체를 구조화된 형태로 제시하세요. ' +
   '이후 사용자가 수정을 요청하면(예: "고추기름은 직접 만드는 걸로 바꿔줘") 다시 propose_recipe를 호출해 ' +
-  '전체 레시피를 갱신해서 제시하세요. 답변은 한국어로 간결하게 하세요.';
+  '전체 레시피를 갱신해서 제시하세요. 답변은 한국어로 간결하게 하세요.\n\n' +
+  'propose_recipe를 호출할 때는 difficulty(난이도)도 함께 판단해서 채우세요. 기준: easy는 30분 이내· ' +
+  '재료 5가지 이하·특수 도구 불필요, medium은 1시간 이내·기본 도구로 가능, hard는 1시간 이상 걸리거나 ' +
+  '특수 기술/도구가 필요한 경우입니다. difficultyReason에는 이렇게 판단한 근거를 한국어 한 문장으로 남기세요.';
 
 /** 지금 폼에 이미 채워진 레시피 내용을 프롬프트에 넣어서, 대화가 처음이어도 AI가 "현재 레시피"를 알게 한다. */
 export function buildCurrentRecipeNote(recipe: RecipeSnapshot): string | null {

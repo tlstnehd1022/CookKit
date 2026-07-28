@@ -624,6 +624,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isPublic, setIsPublic] = useState(existing?.isPublic ?? false);
 
   async function handleSave() {
     const recipe: Recipe = {
@@ -637,6 +638,8 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       difficultyReason,
       estimatedMinutes,
       finalImageId,
+      sourceRecipeId: existing?.sourceRecipeId,
+      isPublic,
     };
     setSaving(true);
     setSaveError(null);
@@ -1057,6 +1060,25 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       <button className="btn small" onClick={addStepRow}>
         + 조리 단계 추가
       </button>
+
+      <div className="section-title">공개 설정</div>
+      <div className="card">
+        <div className="row">
+          <span>다른 사람들도 이 레시피를 볼 수 있게 공개하기</span>
+          <button
+            className={`toggle ${isPublic ? 'on' : ''}`}
+            onClick={() => setIsPublic((v) => !v)}
+            aria-label="공개 여부"
+          >
+            <span className="knob" />
+          </button>
+        </div>
+        {isPublic && (
+          <p className="text-muted" style={{ marginTop: 8 }}>
+            ⚠️ 이 레시피를 다른 사용자도 "둘러보기" 화면에서 볼 수 있게 됩니다(재료·조리순서·이미지 포함).
+          </p>
+        )}
+      </div>
 
       {saveError && <p style={{ color: 'var(--danger)' }}>{saveError}</p>}
       <div className="row" style={{ marginTop: 20 }}>

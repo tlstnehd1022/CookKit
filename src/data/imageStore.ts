@@ -45,6 +45,30 @@ export async function saveImage(path: string, dataUrl: string): Promise<void> {
   if (error) throw error;
 }
 
+/**
+ * 다른 household(공개 레시피)의 이미지를 실제로 다운로드해서 내 household 경로에 다시
+ * 업로드한다(참조만 유지하면 원본이 나중에 삭제되거나 비공개로 바뀔 때 같이 깨지므로 —
+ * "내 레시피로 복사하기"는 이미지까지 완전히 복사해야 함). 원본 경로는 recipe-images
+ * 버킷의 `recipe_images_select_via_public_recipe` 정책(공개 레시피 참조 시 다운로드 허용)
+ * 덕분에 다른 household 소유여도 읽을 수 있다.
+ */
+export async function copyImage(
+  sourcePath: string,
+  householdId: string,
+  recipeId: string,
+  kind: ImageKind,
+): Promise<string> {
+  const { data, error } = await supabase.storage.from(BUCKET).download(sourcePath);
+  if (error) throw error;
+  const newPath = buildImagePath(householdId, recipeId, kind);
+  const { error: uploadError } = await supabase.storage.from(BUCKET).upload(newPath, data, {
+    contentType: data.type || 'image/png',
+    upsert: true,
+  });
+  if (uploadError) throw uploadError;
+  return newPath;
+}
+
 async function getImageUrl(path: string): Promise<string | null> {
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
   if (error) {

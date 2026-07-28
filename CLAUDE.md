@@ -36,10 +36,9 @@
   같은 이미지를 볼 수 있게 함. 완성 요리 사진(`Recipe.finalImageId`) AI 생성/업로드 기능 추가, 조리
   단계 이미지와 완성 사진이 같은 화풍 가이드(`IMAGE_STYLE_GUIDE`)를 공유하도록 통일. 자세한 내용은
   아래 "이미지 저장(Supabase Storage)" 항목 참고.
-- **10차 확장 진행 중 — 다른 가구 공개 레시피 둘러보기/복사**: RLS 보완 + `is_public=true` 레시피를
-  모아 보여주는 "둘러보기" 화면까지 완료(아래 "레시피 탐색/복사" 항목 참고). 남은 건 "내 레시피로
-  복사하기" 실제 로직(재료/태그/이미지 복제)과 레시피 편집 화면의 공개(is_public) 토글 UI — 다음
-  단계에서 진행.
+- **10차 확장 완료 — 다른 가구 공개 레시피 둘러보기/복사**: RLS 보완 + "둘러보기" 화면 + "내 레시피로
+  복사하기"(재료/태그/난이도/조리시간/이미지까지 완전 복제) + 레시피 편집 화면의 공개(is_public)
+  토글까지 완료. 자세한 내용은 아래 "레시피 탐색/복사" 항목 참고.
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
@@ -338,8 +337,24 @@
     `ingredientId`를 전부 모아 별도 쿼리 한 번으로 해석(`ingredientNameById: Map<string,string>`).
     "이미 있음" 배지는 `recipes.source_recipe_id`(0007 마이그레이션에서 추가한 컬럼 — 복사해온 원본
     레시피 id를 추적) 기준으로 `myRecipes`와 대조해서 판단.
-  - **복사하기(`source_recipe_id`)와 공개(`is_public`) 토글은 다음 단계에서 진행** — 위 데이터 모델은
-    이미 준비돼 있음(`Recipe.sourceRecipeId`/`Recipe.isPublic`).
+  - **"내 레시피로 복사하기"** (`RecipesFeature.tsx`의 `handleCopyPublicRecipe`): 재료/태그는 이름으로
+    매칭해서 내 household에 이미 있으면 재사용, 없으면 새로 만듦(AI 반영 로직 `createIngredientFromAi`/
+    `resolveOrCreateTag`와 같은 패턴 — 순차 처리 + 배치 내 캐시로 중복 생성 방지). 새 재료의 카테고리는
+    원본 카테고리를 그대로 옮기지 않고(원본 카테고리는 다른 household 소유라 이름조차 못 읽어옴 —
+    categories 테이블까지는 공개 예외를 안 넣음, 범위 밖으로 남겨둠) "기타"로 폴백 — 필요하면 나중에
+    직접 재분류. 조리 단계 이미지/완성 사진은 **참조만 옮기지 않고 실제로 다운로드해서 내 household
+    경로에 새로 저장**(`imageStore.ts`의 `copyImage` — 원본이 나중에 삭제되거나 비공개로 바뀌어도 내
+    복사본은 이미지까지 안전하게 유지됨). 이걸 가능하게 하려고 recipe-images 버킷에
+    `supabase/migrations/0008_public_recipe_images_storage.sql`로 "공개 레시피가 참조하는 이미지는
+    다운로드만 추가로 허용"하는 정책을 넣음(0006의 household 전용 정책과 별개로 추가, 업로드/삭제는
+    여전히 household 전용). 복사 완료 후 `confirm()`으로 "편집 화면으로 이동할까요?" 안내.
+  - **공개(`is_public`) 토글**: `RecipeEditor.tsx` 하단(조리 순서 다음)에 "다른 사람들도 이 레시피를
+    볼 수 있게 공개하기" 토글 추가, 켜면 경고 문구 노출. 상세 화면에는 안 넣음(스펙상 편집 화면에만
+    필요).
+  - **범위에서 뺀 것**: 시드 레시피 4개(`src/data/seed.ts`)를 공개로 미리 심어두는 건 스킵 — 이 시드는
+    실제 DB에 한 번도 들어간 적 없는 미사용 TypeScript 참고 데이터라(Supabase 전환 후 새 household는
+    항상 빈 상태로 시작) 토글할 실제 DB 행 자체가 없음. 초기 콘텐츠 문제는 여러 household가 실제로
+    레시피를 만들고 공개하기 시작하면 자연히 해소될 것으로 보고 별도 조치 없이 남겨둠.
 - **난이도/조리시간 자동 판단**: `Recipe.difficulty`('easy'|'medium'|'hard') / `difficultyReason`(판단
   근거 한 문장) / `estimatedMinutes`(예상 조리시간 분)를 추가. 실제 저장은 다른 중첩 데이터와 마찬가지로
   `recipes.content` jsonb 안에 담김(`supabaseAdapter.ts`).

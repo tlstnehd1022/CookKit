@@ -64,10 +64,25 @@ function App() {
   return (
     <>
       <main className="app-main">
-        {tab === 'recipes' && <RecipesFeature />}
-        {tab === 'shopping' && <ShoppingListPage />}
-        {tab === 'ingredients' && <IngredientsPage />}
-        {tab === 'settings' && <SettingsPage />}
+        {/* 탭 전환 시 조건부 렌더링(마운트/언마운트)이 아니라 hidden 속성으로 숨기기만 한다.
+            언마운트하면 레시피 탭의 대화형 AI 채팅/편집 폼 진행 상태, 진행 중인 이미지 생성
+            요청 등이 다른 탭에 갔다 왔을 때 전부 날아가버림(useState는 마운트 중인 인스턴스에만
+            붙어있고, 언마운트된 컴포넌트로의 setState는 조용히 무시됨) — 그래서 4개 탭을 항상
+            같이 마운트해두고 안 보이는 탭만 hidden으로 화면에서만 감춘다. 각 탭은 이미 로드된
+            공유 store를 구독만 하므로(추가 네트워크 요청 없음) 동시에 마운트해둬도 비용이 거의
+            없다. */}
+        <div hidden={tab !== 'recipes'}>
+          <RecipesFeature />
+        </div>
+        <div hidden={tab !== 'shopping'}>
+          <ShoppingListPage />
+        </div>
+        <div hidden={tab !== 'ingredients'}>
+          <IngredientsPage />
+        </div>
+        <div hidden={tab !== 'settings'}>
+          <SettingsPage />
+        </div>
       </main>
       <nav className="app-nav">
         {TABS.map((t) => (

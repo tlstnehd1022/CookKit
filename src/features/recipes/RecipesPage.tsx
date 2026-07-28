@@ -172,7 +172,7 @@ export function RecipesPage({
           <select
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as SortMode)}
-            style={{ width: 'auto', fontSize: 13, padding: '4px 8px' }}
+            style={{ width: 'auto', fontSize: 13 }}
           >
             <option value="recent">최근 추가순</option>
             <option value="name">이름순</option>

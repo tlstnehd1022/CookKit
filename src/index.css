@@ -413,7 +413,6 @@ h2 {
 }
 
 .field input,
-.field select,
 .field textarea {
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -424,11 +423,42 @@ h2 {
 }
 
 .field input:focus,
-.field select:focus,
 .field textarea:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* select는 .field 안에 있든 없든(예: RecipesPage.tsx의 정렬 선택박스, UnitPicker) 항상 이
+   디자인 시스템 스타일을 타도록 .field 범위가 아닌 전역 규칙으로 둔다. 브라우저 기본 select는
+   appearance를 꺼주지 않으면 배경/테두리를 지정해도 OS 자체 크롬(특히 드롭다운 화살표)이 남아
+   따뜻한 아날로그 톤과 어긋나 보여서, 화살표도 CSS 배경 이미지로 직접 그려 넣는다. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 10px 32px 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--bg-page);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%237a6f5a' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* url() 안의 SVG data URI는 CSS 변수를 참조할 수 없어서(고정 색상 문자열이라야 함) 다크모드용
+   화살표 색(--text-secondary의 다크 값)을 별도로 하드코딩한다. */
+[data-theme='dark'] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23b4afa0' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
 }
 
 .section-title {

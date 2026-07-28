@@ -36,6 +36,10 @@
   같은 이미지를 볼 수 있게 함. 완성 요리 사진(`Recipe.finalImageId`) AI 생성/업로드 기능 추가, 조리
   단계 이미지와 완성 사진이 같은 화풍 가이드(`IMAGE_STYLE_GUIDE`)를 공유하도록 통일. 자세한 내용은
   아래 "이미지 저장(Supabase Storage)" 항목 참고.
+- **10차 확장 진행 중 — 다른 가구 공개 레시피 둘러보기/복사**: RLS 보완 + `is_public=true` 레시피를
+  모아 보여주는 "둘러보기" 화면까지 완료(아래 "레시피 탐색/복사" 항목 참고). 남은 건 "내 레시피로
+  복사하기" 실제 로직(재료/태그/이미지 복제)과 레시피 편집 화면의 공개(is_public) 토글 UI — 다음
+  단계에서 진행.
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
@@ -302,6 +306,40 @@
     걸 방지하려고 뺐음 — 담기는 상세 화면에 이미 있고, 삭제는 상세 화면(`RecipeDetailPage.tsx`)의
     "수정" 옆으로 옮김. 알러지 배지도 카드에서는 뺐음(이미 알러지 제외 필터가 있어 중복 판단) — 필요해지면
     다시 넣을 수 있음
+- **레시피 탐색/복사(다른 가구 공개 레시피 둘러보기)**: `RecipesFeature.tsx`에 "내 레시피"/"🔎 둘러보기"
+  칩 토글 추가(별도 하단 탭 대신 기존 레시피 탭 안에서 전환 — 탐색은 가끔 쓰는 보조 기능이라 4개
+  네비게이션 탭에 자리를 더 안 씀). 그리드/리스트 카드(`RecipeCard`/`RecipeListItem`)는 `RecipesPage.tsx`
+  것을 그대로 재사용하되, `tags: Tag[]` 대신 `tagNames: string[]`을 받도록 리팩터링(다른 household의
+  태그는 로컬 `useTags()` 목록에 없어서 이름을 미리 문자열로 뽑아 넘겨야 함), `ownerLabel`/`cornerBadge`
+  prop을 추가해 "OO님의 레시피"/"이미 있음" 표시를 지원.
+  - **RLS 보완이 핵심 작업이었음**: `recipes` 테이블 자체의 RLS(`recipes_select_public_or_own` — "본인 것
+    + is_public=true")는 이미 Phase 1 설계 때부터 되어 있어서 손댈 게 없었음. 진짜 문제는 공개 레시피가
+    "참조하는" 다른 테이블들 — `tags`/`ingredients`/`profiles`는 전부 household(또는 본인) 단위로만
+    보이게 막혀있어서, 다른 household의 공개 레시피를 열어도 그 레시피가 쓰는 태그 이름/재료 이름/
+    작성자 이름을 하나도 못 읽어오는 문제가 있었음(레시피 행 자체는 보이는데 참조된 이름들이 비어보임).
+    `supabase/migrations/0007_public_recipe_browsing.sql`(+ `schema.sql` 동기화)로 세 테이블에
+    "공개 레시피가 참조하는 경우에 한해 SELECT만 허용"하는 정책을 추가 — `tags`/`profiles`는 실제 조인
+    테이블(`recipe_tags`)/FK(`recipes.user_id`)가 있어 깔끔하게 작성 가능했지만, `ingredients`는 정식
+    조인 테이블이 없고(`recipes.content` jsonb 배열 안에 `ingredientId`만 있음) `jsonb_array_elements`로
+    모든 공개 레시피의 재료 배열을 훑어서 판단하는 정책을 씀(개인 앱 규모에서는 성능 문제 없음). 이
+    정책들은 전부 SELECT 전용이라 수정/삭제 권한은 원래대로 소유 household/본인으로 제한됨.
+  - **버그(발견 및 수정) — "내 레시피"에 남의 공개 레시피가 섞여 나오고 있었음**: `createRecipesRepository`의
+    `getAll()`이 원래 `user_id` 필터 없이 그냥 `recipes` 테이블을 조회했는데, RLS가 이미 "본인 것 +
+    is_public=true"를 다 통과시켜주기 때문에 이 필터 없는 조회가 실제로는 **다른 사람의 공개 레시피까지
+    "내 레시피" 목록에 섞어서 반환하고 있었음**(둘러보기 기능을 만들면서 발견 — 이전까지는 공개 레시피가
+    하나도 없어서 드러나지 않았던 버그). `.eq('user_id', userId)`를 명시적으로 추가해서 "내 레시피"는
+    소유권 기준으로만 걸러지도록 수정. 앞으로 RLS가 여러 조건을 OR로 통과시키는 테이블은, 클라이언트
+    쪽에서 "지금 이 화면에 필요한 조건"을 별도로 명시하는 걸 잊지 말 것 — RLS 통과 ≠ 화면에 보여줘야 할
+    범위.
+  - **공개 레시피 조회는 `src/data/publicRecipes.ts`의 `fetchPublicRecipes(currentUserId, myRecipes)`** —
+    household 공유 store(`store.ts`)처럼 계속 구독하는 캐시가 아니라 `DiscoverRecipesPage.tsx` 진입
+    시 1회 조회. `recipe_tags(tag_id, tags(name))`/`profiles(display_name, email)`를 PostgREST 임베드
+    조인으로 함께 가져와 태그 이름/작성자 이름을 한 번에 해석하고, 재료 이름은 이 배치가 참조하는
+    `ingredientId`를 전부 모아 별도 쿼리 한 번으로 해석(`ingredientNameById: Map<string,string>`).
+    "이미 있음" 배지는 `recipes.source_recipe_id`(0007 마이그레이션에서 추가한 컬럼 — 복사해온 원본
+    레시피 id를 추적) 기준으로 `myRecipes`와 대조해서 판단.
+  - **복사하기(`source_recipe_id`)와 공개(`is_public`) 토글은 다음 단계에서 진행** — 위 데이터 모델은
+    이미 준비돼 있음(`Recipe.sourceRecipeId`/`Recipe.isPublic`).
 - **난이도/조리시간 자동 판단**: `Recipe.difficulty`('easy'|'medium'|'hard') / `difficultyReason`(판단
   근거 한 문장) / `estimatedMinutes`(예상 조리시간 분)를 추가. 실제 저장은 다른 중첩 데이터와 마찬가지로
   `recipes.content` jsonb 안에 담김(`supabaseAdapter.ts`).
@@ -363,9 +401,6 @@
   안드로이드 위주)는 기술적으로 가능. 매번 AI 호출하면 느리고 비용 드니, 자주 쓰는 명령(시작/다음/얼마나 남았어)은
   키워드 매칭으로 즉시 처리하고 자유 질문("이거 얼마나 끓여야해?")만 기존 AI 채팅으로 넘기는 하이브리드 구조 추천.
   MVP는 TTS(타이머 완료 음성 알림)부터, STT는 다음 단계로
-- **레시피 탐색/복사(다른 가구 레시피 둘러보기)**: is_public=true인 레시피를 모아 보여주는 탐색 화면 + '내 레시피로
-  복사하기' 기능. 데이터 모델(user_id 소유, is_public 필드)은 이미 Phase 2에서 준비돼 있어 확장만 하면 됨. 초기
-  콘텐츠 문제 해결을 위해 시스템 계정으로 AI 생성 보편적 레시피를 미리 심어두는 방안도 고려.
 
 ## 핵심 기능 요구사항
 
@@ -467,6 +502,8 @@ Recipe {
   difficultyReason?: string  // 판단 근거 한 문장(수동 설정 시 'MANUAL_DIFFICULTY_REASON' 상수 문구)
   estimatedMinutes?: number  // 예상 조리시간(분), 규칙 기반 자동 계산 또는 수동 입력
   finalImageId?: string  // 완성 사진(AI 생성 또는 업로드), Supabase Storage 경로 참조
+  sourceRecipeId?: string  // 공개 레시피를 복사해온 경우 원본 id(DB recipes.source_recipe_id 실컬럼)
+  isPublic?: boolean  // 다른 사용자도 조회 가능한지(DB recipes.is_public 실컬럼, 기본 false)
   // allergens는 저장하지 않음 — ingredients를 통해 항상 파생(computed) 계산
   // imageId/finalImageId는 Supabase Storage(src/data/imageStore.ts)에 저장된 이미지 경로 참조(실제 데이터 아님)
 }

@@ -198,6 +198,20 @@ h2 {
   box-shadow: var(--shadow-soft-hover);
 }
 
+.recipe-card-corner-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
+}
+
 .recipe-card-image,
 .recipe-card-placeholder {
   width: 100%;

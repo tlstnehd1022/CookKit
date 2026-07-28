@@ -98,7 +98,7 @@ interface RecipeContent {
   finalImageId?: string;
 }
 
-function rowToRecipe(row: Record<string, unknown>): Recipe {
+export function rowToRecipe(row: Record<string, unknown>): Recipe {
   const content = (row.content as RecipeContent | null) ?? { servingsBase: 1, ingredients: [], steps: [] };
   const recipeTags = (row.recipe_tags as { tag_id: string }[] | null) ?? [];
   return {
@@ -113,6 +113,8 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     difficultyReason: content.difficultyReason,
     estimatedMinutes: content.estimatedMinutes,
     finalImageId: content.finalImageId,
+    sourceRecipeId: (row.source_recipe_id as string | null) ?? undefined,
+    isPublic: Boolean(row.is_public),
   };
 }
 
@@ -135,8 +137,11 @@ export function createRecipesRepository(userId: string): CrudRepository<Recipe> 
         estimatedMinutes: recipe.estimatedMinutes,
         finalImageId: recipe.finalImageId,
       } satisfies RecipeContent,
-      // is_public은 일부러 안 보냄 — upsert 시 지정 안 한 컬럼은 UPDATE 대상에서 빠져서
-      // 기존 공개 설정이 그대로 유지된다(새 레시피는 컬럼 기본값 false로 시작).
+      // is_public/source_recipe_id는 실제 컬럼이라 명시적으로 보냄 — RecipeEditor가
+      // rowToRecipe로 읽어온 기존 값을 폼 상태에 들고 있다가 그대로 다시 보내므로
+      // (existing?.isPublic ?? false 식으로 초기화) 의도치 않게 되돌아가지 않음.
+      is_public: recipe.isPublic ?? false,
+      source_recipe_id: recipe.sourceRecipeId ?? null,
     });
     if (upsertError) throw upsertError;
 
@@ -153,7 +158,13 @@ export function createRecipesRepository(userId: string): CrudRepository<Recipe> 
 
   return {
     async getAll() {
-      const { data, error } = await supabase.from('recipes').select('*, recipe_tags(tag_id)');
+      // user_id로 명시적으로 필터링 — RLS는 "본인 것 + is_public=true"를 다 통과시켜주므로
+      // 필터 없이 조회하면 다른 사람의 공개 레시피까지 "내 레시피" 목록에 섞여 나오는 버그가
+      // 있었음(둘러보기 기능을 만들면서 발견). "내 레시피"는 소유권 기준으로만 걸러야 한다.
+      const { data, error } = await supabase
+        .from('recipes')
+        .select('*, recipe_tags(tag_id)')
+        .eq('user_id', userId);
       if (error) throw error;
       return (data ?? []).map(rowToRecipe);
     },

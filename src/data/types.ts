@@ -50,6 +50,10 @@ export interface Recipe {
   estimatedMinutes?: number;
   /** 완성된 요리 사진(AI 생성 또는 업로드) — Supabase Storage 경로(src/data/imageStore.ts) */
   finalImageId?: string;
+  /** 공개 레시피를 "내 레시피로 복사하기"로 가져온 경우, 그 원본 레시피 id(DB 컬럼) */
+  sourceRecipeId?: string;
+  /** 다른 사람도 볼 수 있게 공개할지 여부(기본 false) — DB의 recipes.is_public 컬럼 */
+  isPublic?: boolean;
 }
 
 export type TagType = 'style' | 'category' | 'cuisine';

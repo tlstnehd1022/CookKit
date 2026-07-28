@@ -7,13 +7,17 @@ import type { Ingredient, Recipe, Tag } from '../../data/types';
 
 // 태그 이름별 대표 이모지 — 대표 이미지(조리 단계 이미지)가 없는 레시피의 플레이스홀더용.
 // 매칭되는 태그가 없으면 기본 이모지로 대체.
-const TAG_PLACEHOLDER_EMOJI: Record<string, string> = {
+export const TAG_PLACEHOLDER_EMOJI: Record<string, string> = {
   크림류: '🥛',
   토마토류: '🍅',
   고기요리: '🥩',
   국물요리: '🍲',
 };
-const DEFAULT_PLACEHOLDER_EMOJI = '🍽️';
+export const DEFAULT_PLACEHOLDER_EMOJI = '🍽️';
+
+export function resolveRecipeTagNames(recipe: Recipe, tags: Tag[]): string[] {
+  return tags.filter((tag) => recipe.tagIds.includes(tag.id)).map((tag) => tag.name);
+}
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -209,7 +213,12 @@ export function RecipesPage({
       {viewMode === 'grid' ? (
         <div className="recipe-grid">
           {sorted.map((recipe) => (
-            <RecipeCard key={recipe.id} recipe={recipe} tags={tags} onClick={() => onSelectRecipe(recipe.id)} />
+            <RecipeCard
+              key={recipe.id}
+              recipe={recipe}
+              tagNames={resolveRecipeTagNames(recipe, tags)}
+              onClick={() => onSelectRecipe(recipe.id)}
+            />
           ))}
         </div>
       ) : (
@@ -218,7 +227,7 @@ export function RecipesPage({
             <RecipeListItem
               key={recipe.id}
               recipe={recipe}
-              tags={tags}
+              tagNames={resolveRecipeTagNames(recipe, tags)}
               onClick={() => onSelectRecipe(recipe.id)}
             />
           ))}
@@ -228,22 +237,31 @@ export function RecipesPage({
   );
 }
 
-function useRecipeCardInfo(recipe: Recipe, tags: Tag[]) {
+export function useRecipeCardInfo(recipe: Recipe, tagNames: string[]) {
   // 대표 이미지 우선순위: 완성 사진 > 첫 조리 단계 이미지 > (없으면 태그 기반 플레이스홀더)
   const firstStepImageId = recipe.steps.find((step) => step.imageId)?.imageId;
   const imageUrl = useStoredImage(recipe.finalImageId ?? firstStepImageId);
-  const recipeTags = tags.filter((tag) => recipe.tagIds.includes(tag.id));
   const totalMinutes = computeTotalCookMinutes(recipe);
-  const placeholderEmoji =
-    recipeTags.map((tag) => TAG_PLACEHOLDER_EMOJI[tag.name]).find(Boolean) ?? DEFAULT_PLACEHOLDER_EMOJI;
-  return { imageUrl, recipeTags, totalMinutes, placeholderEmoji };
+  const placeholderEmoji = tagNames.map((name) => TAG_PLACEHOLDER_EMOJI[name]).find(Boolean) ?? DEFAULT_PLACEHOLDER_EMOJI;
+  return { imageUrl, totalMinutes, placeholderEmoji };
 }
 
-function RecipeCard({ recipe, tags, onClick }: { recipe: Recipe; tags: Tag[]; onClick: () => void }) {
-  const { imageUrl, recipeTags, totalMinutes, placeholderEmoji } = useRecipeCardInfo(recipe, tags);
+export interface RecipeCardProps {
+  recipe: Recipe;
+  tagNames: string[];
+  onClick: () => void;
+  /** 둘러보기 화면에서 "OO님의 레시피"처럼 작성자 표시용(선택) */
+  ownerLabel?: string;
+  /** 둘러보기 화면에서 "이미 있음" 같은 코너 배지용(선택) */
+  cornerBadge?: string;
+}
+
+export function RecipeCard({ recipe, tagNames, onClick, ownerLabel, cornerBadge }: RecipeCardProps) {
+  const { imageUrl, totalMinutes, placeholderEmoji } = useRecipeCardInfo(recipe, tagNames);
 
   return (
-    <div className="recipe-card" onClick={onClick}>
+    <div className="recipe-card" onClick={onClick} style={{ position: 'relative' }}>
+      {cornerBadge && <span className="recipe-card-corner-badge">{cornerBadge}</span>}
       {imageUrl ? (
         <img src={imageUrl} alt={recipe.name} className="recipe-card-image" />
       ) : (
@@ -251,11 +269,11 @@ function RecipeCard({ recipe, tags, onClick }: { recipe: Recipe; tags: Tag[]; on
       )}
       <div className="recipe-card-body">
         <strong className="recipe-title">{recipe.name}</strong>
-        {recipeTags.length > 0 && (
+        {tagNames.length > 0 && (
           <div className="chip-row" style={{ marginTop: 0 }}>
-            {recipeTags.slice(0, 2).map((tag) => (
-              <span className="chip" key={tag.id}>
-                {tag.name}
+            {tagNames.slice(0, 2).map((name) => (
+              <span className="chip" key={name}>
+                {name}
               </span>
             ))}
           </div>
@@ -263,16 +281,22 @@ function RecipeCard({ recipe, tags, onClick }: { recipe: Recipe; tags: Tag[]; on
         <span className="text-muted" style={{ fontSize: 12 }}>
           {recipe.servingsBase}인분{totalMinutes > 0 ? ` · 약 ${totalMinutes}분` : ''}
         </span>
+        {ownerLabel && (
+          <span className="text-muted" style={{ fontSize: 11 }}>
+            {ownerLabel}
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
-function RecipeListItem({ recipe, tags, onClick }: { recipe: Recipe; tags: Tag[]; onClick: () => void }) {
-  const { imageUrl, recipeTags, totalMinutes, placeholderEmoji } = useRecipeCardInfo(recipe, tags);
+export function RecipeListItem({ recipe, tagNames, onClick, ownerLabel, cornerBadge }: RecipeCardProps) {
+  const { imageUrl, totalMinutes, placeholderEmoji } = useRecipeCardInfo(recipe, tagNames);
 
   return (
-    <div className="recipe-list-item" onClick={onClick}>
+    <div className="recipe-list-item" onClick={onClick} style={{ position: 'relative' }}>
+      {cornerBadge && <span className="recipe-card-corner-badge">{cornerBadge}</span>}
       {imageUrl ? (
         <img src={imageUrl} alt={recipe.name} className="recipe-list-thumb" />
       ) : (
@@ -281,9 +305,10 @@ function RecipeListItem({ recipe, tags, onClick }: { recipe: Recipe; tags: Tag[]
       <div className="recipe-list-body">
         <strong className="recipe-title">{recipe.name}</strong>
         <span className="text-muted" style={{ fontSize: 12 }}>
-          {recipeTags.slice(0, 2).map((tag) => tag.name).join(', ')}
-          {recipeTags.length > 0 ? ' · ' : ''}
+          {tagNames.slice(0, 2).join(', ')}
+          {tagNames.length > 0 ? ' · ' : ''}
           {recipe.servingsBase}인분{totalMinutes > 0 ? ` · 약 ${totalMinutes}분` : ''}
+          {ownerLabel ? ` · ${ownerLabel}` : ''}
         </span>
       </div>
     </div>

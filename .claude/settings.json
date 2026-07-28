@@ -25,7 +25,10 @@
       "Skill(update-config:*)",
       "Bash(npm run *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(netstat -ano)",
+      "WebFetch(domain:www.aifreeapi.com)",
+      "WebFetch(domain:yingtu.ai)"
     ],
     "deny": [
       "Bash(rm -rf *)",

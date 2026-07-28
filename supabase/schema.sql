@@ -173,6 +173,7 @@ create table public.recipes (
   title text not null,
   content jsonb not null default '{}'::jsonb,
   is_public boolean not null default false,
+  source_recipe_id uuid references public.recipes(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -231,6 +232,12 @@ create policy "profiles_select_own_or_household" on public.profiles
     id = auth.uid() or public.shares_household_with(id)
   );
 
+-- 공개 레시피 작성자 이름("OO님의 레시피")은 household가 달라도 조회 가능해야 함
+create policy "profiles_select_via_public_recipe" on public.profiles
+  for select using (
+    id in (select user_id from public.recipes where is_public = true)
+  );
+
 create policy "profiles_update_own" on public.profiles
   for update using (id = auth.uid()) with check (id = auth.uid());
 
@@ -270,6 +277,28 @@ create policy "ingredients_all_household_member" on public.ingredients
 create policy "tags_all_household_member" on public.tags
   for all using (public.is_household_member(household_id))
   with check (public.is_household_member(household_id));
+
+-- 공개 레시피가 쓰는 태그/재료는 household가 달라도 이름을 읽을 수 있어야 함(둘러보기 화면용)
+create policy "tags_select_via_public_recipe" on public.tags
+  for select using (
+    exists (
+      select 1 from public.recipe_tags rt
+      join public.recipes r on r.id = rt.recipe_id
+      where rt.tag_id = tags.id and r.is_public = true
+    )
+  );
+
+create policy "ingredients_select_via_public_recipe" on public.ingredients
+  for select using (
+    exists (
+      select 1 from public.recipes r
+      where r.is_public = true
+        and exists (
+          select 1 from jsonb_array_elements(coalesce(r.content->'ingredients', '[]'::jsonb)) as ing
+          where (ing->>'ingredientId')::uuid = ingredients.id
+        )
+    )
+  );
 
 -- ---- recipes ---------------------------------------------------------
 create policy "recipes_select_public_or_own" on public.recipes

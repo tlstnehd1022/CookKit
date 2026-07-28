@@ -78,9 +78,14 @@ textarea {
   overflow-y: auto;
 }
 
-/* 이미지 일괄 생성 진행 배너 — 어떤 탭을 보고 있어도(레시피 탭이 hidden이어도) 항상 위에 떠서
-   보이도록 app-main보다 앞에, #root의 flex column 안에서 자체 한 줄을 차지한다. */
+/* 이미지 일괄 생성 진행 배너 — 어떤 탭을 보고 있어도(레시피 탭이 hidden이어도) 항상 보이도록
+   app-main보다 앞에 둔다. 실제 스크롤은 #root가 아니라 문서(body) 레벨에서 일어나므로
+   (min-height:100vh라 내용이 길어지면 #root 자체가 늘어남 — app-nav가 이미 같은 이유로
+   position:sticky를 쓰고 있는 것과 동일한 사정) sticky로 스크롤해도 화면 상단에 붙어있게 함. */
 .image-gen-banner {
+  position: sticky;
+  top: 0;
+  z-index: 50;
   flex-shrink: 0;
   padding: 8px 20px;
   background: var(--chip-bg);

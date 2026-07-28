@@ -14,6 +14,11 @@ import { buildImagePath, deleteImage, isStorageImagePath, saveImage, useStoredIm
 import { getErrorMessage } from '../../lib/errorMessage';
 import { computeDifficulty, DIFFICULTY_LABEL, MANUAL_DIFFICULTY_REASON } from '../../lib/recipeDifficulty';
 import { estimateCookMinutes } from '../../lib/recipeTime';
+import {
+  finishImageGenerationBatch,
+  startImageGenerationBatch,
+  updateImageGenerationProgress,
+} from '../../data/imageGenerationStatus';
 
 export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: () => void }) {
   const { recipes, saveRecipe } = useRecipes();
@@ -491,7 +496,12 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     }
   }
 
-  const BATCH_SIZE = 7;
+  // Google이 더 이상 모델별 고정 RPM/IPM 표를 공개하지 않고(계정/프로젝트별로 AI Studio
+  // 콘솔에서만 확인 가능) gemini-3.1-flash-image는 무료 티어에 아예 없는 유료 전용 모델이라,
+  // "검증된 여유"를 근거로 정할 수 없었음 — 7에서 10으로 소폭만 올려 대기 시간을 조금 줄이되
+  // 과도한 동시 요청으로 인한 타임아웃/실패 증가는 피함(408도 재시도 대상이라 어느 정도는
+  // 안전망이 있음). 계정의 AI Studio 콘솔에서 실제 한도를 확인하면 더 올릴 수 있는지 판단 가능.
+  const BATCH_SIZE = 10;
   const BATCH_WARN_THRESHOLD = 7;
 
   /** 조리 단계 이미지(+ 선택적으로 완성 사진 1개)를 한 번에 생성한다. 진행률(batchProgress)은
@@ -508,6 +518,12 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     setImageError(null);
     const total = indexes.length + (includeFinal ? 1 : 0);
     setBatchProgress({ done: 0, total });
+    // 로컬 state(batchProgress)뿐 아니라 전역 store에도 같이 기록 — 다른 탭으로 이동해서
+    // 이 화면이 hidden 처리돼 있어도(App.tsx) App 상단 배너/완료 토스트로 진행 상황을 계속
+    // 보여주기 위함. 생성 작업 자체(아래 for 루프)는 컴포넌트가 화면에서 안 보여도 계속
+    // 진행된다 — React state 갱신이 언마운트 시에만 무시되는데, 탭 전환은 hidden일 뿐
+    // 언마운트가 아니라서 batchProgress도 정상적으로 갱신됨.
+    startImageGenerationBatch(recipeNameForPrompt, total);
     let doneCount = 0;
     const failures: string[] = [];
     for (let i = 0; i < indexes.length; i += BATCH_SIZE) {
@@ -529,6 +545,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           } finally {
             doneCount += 1;
             setBatchProgress({ done: doneCount, total });
+            updateImageGenerationProgress(doneCount);
           }
         }),
       );
@@ -543,9 +560,11 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       } finally {
         doneCount += 1;
         setBatchProgress({ done: doneCount, total });
+        updateImageGenerationProgress(doneCount);
       }
     }
     setBatchProgress(null);
+    finishImageGenerationBatch(failures.length);
     if (failures.length > 0) {
       setImageError(`${total}개 중 ${failures.length}개 이미지 생성에 실패했습니다.\n` + failures.join('\n'));
     }

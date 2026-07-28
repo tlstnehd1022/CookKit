@@ -9,6 +9,7 @@ import { useSession } from './data/session';
 import { useHousehold } from './data/household';
 import { initializeDataLayer, resetDataLayer, useDataLayerLoading } from './data/store';
 import { initializeShoppingSelection, resetShoppingSelection } from './data/shoppingSelection';
+import { useImageGenerationCompletionMessage, useImageGenerationStatus } from './data/imageGenerationStatus';
 
 type Tab = 'recipes' | 'shopping' | 'ingredients' | 'settings';
 
@@ -24,6 +25,8 @@ function App() {
   const { household, loading: householdLoading, refresh: refreshHousehold } = useHousehold();
   const dataLoading = useDataLayerLoading();
   const [tab, setTab] = useState<Tab>('recipes');
+  const imageGenStatus = useImageGenerationStatus();
+  const imageGenCompletionMessage = useImageGenerationCompletionMessage();
 
   useEffect(() => {
     if (!user) {
@@ -63,6 +66,11 @@ function App() {
 
   return (
     <>
+      {imageGenStatus.active && (
+        <div className="image-gen-banner">
+          🖼 "{imageGenStatus.recipeName}" 이미지 생성 중... ({imageGenStatus.done}/{imageGenStatus.total})
+        </div>
+      )}
       <main className="app-main">
         {/* 탭 전환 시 조건부 렌더링(마운트/언마운트)이 아니라 hidden 속성으로 숨기기만 한다.
             언마운트하면 레시피 탭의 대화형 AI 채팅/편집 폼 진행 상태, 진행 중인 이미지 생성
@@ -92,6 +100,7 @@ function App() {
           </button>
         ))}
       </nav>
+      {imageGenCompletionMessage && <div className="toast">{imageGenCompletionMessage}</div>}
     </>
   );
 }

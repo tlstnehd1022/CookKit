@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { createLocalStorageKeyValue } from './localStorageAdapter';
 import { DEFAULT_MODEL } from '../lib/claudeClient';
-import { GEMINI_DEFAULT_MODEL } from '../lib/geminiClient';
+import { GEMINI_DEFAULT_MODEL, GEMINI_IMAGE_MODEL } from '../lib/geminiClient';
 
 export type AiProvider = 'anthropic' | 'gemini';
 
@@ -11,6 +11,7 @@ export interface AppSettings {
   model: string;
   geminiApiKey: string;
   geminiModel: string;
+  geminiImageModel: string;
   youtubeApiKey: string;
 }
 
@@ -20,6 +21,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   model: DEFAULT_MODEL,
   geminiApiKey: '',
   geminiModel: GEMINI_DEFAULT_MODEL,
+  geminiImageModel: GEMINI_IMAGE_MODEL,
   youtubeApiKey: '',
 };
 

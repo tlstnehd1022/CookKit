@@ -12,7 +12,12 @@ import type { RecipeSnapshot } from './recipeDiff';
 
 export const GEMINI_DEFAULT_MODEL = 'gemini-3.6-flash';
 // 조리 단계 이미지 생성 전용 모델("Nano Banana" 계열) — 텍스트 모델과 별개로 관리.
-// Claude는 이미지 생성을 지원하지 않아 이 기능은 Gemini 전용이다.
+// Claude는 이미지 생성을 지원하지 않아 이 기능은 Gemini 전용이다. 기본값은 최신 GA 모델이지만
+// 설정 화면에서 사용자가 다른 모델 ID로 바꿀 수 있음(settings.geminiImageModel) — 예:
+// gemini-3.1-flash-image는 무료 티어에 없는 유료 전용 모델이라, 무료로 테스트하고 싶으면
+// gemini-2.5-flash-image("Nano Banana" 1세대, 무료 티어 하루 약 500장)로 바꿔볼 수 있음.
+// 다만 신규 발급 API 키는 2.x 세대 모델 자체가 막혀있을 수 있음(위 텍스트 모델 주석 참고) —
+// 계정/키 발급 시점에 따라 다름.
 export const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image';
 
 export interface ExtractedRecipe {
@@ -310,14 +315,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function requestImageOnce(apiKey: string, prompt: string): Promise<string> {
+async function requestImageOnce(apiKey: string, model: string, prompt: string): Promise<string> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), IMAGE_GENERATION_TIMEOUT_MS);
 
   let res: Response;
   try {
     res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -364,10 +369,10 @@ async function requestImageOnce(apiKey: string, prompt: string): Promise<string>
  * 오류는 지수 백오프(2초, 4초)로 자동 재시도하고, 그 외 오류는 즉시 던진다. 조리 단계 이미지와 완성
  * 사진 둘 다 같은 재시도 로직을 공유한다(`generateStepImage`/`generateFinalDishImage` 둘 다 이 함수).
  */
-export async function generateImageWithRetry(apiKey: string, prompt: string): Promise<string> {
+export async function generateImageWithRetry(apiKey: string, model: string, prompt: string): Promise<string> {
   for (let attempt = 0; attempt <= IMAGE_GENERATION_MAX_RETRIES; attempt++) {
     try {
-      return await requestImageOnce(apiKey, prompt);
+      return await requestImageOnce(apiKey, model, prompt);
     } catch (err) {
       const isRetryable = err instanceof GeminiImageError && RETRYABLE_STATUS_CODES.has(err.status);
       if (!isRetryable || attempt === IMAGE_GENERATION_MAX_RETRIES) {

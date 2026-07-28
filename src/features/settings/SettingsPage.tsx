@@ -124,6 +124,18 @@ export function SettingsPage() {
                 placeholder="gemini-2.5-flash"
               />
             </div>
+            <div className="field">
+              <label>이미지 생성 모델 ID (조리 단계/완성 사진)</label>
+              <input
+                value={settings.geminiImageModel}
+                onChange={(e) => updateSettings({ geminiImageModel: e.target.value })}
+                placeholder="gemini-3.1-flash-image"
+              />
+              <p className="text-muted" style={{ marginTop: 4 }}>
+                기본값은 최신 모델이지만 유료 티어 전용일 수 있어요. 무료로 테스트하려면
+                <code> gemini-2.5-flash-image</code>(무료 티어, 하루 약 500장)로 바꿔보세요.
+              </p>
+            </div>
             <button className="btn primary" onClick={saveGeminiKey}>
               저장
             </button>

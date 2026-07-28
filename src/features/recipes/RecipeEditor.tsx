@@ -383,7 +383,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     setImageGeneratingIndex(index);
     try {
       const prompt = geminiClient.buildStepImagePrompt(name || '이름 없는 레시피', step);
-      const dataUrl = await geminiClient.generateStepImage(settings.geminiApiKey, prompt);
+      const dataUrl = await geminiClient.generateStepImage(settings.geminiApiKey, settings.geminiImageModel, prompt);
       const imageId = isStorageImagePath(step.imageId) ? step.imageId : buildImagePath(householdId, stableRecipeId, 'step');
       await saveImage(imageId, dataUrl);
       updateStepRow(index, { imageId });
@@ -421,7 +421,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       currentMainIngredientNames(),
       currentTagNames(),
     );
-    const dataUrl = await geminiClient.generateFinalDishImage(settings.geminiApiKey, prompt);
+    const dataUrl = await geminiClient.generateFinalDishImage(settings.geminiApiKey, settings.geminiImageModel, prompt);
     const path = isStorageImagePath(finalImageId) ? finalImageId : buildImagePath(householdId, stableRecipeId, 'final');
     await saveImage(path, dataUrl);
     setFinalImageId(path);
@@ -534,7 +534,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           if (!step) return;
           try {
             const prompt = geminiClient.buildStepImagePrompt(recipeNameForPrompt, step);
-            const dataUrl = await geminiClient.generateStepImage(apiKey, prompt);
+            const dataUrl = await geminiClient.generateStepImage(apiKey, settings.geminiImageModel, prompt);
             const imageId = isStorageImagePath(step.imageId) ? step.imageId : buildImagePath(householdId, stableRecipeId, 'step');
             await saveImage(imageId, dataUrl);
             updateStepRow(stepIndex, { imageId });

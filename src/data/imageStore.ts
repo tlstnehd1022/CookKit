@@ -69,6 +69,29 @@ export async function copyImage(
   return newPath;
 }
 
+/**
+ * 외부 URL(예: 유튜브 썸네일 프록시 `/api/youtube-thumbnail`)에서 이미지를 받아와 내 household
+ * 경로에 저장한다. 외부 URL을 그대로 imageId에 저장하지 않는 이유: 나중에 그 URL이 깨지거나
+ * 바뀌면 이미지가 같이 사라지므로, 우리 Storage로 실제 복사해서 독립적으로 유지한다.
+ */
+export async function saveImageFromUrl(
+  sourceUrl: string,
+  householdId: string,
+  recipeId: string,
+  kind: ImageKind,
+): Promise<string> {
+  const res = await fetch(sourceUrl);
+  if (!res.ok) throw new Error('이미지를 가져오지 못했습니다.');
+  const blob = await res.blob();
+  const newPath = buildImagePath(householdId, recipeId, kind);
+  const { error } = await supabase.storage.from(BUCKET).upload(newPath, blob, {
+    contentType: blob.type || 'image/jpeg',
+    upsert: true,
+  });
+  if (error) throw error;
+  return newPath;
+}
+
 async function getImageUrl(path: string): Promise<string | null> {
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
   if (error) {

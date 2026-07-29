@@ -9,8 +9,15 @@ import type { Difficulty, Recipe, RecipeIngredient, RecipeStep, RecipeVisibility
 import { COMMON_UNITS, CUSTOM_UNIT_VALUE } from '../../data/units';
 import { RecipeChatPanel } from './RecipeChatPanel';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
-import { fetchYoutubeTranscript } from '../../lib/youtubeTranscript';
-import { buildImagePath, deleteImage, isStorageImagePath, saveImage, useStoredImage } from '../../data/imageStore';
+import { extractYoutubeVideoId, fetchYoutubeTranscript } from '../../lib/youtubeTranscript';
+import {
+  buildImagePath,
+  deleteImage,
+  isStorageImagePath,
+  saveImage,
+  saveImageFromUrl,
+  useStoredImage,
+} from '../../data/imageStore';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { computeDifficulty, DIFFICULTY_LABEL, MANUAL_DIFFICULTY_REASON } from '../../lib/recipeDifficulty';
 import { estimateCookMinutes } from '../../lib/recipeTime';
@@ -82,6 +89,8 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   const [pendingYoutubeSource, setPendingYoutubeSource] = useState<'captions' | 'supadata'>('captions');
   const [pendingYoutubeLanguage, setPendingYoutubeLanguage] = useState('');
   const [applyingYoutube, setApplyingYoutube] = useState(false);
+  const [pendingYoutubeVideoId, setPendingYoutubeVideoId] = useState<string | null>(null);
+  const [useYoutubeThumbnail, setUseYoutubeThumbnail] = useState(true);
 
   interface FormSnapshot {
     name: string;
@@ -256,6 +265,8 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       setPendingYoutubeDiff(summarizeRecipeDiff(currentRecipeSnapshot, result));
       setPendingYoutubeSource(transcriptSource);
       setPendingYoutubeLanguage(transcriptLanguage);
+      setPendingYoutubeVideoId(extractYoutubeVideoId(youtubeUrl.trim()));
+      setUseYoutubeThumbnail(true);
     } catch (err) {
       setAiError(err instanceof Error ? err.message : '유튜브 변환에 실패했습니다.');
     } finally {
@@ -277,8 +288,20 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
             : `유튜브 자막(${pendingYoutubeLanguage || '자동생성'}) 기반 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.`,
         );
       }
+      if (useYoutubeThumbnail && pendingYoutubeVideoId && householdId) {
+        try {
+          const proxyUrl = `/api/youtube-thumbnail?videoId=${encodeURIComponent(pendingYoutubeVideoId)}`;
+          const path = await saveImageFromUrl(proxyUrl, householdId, stableRecipeId, 'final');
+          setFinalImageId(path);
+        } catch (err) {
+          // 완성 사진 저장 실패는 레시피 반영 자체를 막을 정도는 아니라 경고만 표시하고 계속 진행
+          console.error('유튜브 썸네일 저장 실패:', err);
+          setImageError(getErrorMessage(err, '유튜브 썸네일을 완성 사진으로 저장하지 못했습니다.'));
+        }
+      }
       setPendingYoutubeResult(null);
       setPendingYoutubeDiff([]);
+      setPendingYoutubeVideoId(null);
     } catch (err) {
       console.error('유튜브 반영 실패:', err);
       setAiError(getErrorMessage(err, '반영 중 오류가 발생했습니다.'));
@@ -290,6 +313,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   function discardYoutubeResult() {
     setPendingYoutubeResult(null);
     setPendingYoutubeDiff([]);
+    setPendingYoutubeVideoId(null);
   }
 
   async function createIngredientFromAi(
@@ -719,6 +743,24 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
                 </li>
               ))}
             </ul>
+            {pendingYoutubeVideoId && (
+              <div className="row" style={{ alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                <img
+                  src={`https://img.youtube.com/vi/${pendingYoutubeVideoId}/hqdefault.jpg`}
+                  alt="영상 썸네일 미리보기"
+                  style={{ width: 96, aspectRatio: '4 / 3', objectFit: 'cover', borderRadius: 'var(--radius)' }}
+                />
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 13 }}>
+                  <input
+                    type="checkbox"
+                    checked={useYoutubeThumbnail}
+                    onChange={(e) => setUseYoutubeThumbnail(e.target.checked)}
+                  />
+                  이 썸네일을 완성 사진으로 사용할까요? (반영하면 우리 Storage에 저장돼요. 원치 않으면
+                  체크 해제 — 나중에 AI 생성/직접 업로드로 바꿀 수 있어요)
+                </label>
+              </div>
+            )}
             <div className="row" style={{ gap: 6 }}>
               <button className="btn small" onClick={discardYoutubeResult} disabled={applyingYoutube}>
                 무시하기

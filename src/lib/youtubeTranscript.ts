@@ -1,3 +1,13 @@
+/** 유튜브 링크(watch/youtu.be/shorts 형태 전부)에서 영상 ID만 뽑아낸다. */
+export function extractYoutubeVideoId(url: string): string | null {
+  const patterns = [/[?&]v=([^&#]+)/, /youtu\.be\/([^?&#]+)/, /\/shorts\/([^?&#]+)/];
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
 export interface YoutubeTranscriptResult {
   transcript: string;
   language: string;

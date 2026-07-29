@@ -9,6 +9,7 @@ import {
   type ExistingContext,
 } from './aiChat';
 import type { RecipeSnapshot } from './recipeDiff';
+import { extractYoutubeVideoId } from './youtubeTranscript';
 
 export const GEMINI_DEFAULT_MODEL = 'gemini-3.6-flash';
 // 조리 단계 이미지 생성 전용 모델("Nano Banana" 계열) — 텍스트 모델과 별개로 관리.
@@ -129,15 +130,6 @@ async function generateStructuredRecipe(apiKey: string, model: string, prompt: s
 export interface YoutubeVideoMeta {
   title: string;
   description: string;
-}
-
-function extractYoutubeVideoId(url: string): string | null {
-  const patterns = [/[?&]v=([^&#]+)/, /youtu\.be\/([^?&#]+)/, /\/shorts\/([^?&#]+)/];
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) return match[1];
-  }
-  return null;
 }
 
 /**

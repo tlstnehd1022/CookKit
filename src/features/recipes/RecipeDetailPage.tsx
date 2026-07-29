@@ -91,6 +91,21 @@ export function RecipeDetailPage({
       </div>
 
       <h1 style={{ marginTop: 12 }}>{recipe.name}</h1>
+      {recipe.authorName && (
+        <p
+          className="text-muted"
+          style={{ marginTop: -8, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          {recipe.authorAvatarUrl && (
+            <img
+              src={recipe.authorAvatarUrl}
+              alt=""
+              style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }}
+            />
+          )}
+          {recipe.authorName}님의 레시피
+        </p>
+      )}
       {coverImageUrl && (
         <img
           src={coverImageUrl}

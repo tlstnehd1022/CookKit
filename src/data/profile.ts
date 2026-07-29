@@ -6,6 +6,7 @@ export interface Profile {
   id: string;
   displayName: string;
   email: string;
+  avatarUrl: string | null;
 }
 
 /**
@@ -30,10 +31,14 @@ export function useProfile() {
     setLoading(true);
     const { data } = await supabase
       .from('profiles')
-      .select('id, display_name, email')
+      .select('id, display_name, email, avatar_url')
       .eq('id', user.id)
       .maybeSingle();
-    setProfile(data ? { id: data.id, displayName: data.display_name ?? '', email: data.email } : null);
+    setProfile(
+      data
+        ? { id: data.id, displayName: data.display_name ?? '', email: data.email, avatarUrl: data.avatar_url }
+        : null,
+    );
     setLoading(false);
   }, [user?.id]);
 

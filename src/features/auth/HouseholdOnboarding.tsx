@@ -67,7 +67,11 @@ export function HouseholdOnboarding({ onDone }: { onDone: () => void }) {
       {mode === 'create' && (
         <div className="field" style={{ width: '100%', maxWidth: 280, textAlign: 'left' }}>
           <label>가구 이름</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 우리집" />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 김영희네" />
+          <p className="text-muted" style={{ marginTop: 4 }}>
+            가구 이름은 모든 구성원과 다른 가구 유저에게 동일하게 보여요. "우리집"이나 "장모님댁"처럼 특정
+            사람 기준의 호칭보다는, "김영희네"처럼 누가 봐도 자연스러운 이름을 추천해요.
+          </p>
           <div className="row" style={{ marginTop: 12 }}>
             <button className="btn" onClick={() => setMode('choice')}>
               뒤로

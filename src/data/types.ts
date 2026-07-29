@@ -54,6 +54,17 @@ export interface Recipe {
   sourceRecipeId?: string;
   /** 공개 범위(기본 household) — DB의 recipes.visibility 컬럼 */
   visibility?: RecipeVisibility;
+  /** 'public_data' = 공공데이터(식약처 레시피 DB) 기반 시드 레시피. 없으면 일반 사용자 작성 레시피 */
+  sourceType?: 'public_data';
+  /** 출처 표기 문구(예: "식품의약품안전처 조리식품의 레시피 DB (RCP_SEQ: 123)") */
+  sourceNote?: string;
+  /** 이 레시피를 만든 시드 배치 식별자(예: 'public-data-2026-07-batch1') — 배치 단위 식별/삭제용 */
+  seedBatchId?: string;
+  /** 작성자 닉네임(profiles.display_name) — DB에 저장되는 값이 아니라 조회 시 join으로 채워지는
+   * 표시 전용 필드. "OO님의 레시피" 표시용(저장 시에는 무시됨). */
+  authorName?: string;
+  /** 작성자 프로필 사진 URL(profiles.avatar_url) — authorName과 같은 조회 전용 필드 */
+  authorAvatarUrl?: string;
 }
 
 /** private=본인만, household=같은 가구원까지(기본값), public=전체 공개 */

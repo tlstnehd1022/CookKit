@@ -26,6 +26,8 @@ create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
   display_name text,
+  -- 구글 프로필 사진 URL(0013) — 우리 Storage에 복사하지 않고 구글이 제공하는 URL을 그대로 참조만
+  avatar_url text,
   created_at timestamptz not null default now()
 );
 
@@ -36,8 +38,13 @@ language plpgsql
 security definer set search_path = public
 as $$
 begin
-  insert into public.profiles (id, email, display_name)
-  values (new.id, new.email, new.raw_user_meta_data ->> 'full_name');
+  insert into public.profiles (id, email, display_name, avatar_url)
+  values (
+    new.id,
+    new.email,
+    new.raw_user_meta_data ->> 'full_name',
+    coalesce(new.raw_user_meta_data ->> 'avatar_url', new.raw_user_meta_data ->> 'picture')
+  );
   return new;
 end;
 $$;
@@ -259,6 +266,18 @@ create policy "profiles_update_own" on public.profiles
 create policy "households_select_member" on public.households
   for select using (public.is_household_member(id));
 
+-- 다른 가구의 공개 레시피에 "OO님의 레시피 (가구이름)"처럼 작성자의 가구 이름을 표시하기
+-- 위한 예외(0012) — tags/ingredients/profiles에 이미 있던 것과 같은 종류의 SELECT 전용 보완
+create policy "households_select_via_public_recipe" on public.households
+  for select using (
+    id in (
+      select hm.household_id
+      from public.household_members hm
+      join public.recipes r on r.user_id = hm.user_id
+      where r.visibility = 'public'
+    )
+  );
+
 -- 새 household 생성은 로그인한 사용자면 누구나 가능(생성 직후 household_members에도
 -- 본인을 추가해야 실제로 그 household의 멤버가 됨 — 앱에서 두 insert를 함께 처리할 것)
 create policy "households_insert_authenticated" on public.households
@@ -270,6 +289,13 @@ create policy "households_update_member" on public.households
 -- ---- household_members ---------------------------------------------------------
 create policy "household_members_select_own_household" on public.household_members
   for select using (public.is_household_member(household_id));
+
+-- 공개 레시피 작성자가 어느 household 소속인지 알아내기 위한 예외(0012) — households_select_via_public_recipe가
+-- 참조하는 조인 경로. 노출 컬럼은 user_id/household_id뿐이라 추가 민감정보 노출은 없음.
+create policy "household_members_select_via_public_recipe" on public.household_members
+  for select using (
+    user_id in (select user_id from public.recipes where visibility = 'public')
+  );
 
 -- TODO(실제 구현 때 보완): 지금은 "내 user_id로만 insert 가능"만 체크해서, household_id를
 -- 알고 있으면(UUID라 추측은 어렵지만) invite_code 검증 없이 바로 가입이 가능한 상태입니다.

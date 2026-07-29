@@ -97,11 +97,17 @@ interface RecipeContent {
   difficultyReason?: string;
   estimatedMinutes?: number;
   finalImageId?: string;
+  sourceType?: Recipe['sourceType'];
+  sourceNote?: string;
+  seedBatchId?: string;
 }
 
 export function rowToRecipe(row: Record<string, unknown>): Recipe {
   const content = (row.content as RecipeContent | null) ?? { servingsBase: 1, ingredients: [], steps: [] };
   const recipeTags = (row.recipe_tags as { tag_id: string }[] | null) ?? [];
+  // profiles!user_id(display_name, avatar_url) 임베드 조인이 select에 포함된 경우에만 존재
+  // (선택적) — "OO님의 레시피" 작성자 표시용, DB에 저장되는 값이 아니라 조회 시에만 채워지는 필드.
+  const profile = row.profiles as { display_name: string | null; avatar_url: string | null } | null;
   return {
     id: row.id as string,
     name: row.title as string,
@@ -116,6 +122,11 @@ export function rowToRecipe(row: Record<string, unknown>): Recipe {
     finalImageId: content.finalImageId,
     sourceRecipeId: (row.source_recipe_id as string | null) ?? undefined,
     visibility: (row.visibility as RecipeVisibility | null) ?? 'household',
+    sourceType: content.sourceType,
+    sourceNote: content.sourceNote,
+    seedBatchId: content.seedBatchId,
+    authorName: profile?.display_name ?? undefined,
+    authorAvatarUrl: profile?.avatar_url ?? undefined,
   };
 }
 
@@ -139,6 +150,9 @@ export function createRecipesRepository(userId: string, householdId: string): Cr
         difficultyReason: recipe.difficultyReason,
         estimatedMinutes: recipe.estimatedMinutes,
         finalImageId: recipe.finalImageId,
+        sourceType: recipe.sourceType,
+        sourceNote: recipe.sourceNote,
+        seedBatchId: recipe.seedBatchId,
       } satisfies RecipeContent,
       // visibility/source_recipe_id는 실제 컬럼이라 명시적으로 보냄 — RecipeEditor가
       // rowToRecipe로 읽어온 기존 값을 폼 상태에 들고 있다가 그대로 다시 보내므로
@@ -167,7 +181,10 @@ export function createRecipesRepository(userId: string, householdId: string): Cr
       const memberIds = await fetchHouseholdMemberIds(householdId);
       const { data, error } = await supabase
         .from('recipes')
-        .select('*, recipe_tags(tag_id)')
+        // profiles!user_id — "OO님의 레시피" 작성자 표시용(우리 가구원끼리라 항상 볼 수 있음,
+        // profiles_select_own_or_household RLS로 이미 허용됨). FK 경로가 여러 개(recipe_likes
+        // 경유 등)로 해석될 수 있어 명시적으로 지정.
+        .select('*, recipe_tags(tag_id), profiles!user_id(display_name, avatar_url)')
         .in('user_id', memberIds.length > 0 ? memberIds : [userId])
         .or(`visibility.neq.private,user_id.eq.${userId}`);
       if (error) throw error;

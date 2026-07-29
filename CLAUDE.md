@@ -44,6 +44,13 @@
   완성 사진(`finalImageId`) 후보로 미리보기+체크박스로 제안, 반영 시 우리 Storage로 실제 복사해서
   저장. CORS 우회를 위해 서버리스 함수를 하나 더 추가(`api/youtube-thumbnail.ts`) — 자세한 내용은 위
   "서버 도입(2호)" 항목 참고.
+- **12차 확장 완료 — 레시피 작성자 표시 + 프로필 닉네임/사진 + household 이름 짓기 가이드**: 설정
+  화면에 닉네임(`profiles.display_name`) 변경 + household 이름 변경 UI 추가(둘 다 RLS는 이미
+  본인/가구원 수정을 허용하고 있어서 프론트만 필요했음), "OO님의 레시피" 작성자 표시를 레시피
+  카드/상세 화면(우리집+둘러보기 전부)에 추가, 구글 프로필 사진(`profiles.avatar_url`)도 같이
+  저장해 작성자 표시 옆에 작은 아이콘으로 노출. household 생성 화면과 설정 화면 양쪽에 이름
+  짓기 가이드 문구("우리집"류의 특정인 기준 호칭보다 "김영희네"처럼 누가 봐도 자연스러운 이름
+  추천) 추가. 자세한 내용은 아래 "작성자 표시/프로필" 항목 참고.
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
@@ -405,6 +412,45 @@
     `PublicRecipeDetailPage.tsx`(다른 사람 공개 레시피, 낙관적 업데이트 + 실패 시 롤백)에만 두고,
     `RecipesPage.tsx`의 그리드/리스트 카드와 `RecipeDetailPage.tsx`(내 레시피 상세, 공개 상태일 때만)에는
     조회 전용 숫자만 표시 — 내 레시피에 내가 좋아요 누르는 건 의미가 없어서 그쪽엔 토글 버튼을 안 둠.
+- **작성자 표시/프로필(닉네임/사진)**: `profiles.display_name`은 원래도 존재했고 가입 시 트리거가
+  구글 계정 실명(`raw_user_meta_data->>'full_name'`)으로 자동 채워주고 있었지만, 편집 UI가 없었음
+  (이메일 로그인은 `full_name`이 없어 비어있었음). `src/data/profile.ts`의 `useProfile()`(household.ts와
+  같은 패턴)로 조회/수정 — 본인 프로필 수정은 `profiles_update_own` RLS가 이미 허용해서 DB 변경
+  없이 프론트만 추가하면 됐음.
+  - **레시피 작성자 표시("OO님의 레시피")**: `Recipe.authorName`/`authorAvatarUrl`을 추가 —
+    DB에 저장되는 값이 아니라 조회 시 `profiles!user_id(display_name, avatar_url)` 임베드 조인으로만
+    채워지는 표시 전용 필드(`rowToRecipe`). "우리집 레시피" 목록(`createRecipesRepository.getAll()`)은
+    이미 가구원으로 좁혀 조회하고 있어서(`profiles_select_own_or_household` RLS로 이미 허용) 조인만
+    추가하면 됐고, 본인 레시피 포함 전부에 작성자를 보여줌(가구원 중 누가 만들었는지 구분이 목적이라
+    내 것도 예외 두지 않는 쪽이 자연스럽다고 판단). 둘러보기(다른 가구 공개 레시피, `publicRecipes.ts`)는
+    다른 household 소속 작성자라 `authorHouseholdName`도 같이 붙여 "OO님의 레시피 (영희네)"로 표시
+    (`formatPublicRecipeOwnerLabel`), 내 household 소속 레시피는 어차피 같은 가구라 이름을 생략.
+  - **household 이름도 조회 가능해야 함(RLS 보완, 0012)**: 공개 레시피 작성자가 다른 household
+    소속이면 그 household 이름을 읽어올 권한이 없었음(`households_select_member`가 "내 household면"만
+    허용) — tags/ingredients/profiles에 이미 해준 것과 같은 종류의 SELECT 전용 예외를
+    `household_members`/`households`에도 추가(`supabase/migrations/0012_public_recipe_household_name.sql`).
+    노출 컬럼도 user_id/household_id/household 이름뿐이라 추가 민감정보 노출은 없음.
+  - **민감정보(이메일) 노출 버그(발견 및 수정)**: `publicRecipes.ts`가 원래 작성자 이름 조회 시
+    `profiles!user_id(display_name, email)`로 email까지 같이 가져와서, 닉네임이 비어있으면
+    이메일을 그대로 화면에 표시하는 폴백이 있었음 — 다른 household 유저에게 낯선 사람의 이메일이
+    노출되는 셈이라 위험한 패턴이었음(이번에 작성자 표시 기능을 만들며 발견). email 선택 자체를
+    제거하고, 닉네임이 없으면 "이름 없는 사용자"라는 중립적인 문구로 대체.
+  - **프로필 사진(avatar_url, 0013)**: 구글 로그인 시 `raw_user_meta_data`에 이미 있는
+    `avatar_url`/`picture`를 `profiles.avatar_url`에 저장(`handle_new_user()` 트리거 갱신 +
+    기존 계정은 마이그레이션에서 1회 백필). 실제 이미지 바이트를 우리 Storage에 복사하지 않고
+    구글이 제공하는 URL을 그대로 참조만 함(조리 단계 이미지와 달리 "우리가 소유해야 하는 자산"이
+    아니라고 판단, 계정 부가 정보일 뿐). 작성자 표시 옆(그리드 카드/상세 화면)과 설정 화면
+    "계정" 섹션에 작은 원형 아이콘으로 노출 — 리스트 뷰(컴팩트 한 줄 레이아웃)에는 생략.
+  - **household 이름 짓기 가이드**: household 생성 화면(`HouseholdOnboarding.tsx`)과 설정 화면
+    양쪽에 "가구 이름은 모든 구성원과 다른 가구 유저에게 동일하게 보여요. '우리집'이나
+    '장모님댁'처럼 특정 사람 기준의 호칭보다는, '김영희네'처럼 누가 봐도 자연스러운 이름을
+    추천해요" 안내 문구 추가. 설정 화면에서 household 이름을 나중에 바꾸는 기능도 이번에
+    추가(`households_update_member` RLS가 이미 가구원의 수정을 허용하고 있어서 UI만 없었음).
+  - **설정 화면 UI 패턴 — 인라인 편집**: API 키 입력처럼 입력창+저장 버튼+상태 문구를 항상
+    늘어놓는 대신, 닉네임/household 이름은 평소엔 "라벨: 값 [변경]"만 조용히 보여주다가 [변경]을
+    누르면 그 자리가 입력창+[취소]/[저장]으로 바뀌는 인라인 편집 컴포넌트(`SettingsPage.tsx`의
+    `InlineEditRow`)를 새로 만들어 적용 — 자주 안 바꾸는 값을 계속 입력 폼 형태로 노출해두면
+    화면이 번잡해 보인다는 피드백에 따른 디자인.
 - **난이도/조리시간 자동 판단**: `Recipe.difficulty`('easy'|'medium'|'hard') / `difficultyReason`(판단
   근거 한 문장) / `estimatedMinutes`(예상 조리시간 분)를 추가. 실제 저장은 다른 중첩 데이터와 마찬가지로
   `recipes.content` jsonb 안에 담김(`supabaseAdapter.ts`).
@@ -576,6 +622,8 @@ Recipe {
   finalImageId?: string  // 완성 사진(AI 생성 또는 업로드), Supabase Storage 경로 참조
   sourceRecipeId?: string  // 공개 레시피를 복사해온 경우 원본 id(DB recipes.source_recipe_id 실컬럼)
   visibility?: 'private' | 'household' | 'public'  // 공개 범위(DB recipes.visibility 실컬럼, 기본 household)
+  authorName?: string  // 작성자 닉네임(profiles.display_name) — 저장 안 됨, 조회 시 join으로만 채워짐
+  authorAvatarUrl?: string  // 작성자 프로필 사진 URL(profiles.avatar_url) — authorName과 같은 조회 전용 필드
   // allergens는 저장하지 않음 — ingredients를 통해 항상 파생(computed) 계산
   // imageId/finalImageId는 Supabase Storage(src/data/imageStore.ts)에 저장된 이미지 경로 참조(실제 데이터 아님)
 }

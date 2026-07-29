@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSession } from '../../data/session';
 import { useRecipes, getCurrentHouseholdId } from '../../data/store';
 import { useRecipeViewMode } from '../../data/viewMode';
-import { fetchPublicRecipes, type PublicRecipeEntry } from '../../data/publicRecipes';
+import { fetchPublicRecipes, formatPublicRecipeOwnerLabel, type PublicRecipeEntry } from '../../data/publicRecipes';
 import { fetchLikeInfo, type LikeInfo } from '../../data/recipeLikes';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { RecipeCard, RecipeListItem } from './RecipesPage';
@@ -171,7 +171,8 @@ export function DiscoverRecipesPage({
               recipe={entry.recipe}
               tagNames={entry.tagNames}
               onClick={() => onSelectEntry(entry, ingredientNameById)}
-              ownerLabel={`${entry.authorName}님의 레시피`}
+              ownerLabel={formatPublicRecipeOwnerLabel(entry)}
+              ownerAvatarUrl={entry.authorAvatarUrl}
               cornerBadge={entry.alreadyCopied ? '이미 있음' : undefined}
               likeCount={likeInfoById.get(entry.recipe.id)?.likeCount ?? 0}
             />
@@ -185,7 +186,7 @@ export function DiscoverRecipesPage({
               recipe={entry.recipe}
               tagNames={entry.tagNames}
               onClick={() => onSelectEntry(entry, ingredientNameById)}
-              ownerLabel={`${entry.authorName}님의 레시피`}
+              ownerLabel={formatPublicRecipeOwnerLabel(entry)}
               cornerBadge={entry.alreadyCopied ? '이미 있음' : undefined}
               likeCount={likeInfoById.get(entry.recipe.id)?.likeCount ?? 0}
             />

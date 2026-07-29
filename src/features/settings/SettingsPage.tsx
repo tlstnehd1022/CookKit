@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSettings } from '../../data/settings';
 import { useSession } from '../../data/session';
@@ -21,42 +21,17 @@ export function SettingsPage() {
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [nicknameDraft, setNicknameDraft] = useState('');
-  const [nicknameStatus, setNicknameStatus] = useState<{ text: string; ok: boolean } | null>(null);
-  useEffect(() => {
-    if (profile) setNicknameDraft(profile.displayName);
-  }, [profile?.displayName]);
-
-  const [householdNameDraft, setHouseholdNameDraft] = useState('');
-  const [householdNameStatus, setHouseholdNameStatus] = useState<{ text: string; ok: boolean } | null>(null);
-  useEffect(() => {
-    if (household) setHouseholdNameDraft(household.name);
-  }, [household?.name]);
-
-  async function saveNickname() {
-    try {
-      await updateDisplayName(nicknameDraft);
-      setNicknameStatus({ text: '저장되었습니다.', ok: true });
-    } catch (err) {
-      setNicknameStatus({ text: getErrorMessage(err, '저장에 실패했습니다.'), ok: false });
-    }
+  async function saveNickname(next: string) {
+    await updateDisplayName(next);
   }
 
-  async function saveHouseholdName() {
+  async function saveHouseholdName(next: string) {
     if (!household) return;
-    const trimmed = householdNameDraft.trim();
-    if (!trimmed) {
-      setHouseholdNameStatus({ text: '가구 이름을 입력해주세요.', ok: false });
-      return;
-    }
-    try {
-      const { error } = await supabase.from('households').update({ name: trimmed }).eq('id', household.id);
-      if (error) throw error;
-      await refreshHousehold();
-      setHouseholdNameStatus({ text: '저장되었습니다.', ok: true });
-    } catch (err) {
-      setHouseholdNameStatus({ text: getErrorMessage(err, '저장에 실패했습니다.'), ok: false });
-    }
+    const trimmed = next.trim();
+    if (!trimmed) throw new Error('가구 이름을 입력해주세요.');
+    const { error } = await supabase.from('households').update({ name: trimmed }).eq('id', household.id);
+    if (error) throw error;
+    await refreshHousehold();
   }
 
   interface SaveStatus {
@@ -292,29 +267,16 @@ export function SettingsPage() {
       <div className="card">
         {household ? (
           <>
-            <div className="field">
-              <label>가구 이름</label>
-              <input
-                value={householdNameDraft}
-                onChange={(e) => {
-                  setHouseholdNameDraft(e.target.value);
-                  setHouseholdNameStatus(null);
-                }}
-              />
-              <p className="text-muted" style={{ marginTop: 4 }}>
-                가구 이름은 모든 구성원과 다른 가구 유저에게 동일하게 보여요. "우리집"이나 "장모님댁"처럼
-                특정 사람 기준의 호칭보다는, "김영희네"처럼 누가 봐도 자연스러운 이름을 추천해요.
-              </p>
-            </div>
-            <button className="btn primary" onClick={saveHouseholdName}>
-              저장
-            </button>
-            {householdNameStatus && (
-              <p style={{ marginTop: 8, color: householdNameStatus.ok ? 'var(--success)' : 'var(--danger)' }}>
-                {householdNameStatus.ok ? '✅ ' : '⚠️ '}
-                {householdNameStatus.text}
-              </p>
-            )}
+            <InlineEditRow
+              label="가구 이름"
+              value={household.name}
+              placeholder="예: 김영희네"
+              helperText={
+                '가구 이름은 모든 구성원과 다른 가구 유저에게 동일하게 보여요. "우리집"이나 "장모님댁"처럼 ' +
+                '특정 사람 기준의 호칭보다는, "김영희네"처럼 누가 봐도 자연스러운 이름을 추천해요.'
+              }
+              onSave={saveHouseholdName}
+            />
             <p className="text-muted" style={{ marginTop: 12 }}>
               초대 코드: <strong>{household.inviteCode}</strong> (가족에게 공유해서 같이 쓰세요)
             </p>
@@ -326,34 +288,118 @@ export function SettingsPage() {
 
       <div className="section-title">계정</div>
       <div className="card">
-        <p className="text-muted">{user?.email}로 로그인되어 있습니다.</p>
-        <div className="field">
-          <label>닉네임</label>
-          <input
-            value={nicknameDraft}
-            onChange={(e) => {
-              setNicknameDraft(e.target.value);
-              setNicknameStatus(null);
-            }}
-            placeholder="닉네임"
-          />
-          <p className="text-muted" style={{ marginTop: 4 }}>
-            닉네임은 레시피 작성자 표시 등으로 같은 가구 구성원과 다른 가구 유저에게도 공개돼요.
+        <div className="row" style={{ justifyContent: 'flex-start', gap: 10 }}>
+          {profile?.avatarUrl && (
+            <img
+              src={profile.avatarUrl}
+              alt=""
+              style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }}
+            />
+          )}
+          <p className="text-muted" style={{ margin: 0 }}>
+            {user?.email}로 로그인되어 있습니다.
           </p>
         </div>
-        <button className="btn primary" onClick={saveNickname}>
-          저장
-        </button>
-        {nicknameStatus && (
-          <p style={{ marginTop: 8, color: nicknameStatus.ok ? 'var(--success)' : 'var(--danger)' }}>
-            {nicknameStatus.ok ? '✅ ' : '⚠️ '}
-            {nicknameStatus.text}
-          </p>
-        )}
+        <InlineEditRow
+          label="닉네임"
+          value={profile?.displayName ?? ''}
+          placeholder="닉네임"
+          helperText="닉네임은 레시피 작성자 표시 등으로 같은 가구 구성원과 다른 가구 유저에게도 공개돼요."
+          onSave={saveNickname}
+        />
         <button className="btn danger" style={{ marginTop: 12 }} onClick={logout}>
           로그아웃
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * "라벨: 값  [변경]" 형태로 보여주다가, [변경]을 누르면 그 자리가 입력창 + [취소]/[저장]으로
+ * 바뀌는 인라인 편집 행. API 키 입력 폼처럼 입력창+저장 버튼+상태 문구를 항상 늘어놓는 대신,
+ * 평소엔 값만 조용히 보여주고 편집이 필요할 때만 입력 UI가 나타나게 해서 설정 화면이 덜
+ * 번잡해 보이게 한다.
+ */
+function InlineEditRow({
+  label,
+  value,
+  placeholder,
+  helperText,
+  onSave,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  helperText?: string;
+  onSave: (next: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function startEditing() {
+    setDraft(value);
+    setError(null);
+    setEditing(true);
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(draft);
+      setEditing(false);
+    } catch (err) {
+      setError(getErrorMessage(err, '저장에 실패했습니다.'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="row">
+        <span>
+          {label}: <strong>{value || '(미설정)'}</strong>
+        </span>
+        <button className="btn small" onClick={startEditing}>
+          변경
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="row" style={{ gap: 8 }}>
+        <input
+          autoFocus
+          value={draft}
+          placeholder={placeholder}
+          onChange={(e) => setDraft(e.target.value)}
+          style={{ flex: 1 }}
+        />
+        <div className="chip-row" style={{ marginTop: 0 }}>
+          <button className="btn small" onClick={() => setEditing(false)} disabled={saving}>
+            취소
+          </button>
+          <button className="btn small primary" onClick={handleSave} disabled={saving}>
+            저장
+          </button>
+        </div>
+      </div>
+      {helperText && (
+        <p className="text-muted" style={{ marginTop: 4 }}>
+          {helperText}
+        </p>
+      )}
+      {error && (
+        <p style={{ marginTop: 4, color: 'var(--danger)' }}>
+          ⚠️ {error}
+        </p>
+      )}
     </div>
   );
 }

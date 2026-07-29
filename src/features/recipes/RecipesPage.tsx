@@ -218,6 +218,8 @@ export function RecipesPage({
               recipe={recipe}
               tagNames={resolveRecipeTagNames(recipe, tags)}
               onClick={() => onSelectRecipe(recipe.id)}
+              ownerLabel={recipe.authorName ? `${recipe.authorName}님의 레시피` : undefined}
+              ownerAvatarUrl={recipe.authorAvatarUrl}
             />
           ))}
         </div>
@@ -229,6 +231,7 @@ export function RecipesPage({
               recipe={recipe}
               tagNames={resolveRecipeTagNames(recipe, tags)}
               onClick={() => onSelectRecipe(recipe.id)}
+              ownerLabel={recipe.authorName ? `${recipe.authorName}님의 레시피` : undefined}
             />
           ))}
         </div>
@@ -252,13 +255,24 @@ export interface RecipeCardProps {
   onClick: () => void;
   /** 둘러보기 화면에서 "OO님의 레시피"처럼 작성자 표시용(선택) */
   ownerLabel?: string;
+  /** 작성자 프로필 사진(선택) — 그리드 카드에서만 ownerLabel 옆에 작게 표시(리스트 뷰는 한 줄에
+   * 다 몰아넣는 컴팩트 레이아웃이라 생략) */
+  ownerAvatarUrl?: string;
   /** 둘러보기 화면에서 "이미 있음" 같은 코너 배지용(선택) */
   cornerBadge?: string;
   /** 좋아요 수(조회 전용) — 값이 있을 때만 표시(선택) */
   likeCount?: number;
 }
 
-export function RecipeCard({ recipe, tagNames, onClick, ownerLabel, cornerBadge, likeCount }: RecipeCardProps) {
+export function RecipeCard({
+  recipe,
+  tagNames,
+  onClick,
+  ownerLabel,
+  ownerAvatarUrl,
+  cornerBadge,
+  likeCount,
+}: RecipeCardProps) {
   const { imageUrl, totalMinutes, placeholderEmoji } = useRecipeCardInfo(recipe, tagNames);
 
   return (
@@ -285,7 +299,14 @@ export function RecipeCard({ recipe, tagNames, onClick, ownerLabel, cornerBadge,
           {likeCount != null ? ` · ❤️ ${likeCount}` : ''}
         </span>
         {ownerLabel && (
-          <span className="text-muted" style={{ fontSize: 11 }}>
+          <span className="text-muted" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+            {ownerAvatarUrl && (
+              <img
+                src={ownerAvatarUrl}
+                alt=""
+                style={{ width: 16, height: 16, borderRadius: '50%', objectFit: 'cover' }}
+              />
+            )}
             {ownerLabel}
           </span>
         )}

@@ -4,7 +4,7 @@ import { useStoredImage } from '../../data/imageStore';
 import { fetchLikeInfo, toggleLike, type LikeInfo } from '../../data/recipeLikes';
 import { useSession } from '../../data/session';
 import { getErrorMessage } from '../../lib/errorMessage';
-import type { PublicRecipeEntry } from '../../data/publicRecipes';
+import { formatPublicRecipeOwnerLabel, type PublicRecipeEntry } from '../../data/publicRecipes';
 
 /** 다른 household의 공개 레시피 상세 — 조회 전용(재료/조리순서/난이도/작성자 표시) + 좋아요.
  * "내 레시피로 복사하기" 버튼과 실제 복사 로직은 onCopy prop으로 상위(RecipesFeature)에서 주입한다. */
@@ -21,7 +21,7 @@ export function PublicRecipeDetailPage({
   onCopy?: () => void;
   copying?: boolean;
 }) {
-  const { recipe, tagNames, authorName, alreadyCopied } = entry;
+  const { recipe, tagNames, alreadyCopied } = entry;
   const coverImageId = recipe.finalImageId ?? recipe.steps.find((step) => step.imageId)?.imageId;
   const coverImageUrl = useStoredImage(coverImageId);
   const { user } = useSession();
@@ -72,7 +72,19 @@ export function PublicRecipeDetailPage({
       </div>
 
       <h1 style={{ marginTop: 12 }}>{recipe.name}</h1>
-      <p className="text-muted" style={{ marginTop: -8, marginBottom: 8 }}>{authorName}님의 레시피</p>
+      <p
+        className="text-muted"
+        style={{ marginTop: -8, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}
+      >
+        {entry.authorAvatarUrl && (
+          <img
+            src={entry.authorAvatarUrl}
+            alt=""
+            style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover' }}
+          />
+        )}
+        {formatPublicRecipeOwnerLabel(entry)}
+      </p>
       {coverImageUrl && (
         <img
           src={coverImageUrl}

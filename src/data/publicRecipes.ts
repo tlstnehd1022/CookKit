@@ -29,9 +29,12 @@ export async function fetchPublicRecipes(
   const householdMemberIds = await fetchHouseholdMemberIds(currentHouseholdId);
   const excludedUserIds = new Set([currentUserId, ...householdMemberIds]);
 
+  // profiles!user_id — recipes -> profiles로 가는 외래키 경로가 (recipe_likes를 거치는 경로 등)
+  // 여러 개로 해석될 수 있어서 PostgREST가 "more than one relationship found"로 거부함.
+  // recipes.user_id 컬럼을 통한 FK라고 명시적으로 지정해서 모호함을 없앤다.
   const { data, error } = await supabase
     .from('recipes')
-    .select('*, recipe_tags(tag_id, tags(name)), profiles(display_name, email)')
+    .select('*, recipe_tags(tag_id, tags(name)), profiles!user_id(display_name, email)')
     .eq('visibility', 'public');
   if (error) throw error;
   // 우리 가구원(나 포함)의 public 레시피는 이미 "우리집 레시피" 목록에서 보이므로 제외

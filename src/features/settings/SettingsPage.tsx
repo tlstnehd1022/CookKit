@@ -1,21 +1,63 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { supabase } from '../../lib/supabaseClient';
 import { useSettings } from '../../data/settings';
 import { useSession } from '../../data/session';
 import { useHousehold } from '../../data/household';
+import { useProfile } from '../../data/profile';
 import { useTheme } from '../../data/theme';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { downloadBackup, restoreBackupFromFile } from '../../data/backup';
+import { getErrorMessage } from '../../lib/errorMessage';
 
 export function SettingsPage() {
   const { settings, updateSettings } = useSettings();
   const { user, logout } = useSession();
-  const { household } = useHousehold();
+  const { household, refresh: refreshHousehold } = useHousehold();
+  const { profile, updateDisplayName } = useProfile();
   const { theme, toggleTheme } = useTheme();
   const [anthropicKeyDraft, setAnthropicKeyDraft] = useState(settings.anthropicApiKey);
   const [geminiKeyDraft, setGeminiKeyDraft] = useState(settings.geminiApiKey);
   const [youtubeKeyDraft, setYoutubeKeyDraft] = useState(settings.youtubeApiKey);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [nicknameDraft, setNicknameDraft] = useState('');
+  const [nicknameStatus, setNicknameStatus] = useState<{ text: string; ok: boolean } | null>(null);
+  useEffect(() => {
+    if (profile) setNicknameDraft(profile.displayName);
+  }, [profile?.displayName]);
+
+  const [householdNameDraft, setHouseholdNameDraft] = useState('');
+  const [householdNameStatus, setHouseholdNameStatus] = useState<{ text: string; ok: boolean } | null>(null);
+  useEffect(() => {
+    if (household) setHouseholdNameDraft(household.name);
+  }, [household?.name]);
+
+  async function saveNickname() {
+    try {
+      await updateDisplayName(nicknameDraft);
+      setNicknameStatus({ text: '저장되었습니다.', ok: true });
+    } catch (err) {
+      setNicknameStatus({ text: getErrorMessage(err, '저장에 실패했습니다.'), ok: false });
+    }
+  }
+
+  async function saveHouseholdName() {
+    if (!household) return;
+    const trimmed = householdNameDraft.trim();
+    if (!trimmed) {
+      setHouseholdNameStatus({ text: '가구 이름을 입력해주세요.', ok: false });
+      return;
+    }
+    try {
+      const { error } = await supabase.from('households').update({ name: trimmed }).eq('id', household.id);
+      if (error) throw error;
+      await refreshHousehold();
+      setHouseholdNameStatus({ text: '저장되었습니다.', ok: true });
+    } catch (err) {
+      setHouseholdNameStatus({ text: getErrorMessage(err, '저장에 실패했습니다.'), ok: false });
+    }
+  }
 
   interface SaveStatus {
     text: string;
@@ -250,8 +292,30 @@ export function SettingsPage() {
       <div className="card">
         {household ? (
           <>
-            <p className="text-muted">가구 이름: {household.name}</p>
-            <p className="text-muted">
+            <div className="field">
+              <label>가구 이름</label>
+              <input
+                value={householdNameDraft}
+                onChange={(e) => {
+                  setHouseholdNameDraft(e.target.value);
+                  setHouseholdNameStatus(null);
+                }}
+              />
+              <p className="text-muted" style={{ marginTop: 4 }}>
+                가구 이름은 모든 구성원과 다른 가구 유저에게 동일하게 보여요. "우리집"이나 "장모님댁"처럼
+                특정 사람 기준의 호칭보다는, "김영희네"처럼 누가 봐도 자연스러운 이름을 추천해요.
+              </p>
+            </div>
+            <button className="btn primary" onClick={saveHouseholdName}>
+              저장
+            </button>
+            {householdNameStatus && (
+              <p style={{ marginTop: 8, color: householdNameStatus.ok ? 'var(--success)' : 'var(--danger)' }}>
+                {householdNameStatus.ok ? '✅ ' : '⚠️ '}
+                {householdNameStatus.text}
+              </p>
+            )}
+            <p className="text-muted" style={{ marginTop: 12 }}>
               초대 코드: <strong>{household.inviteCode}</strong> (가족에게 공유해서 같이 쓰세요)
             </p>
           </>
@@ -262,8 +326,31 @@ export function SettingsPage() {
 
       <div className="section-title">계정</div>
       <div className="card">
-        <p className="text-muted">{user?.name}님으로 로그인되어 있습니다.</p>
-        <button className="btn danger" onClick={logout}>
+        <p className="text-muted">{user?.email}로 로그인되어 있습니다.</p>
+        <div className="field">
+          <label>닉네임</label>
+          <input
+            value={nicknameDraft}
+            onChange={(e) => {
+              setNicknameDraft(e.target.value);
+              setNicknameStatus(null);
+            }}
+            placeholder="닉네임"
+          />
+          <p className="text-muted" style={{ marginTop: 4 }}>
+            닉네임은 레시피 작성자 표시 등으로 같은 가구 구성원과 다른 가구 유저에게도 공개돼요.
+          </p>
+        </div>
+        <button className="btn primary" onClick={saveNickname}>
+          저장
+        </button>
+        {nicknameStatus && (
+          <p style={{ marginTop: 8, color: nicknameStatus.ok ? 'var(--success)' : 'var(--danger)' }}>
+            {nicknameStatus.ok ? '✅ ' : '⚠️ '}
+            {nicknameStatus.text}
+          </p>
+        )}
+        <button className="btn danger" style={{ marginTop: 12 }} onClick={logout}>
           로그아웃
         </button>
       </div>

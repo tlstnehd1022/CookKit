@@ -1,9 +1,13 @@
+import { useEffect, useState } from 'react';
 import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
 import { useStoredImage } from '../../data/imageStore';
+import { fetchLikeInfo, toggleLike, type LikeInfo } from '../../data/recipeLikes';
+import { useSession } from '../../data/session';
+import { getErrorMessage } from '../../lib/errorMessage';
 import type { PublicRecipeEntry } from '../../data/publicRecipes';
 
-/** 다른 household의 공개 레시피 상세 — 조회 전용(재료/조리순서/난이도/작성자 표시). "내 레시피로
- * 복사하기" 버튼과 실제 복사 로직은 onCopy prop으로 상위(RecipesFeature)에서 주입한다. */
+/** 다른 household의 공개 레시피 상세 — 조회 전용(재료/조리순서/난이도/작성자 표시) + 좋아요.
+ * "내 레시피로 복사하기" 버튼과 실제 복사 로직은 onCopy prop으로 상위(RecipesFeature)에서 주입한다. */
 export function PublicRecipeDetailPage({
   entry,
   ingredientNameById,
@@ -20,12 +24,50 @@ export function PublicRecipeDetailPage({
   const { recipe, tagNames, authorName, alreadyCopied } = entry;
   const coverImageId = recipe.finalImageId ?? recipe.steps.find((step) => step.imageId)?.imageId;
   const coverImageUrl = useStoredImage(coverImageId);
+  const { user } = useSession();
+  const [likeInfo, setLikeInfo] = useState<LikeInfo>({ likeCount: 0, likedByMe: false });
+  const [likeBusy, setLikeBusy] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    fetchLikeInfo([recipe.id], user.id)
+      .then((result) => {
+        if (!cancelled) setLikeInfo(result.get(recipe.id) ?? { likeCount: 0, likedByMe: false });
+      })
+      .catch((err) => console.error('좋아요 정보 조회 실패:', getErrorMessage(err)));
+    return () => {
+      cancelled = true;
+    };
+  }, [recipe.id, user?.id]);
+
+  async function handleToggleLike() {
+    if (!user || likeBusy) return;
+    setLikeBusy(true);
+    const wasLiked = likeInfo.likedByMe;
+    // 낙관적 업데이트 — 실패하면 아래 catch에서 되돌림
+    setLikeInfo((prev) => ({
+      likeCount: prev.likeCount + (wasLiked ? -1 : 1),
+      likedByMe: !wasLiked,
+    }));
+    try {
+      await toggleLike(recipe.id, user.id, wasLiked);
+    } catch (err) {
+      console.error('좋아요 처리 실패:', getErrorMessage(err));
+      setLikeInfo((prev) => ({ likeCount: prev.likeCount + (wasLiked ? 1 : -1), likedByMe: wasLiked }));
+    } finally {
+      setLikeBusy(false);
+    }
+  }
 
   return (
     <div>
       <div className="row">
         <button className="btn small" onClick={onBack}>
           ← 둘러보기
+        </button>
+        <button className={`btn small ${likeInfo.likedByMe ? 'primary' : ''}`} onClick={handleToggleLike} disabled={likeBusy}>
+          {likeInfo.likedByMe ? '❤️' : '🤍'} {likeInfo.likeCount}
         </button>
       </div>
 

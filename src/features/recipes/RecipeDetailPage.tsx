@@ -4,6 +4,8 @@ import { useShoppingSelection } from '../../data/shoppingSelection';
 import { computeRecipeAllergens, scaleAmount } from '../../data/computed';
 import { useStoredImage } from '../../data/imageStore';
 import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
+import { fetchLikeInfo } from '../../data/recipeLikes';
+import { useSession } from '../../data/session';
 
 export function RecipeDetailPage({
   recipeId,
@@ -18,9 +20,11 @@ export function RecipeDetailPage({
   const { tags } = useTags();
   const ingredientsById = useIngredientsById();
   const { isSelected, toggle } = useShoppingSelection();
+  const { user } = useSession();
   const recipe = recipes.find((r) => r.id === recipeId);
   const [servings, setServings] = useState(recipe?.servingsBase ?? 1);
   const [showDifficultyReason, setShowDifficultyReason] = useState(false);
+  const [likeCount, setLikeCount] = useState<number | null>(null);
   // 대표 이미지 우선순위: 완성 사진 > 첫 조리 단계 이미지. recipe가 사라지는 경우(삭제 등)에도
   // 훅 호출 순서가 매 렌더 동일해야 해서 이 useStoredImage는 아래 조기 return보다 위에 둔다.
   const coverImageId = recipe?.finalImageId ?? recipe?.steps.find((step) => step.imageId)?.imageId;
@@ -29,6 +33,24 @@ export function RecipeDetailPage({
   useEffect(() => {
     if (recipe) setServings(recipe.servingsBase);
   }, [recipe?.id]);
+
+  // 공개된 내 레시피는 다른 사람이 얼마나 좋아했는지(좋아요 수) 조회 전용으로 보여준다 —
+  // 내 레시피에 내가 좋아요를 누르는 건 의미가 없어서 토글 버튼은 안 두고 숫자만 표시.
+  useEffect(() => {
+    if (!recipe?.isPublic || !user) {
+      setLikeCount(null);
+      return;
+    }
+    let cancelled = false;
+    fetchLikeInfo([recipe.id], user.id)
+      .then((result) => {
+        if (!cancelled) setLikeCount(result.get(recipe.id)?.likeCount ?? 0);
+      })
+      .catch((err) => console.error('좋아요 정보 조회 실패:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [recipe?.id, recipe?.isPublic, user?.id]);
 
   if (!recipe) {
     return (
@@ -90,6 +112,7 @@ export function RecipeDetailPage({
         {isSelected(recipe.id) ? '🛒 장보기에 담김 (빼기)' : '🛒 장보기에 담기'}
       </button>
       <div className="chip-row">
+        {likeCount != null && <span className="chip">❤️ {likeCount}</span>}
         {recipe.difficulty && <span className="chip">{DIFFICULTY_LABEL[recipe.difficulty]}</span>}
         {recipe.estimatedMinutes != null && recipe.estimatedMinutes > 0 && (
           <span className="chip">약 {recipe.estimatedMinutes}분</span>

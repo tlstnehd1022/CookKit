@@ -355,6 +355,16 @@
     실제 DB에 한 번도 들어간 적 없는 미사용 TypeScript 참고 데이터라(Supabase 전환 후 새 household는
     항상 빈 상태로 시작) 토글할 실제 DB 행 자체가 없음. 초기 콘텐츠 문제는 여러 household가 실제로
     레시피를 만들고 공개하기 시작하면 자연히 해소될 것으로 보고 별도 조치 없이 남겨둠.
+  - **좋아요(하트)**: 공개 레시피를 얼마나 좋아하는지 보여주는 지표로 추가(가구 수가 늘어나기 전까진
+    "즐겨찾기" 개인용 기능이 더 실용적이지만, 그건 레시피 관리 기능을 더 발전시킬 때 따로 추가하기로
+    하고 이번엔 공개 지표만). `recipe_likes`(recipe_id+user_id 복합 PK — 중복 좋아요 자체가 DB
+    레벨에서 불가능) 테이블 + `supabase/migrations/0009_recipe_likes.sql`. RLS는 "그 레시피를 볼 수
+    있으면(본인 것+공개) 좋아요 목록도 볼 수 있음", 좋아요 추가/삭제는 본인 것만. `src/data/
+    recipeLikes.ts`의 `fetchLikeInfo`/`toggleLike` — group by 없이 해당 레시피들의 좋아요 행을 통째로
+    가져와 클라이언트에서 집계(개인 앱 규모라 충분히 가벼움). 토글 가능한 하트 버튼은
+    `PublicRecipeDetailPage.tsx`(다른 사람 공개 레시피, 낙관적 업데이트 + 실패 시 롤백)에만 두고,
+    `RecipesPage.tsx`의 그리드/리스트 카드와 `RecipeDetailPage.tsx`(내 레시피 상세, 공개 상태일 때만)에는
+    조회 전용 숫자만 표시 — 내 레시피에 내가 좋아요 누르는 건 의미가 없어서 그쪽엔 토글 버튼을 안 둠.
 - **난이도/조리시간 자동 판단**: `Recipe.difficulty`('easy'|'medium'|'hard') / `difficultyReason`(판단
   근거 한 문장) / `estimatedMinutes`(예상 조리시간 분)를 추가. 실제 저장은 다른 중첩 데이터와 마찬가지로
   `recipes.content` jsonb 안에 담김(`supabaseAdapter.ts`).

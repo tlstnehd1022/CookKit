@@ -254,9 +254,11 @@ export interface RecipeCardProps {
   ownerLabel?: string;
   /** 둘러보기 화면에서 "이미 있음" 같은 코너 배지용(선택) */
   cornerBadge?: string;
+  /** 좋아요 수(조회 전용) — 값이 있을 때만 표시(선택) */
+  likeCount?: number;
 }
 
-export function RecipeCard({ recipe, tagNames, onClick, ownerLabel, cornerBadge }: RecipeCardProps) {
+export function RecipeCard({ recipe, tagNames, onClick, ownerLabel, cornerBadge, likeCount }: RecipeCardProps) {
   const { imageUrl, totalMinutes, placeholderEmoji } = useRecipeCardInfo(recipe, tagNames);
 
   return (
@@ -280,6 +282,7 @@ export function RecipeCard({ recipe, tagNames, onClick, ownerLabel, cornerBadge 
         )}
         <span className="text-muted" style={{ fontSize: 12 }}>
           {recipe.servingsBase}인분{totalMinutes > 0 ? ` · 약 ${totalMinutes}분` : ''}
+          {likeCount != null ? ` · ❤️ ${likeCount}` : ''}
         </span>
         {ownerLabel && (
           <span className="text-muted" style={{ fontSize: 11 }}>
@@ -291,7 +294,7 @@ export function RecipeCard({ recipe, tagNames, onClick, ownerLabel, cornerBadge 
   );
 }
 
-export function RecipeListItem({ recipe, tagNames, onClick, ownerLabel, cornerBadge }: RecipeCardProps) {
+export function RecipeListItem({ recipe, tagNames, onClick, ownerLabel, cornerBadge, likeCount }: RecipeCardProps) {
   const { imageUrl, totalMinutes, placeholderEmoji } = useRecipeCardInfo(recipe, tagNames);
 
   return (
@@ -308,6 +311,7 @@ export function RecipeListItem({ recipe, tagNames, onClick, ownerLabel, cornerBa
           {tagNames.slice(0, 2).join(', ')}
           {tagNames.length > 0 ? ' · ' : ''}
           {recipe.servingsBase}인분{totalMinutes > 0 ? ` · 약 ${totalMinutes}분` : ''}
+          {likeCount != null ? ` · ❤️ ${likeCount}` : ''}
           {ownerLabel ? ` · ${ownerLabel}` : ''}
         </span>
       </div>

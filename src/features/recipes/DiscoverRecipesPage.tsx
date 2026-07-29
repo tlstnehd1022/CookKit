@@ -3,6 +3,7 @@ import { useSession } from '../../data/session';
 import { useRecipes } from '../../data/store';
 import { useRecipeViewMode } from '../../data/viewMode';
 import { fetchPublicRecipes, type PublicRecipeEntry } from '../../data/publicRecipes';
+import { fetchLikeInfo, type LikeInfo } from '../../data/recipeLikes';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { RecipeCard, RecipeListItem } from './RecipesPage';
 
@@ -24,6 +25,7 @@ export function DiscoverRecipesPage({
   const { mode: viewMode, setMode: setViewMode } = useRecipeViewMode();
   const [entries, setEntries] = useState<PublicRecipeEntry[]>([]);
   const [ingredientNameById, setIngredientNameById] = useState<Map<string, string>>(new Map());
+  const [likeInfoById, setLikeInfoById] = useState<Map<string, LikeInfo>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -37,10 +39,12 @@ export function DiscoverRecipesPage({
     setLoading(true);
     setError(null);
     fetchPublicRecipes(user.id, myRecipes)
-      .then((result) => {
+      .then(async (result) => {
         if (cancelled) return;
         setEntries(result.entries);
         setIngredientNameById(result.ingredientNameById);
+        const likeInfo = await fetchLikeInfo(result.entries.map((e) => e.recipe.id), user.id);
+        if (!cancelled) setLikeInfoById(likeInfo);
       })
       .catch((err) => {
         if (!cancelled) setError(getErrorMessage(err, '공개 레시피를 불러오지 못했습니다.'));
@@ -167,6 +171,7 @@ export function DiscoverRecipesPage({
               onClick={() => onSelectEntry(entry, ingredientNameById)}
               ownerLabel={`${entry.authorName}님의 레시피`}
               cornerBadge={entry.alreadyCopied ? '이미 있음' : undefined}
+              likeCount={likeInfoById.get(entry.recipe.id)?.likeCount ?? 0}
             />
           ))}
         </div>
@@ -180,6 +185,7 @@ export function DiscoverRecipesPage({
               onClick={() => onSelectEntry(entry, ingredientNameById)}
               ownerLabel={`${entry.authorName}님의 레시피`}
               cornerBadge={entry.alreadyCopied ? '이미 있음' : undefined}
+              likeCount={likeInfoById.get(entry.recipe.id)?.likeCount ?? 0}
             />
           ))}
         </div>

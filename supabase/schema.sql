@@ -208,6 +208,18 @@ create table public.shopping_selection (
   primary key (household_id, recipe_id)
 );
 
+-- ============================================================================
+-- 9) recipe_likes — 공개 레시피 좋아요(하트). user_id+recipe_id 복합 PK라 중복 좋아요 방지
+-- ============================================================================
+create table public.recipe_likes (
+  recipe_id uuid not null references public.recipes(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (recipe_id, user_id)
+);
+
+create index recipe_likes_recipe_id_idx on public.recipe_likes (recipe_id);
+
 -- 참고: CookingLog/MenuSet(요리 기록/손님초대모드)은 앱에서도 아직 UI가 없는 스텁이라
 -- 이번 스키마에는 포함하지 않았습니다. 실제로 기능을 만들 때 테이블을 추가하면 됩니다.
 
@@ -328,3 +340,17 @@ create policy "recipe_tags_modify_via_recipe_owner" on public.recipe_tags
 create policy "shopping_selection_all_household_member" on public.shopping_selection
   for all using (public.is_household_member(household_id))
   with check (public.is_household_member(household_id));
+
+-- ---- recipe_likes ---------------------------------------------------------
+alter table public.recipe_likes enable row level security;
+
+create policy "recipe_likes_select_via_recipe" on public.recipe_likes
+  for select using (
+    recipe_id in (select id from public.recipes where is_public = true or user_id = auth.uid())
+  );
+
+create policy "recipe_likes_insert_own" on public.recipe_likes
+  for insert with check (user_id = auth.uid());
+
+create policy "recipe_likes_delete_own" on public.recipe_likes
+  for delete using (user_id = auth.uid());

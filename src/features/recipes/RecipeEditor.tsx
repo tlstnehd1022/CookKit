@@ -5,7 +5,7 @@ import * as claudeClient from '../../lib/claudeClient';
 import * as geminiClient from '../../lib/geminiClient';
 import type { ExtractedRecipe } from '../../lib/claudeClient';
 import type { ExistingContext } from '../../lib/aiChat';
-import type { Difficulty, Recipe, RecipeIngredient, RecipeStep } from '../../data/types';
+import type { Difficulty, Recipe, RecipeIngredient, RecipeStep, RecipeVisibility } from '../../data/types';
 import { COMMON_UNITS, CUSTOM_UNIT_VALUE } from '../../data/units';
 import { RecipeChatPanel } from './RecipeChatPanel';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
@@ -624,7 +624,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [isPublic, setIsPublic] = useState(existing?.isPublic ?? false);
+  const [visibility, setVisibility] = useState<RecipeVisibility>(existing?.visibility ?? 'household');
 
   async function handleSave() {
     const recipe: Recipe = {
@@ -639,7 +639,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       estimatedMinutes,
       finalImageId,
       sourceRecipeId: existing?.sourceRecipeId,
-      isPublic,
+      visibility,
     };
     setSaving(true);
     setSaveError(null);
@@ -1061,21 +1061,18 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         + 조리 단계 추가
       </button>
 
-      <div className="section-title">공개 설정</div>
+      <div className="section-title">공개 범위</div>
       <div className="card">
-        <div className="row">
-          <span>다른 사람들도 이 레시피를 볼 수 있게 공개하기</span>
-          <button
-            className={`toggle ${isPublic ? 'on' : ''}`}
-            onClick={() => setIsPublic((v) => !v)}
-            aria-label="공개 여부"
-          >
-            <span className="knob" />
-          </button>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <select value={visibility} onChange={(e) => setVisibility(e.target.value as RecipeVisibility)}>
+            <option value="private">🔒 개인 소유 — 나만 볼 수 있어요</option>
+            <option value="household">🏠 가구 공유 — 우리 가구원까지 볼 수 있어요 (기본)</option>
+            <option value="public">🌍 전체 공개 — 다른 가구도 "둘러보기"에서 볼 수 있어요</option>
+          </select>
         </div>
-        {isPublic && (
+        {visibility === 'public' && (
           <p className="text-muted" style={{ marginTop: 8 }}>
-            ⚠️ 이 레시피를 다른 사용자도 "둘러보기" 화면에서 볼 수 있게 됩니다(재료·조리순서·이미지 포함).
+            ⚠️ 이 레시피를 다른 가구 사용자도 "둘러보기" 화면에서 볼 수 있게 됩니다(재료·조리순서·이미지 포함).
           </p>
         )}
       </div>

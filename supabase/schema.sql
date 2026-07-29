@@ -8,7 +8,7 @@
 -- 관계 요약
 --   - profiles : households = N:1 (household_members로 매핑)
 --   - ingredients        : household 단위로 공유(같은 집 식구끼리만 보임)
---   - recipes            : user(profile) 단위 소유, 기본 비공개, is_public=true면 전체 공개
+--   - recipes            : user(profile) 단위 소유, visibility로 3단계 공개범위(기본 household)
 --   - categories / tags  : household 단위로 관리(기존 앱의 "카테고리 관리"/"태그 관리" 화면과 대응)
 -- ============================================================================
 
@@ -165,14 +165,15 @@ create index tags_household_id_idx on public.tags (household_id);
 
 
 -- ============================================================================
--- 7) recipes — 레시피 (user 단위 소유, 기본 비공개, is_public으로 전체공개 전환)
+-- 7) recipes — 레시피 (user 단위 소유, visibility로 3단계 공개범위)
 -- ============================================================================
 create table public.recipes (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
   title text not null,
   content jsonb not null default '{}'::jsonb,
-  is_public boolean not null default false,
+  -- private=본인만, household=같은 가구원까지(기본값), public=전체 공개
+  visibility text not null default 'household' check (visibility in ('private', 'household', 'public')),
   source_recipe_id uuid references public.recipes(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -189,7 +190,7 @@ create table public.recipes (
 -- 재료를 삭제해도 레시피 쪽 참조가 자동으로 정리되지 않는 점은 감안해야 함.
 
 create index recipes_user_id_idx on public.recipes (user_id);
-create index recipes_is_public_idx on public.recipes (is_public) where is_public = true;
+create index recipes_visibility_idx on public.recipes (visibility) where visibility <> 'private';
 
 create table public.recipe_tags (
   recipe_id uuid not null references public.recipes(id) on delete cascade,
@@ -245,9 +246,10 @@ create policy "profiles_select_own_or_household" on public.profiles
   );
 
 -- 공개 레시피 작성자 이름("OO님의 레시피")은 household가 달라도 조회 가능해야 함
+-- (household 등급 레시피 작성자는 위 profiles_select_own_or_household가 이미 커버함)
 create policy "profiles_select_via_public_recipe" on public.profiles
   for select using (
-    id in (select user_id from public.recipes where is_public = true)
+    id in (select user_id from public.recipes where visibility = 'public')
   );
 
 create policy "profiles_update_own" on public.profiles
@@ -290,13 +292,14 @@ create policy "tags_all_household_member" on public.tags
   for all using (public.is_household_member(household_id))
   with check (public.is_household_member(household_id));
 
--- 공개 레시피가 쓰는 태그/재료는 household가 달라도 이름을 읽을 수 있어야 함(둘러보기 화면용)
+-- 공개(public) 레시피가 쓰는 태그/재료는 household가 달라도 이름을 읽을 수 있어야 함(둘러보기
+-- 화면용) — household 등급은 어차피 같은 household 멤버끼리라 위 household 단위 정책이 이미 커버함.
 create policy "tags_select_via_public_recipe" on public.tags
   for select using (
     exists (
       select 1 from public.recipe_tags rt
       join public.recipes r on r.id = rt.recipe_id
-      where rt.tag_id = tags.id and r.is_public = true
+      where rt.tag_id = tags.id and r.visibility = 'public'
     )
   );
 
@@ -304,7 +307,7 @@ create policy "ingredients_select_via_public_recipe" on public.ingredients
   for select using (
     exists (
       select 1 from public.recipes r
-      where r.is_public = true
+      where r.visibility = 'public'
         and exists (
           select 1 from jsonb_array_elements(coalesce(r.content->'ingredients', '[]'::jsonb)) as ing
           where (ing->>'ingredientId')::uuid = ingredients.id
@@ -313,8 +316,13 @@ create policy "ingredients_select_via_public_recipe" on public.ingredients
   );
 
 -- ---- recipes ---------------------------------------------------------
-create policy "recipes_select_public_or_own" on public.recipes
-  for select using (is_public = true or user_id = auth.uid());
+-- private=본인만, household=같은 가구원까지, public=전체 공개
+create policy "recipes_select_visibility" on public.recipes
+  for select using (
+    visibility = 'public'
+    or user_id = auth.uid()
+    or (visibility = 'household' and public.shares_household_with(user_id))
+  );
 
 create policy "recipes_insert_own" on public.recipes
   for insert with check (user_id = auth.uid());
@@ -328,7 +336,12 @@ create policy "recipes_delete_own" on public.recipes
 -- ---- recipe_tags ---------------------------------------------------------
 create policy "recipe_tags_select_via_recipe" on public.recipe_tags
   for select using (
-    recipe_id in (select id from public.recipes where is_public = true or user_id = auth.uid())
+    recipe_id in (
+      select id from public.recipes
+      where visibility = 'public'
+        or user_id = auth.uid()
+        or (visibility = 'household' and public.shares_household_with(user_id))
+    )
   );
 
 create policy "recipe_tags_modify_via_recipe_owner" on public.recipe_tags
@@ -346,7 +359,12 @@ alter table public.recipe_likes enable row level security;
 
 create policy "recipe_likes_select_via_recipe" on public.recipe_likes
   for select using (
-    recipe_id in (select id from public.recipes where is_public = true or user_id = auth.uid())
+    recipe_id in (
+      select id from public.recipes
+      where visibility = 'public'
+        or user_id = auth.uid()
+        or (visibility = 'household' and public.shares_household_with(user_id))
+    )
   );
 
 create policy "recipe_likes_insert_own" on public.recipe_likes

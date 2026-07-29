@@ -62,3 +62,12 @@ export function useHousehold() {
 
   return { household, loading, refresh };
 }
+
+/** 그 household에 속한 모든 유저의 id 목록 — "우리집 레시피" 목록에서 가구원이 만든
+ * household/public 등급 레시피를 같이 보여주기 위해 필요(레시피는 household가 아니라
+ * user 소유라서, 가구원인지 여부를 user_id 목록으로 판단해야 함). */
+export async function fetchHouseholdMemberIds(householdId: string): Promise<string[]> {
+  const { data, error } = await supabase.from('household_members').select('user_id').eq('household_id', householdId);
+  if (error) throw error;
+  return (data ?? []).map((row) => row.user_id as string);
+}

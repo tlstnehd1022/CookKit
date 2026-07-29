@@ -52,9 +52,12 @@ export interface Recipe {
   finalImageId?: string;
   /** 공개 레시피를 "내 레시피로 복사하기"로 가져온 경우, 그 원본 레시피 id(DB 컬럼) */
   sourceRecipeId?: string;
-  /** 다른 사람도 볼 수 있게 공개할지 여부(기본 false) — DB의 recipes.is_public 컬럼 */
-  isPublic?: boolean;
+  /** 공개 범위(기본 household) — DB의 recipes.visibility 컬럼 */
+  visibility?: RecipeVisibility;
 }
+
+/** private=본인만, household=같은 가구원까지(기본값), public=전체 공개 */
+export type RecipeVisibility = 'private' | 'household' | 'public';
 
 export type TagType = 'style' | 'category' | 'cuisine';
 

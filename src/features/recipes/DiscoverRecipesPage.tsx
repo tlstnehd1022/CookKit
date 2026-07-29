@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSession } from '../../data/session';
-import { useRecipes } from '../../data/store';
+import { useRecipes, getCurrentHouseholdId } from '../../data/store';
 import { useRecipeViewMode } from '../../data/viewMode';
 import { fetchPublicRecipes, type PublicRecipeEntry } from '../../data/publicRecipes';
 import { fetchLikeInfo, type LikeInfo } from '../../data/recipeLikes';
@@ -11,9 +11,10 @@ const SEARCH_DEBOUNCE_MS = 300;
 type SortMode = 'recent' | 'name';
 
 /**
- * 다른 household의 공개(is_public=true) 레시피를 둘러보는 화면. RecipesPage와 같은 그리드/리스트
- * 카드 레이아웃을 그대로 재사용하되(RecipeCard/RecipeListItem), 데이터 출처가 household 공유
- * store가 아니라 화면 진입 시 1회 조회하는 fetchPublicRecipes라서 별도 컴포넌트로 분리했다.
+ * 다른 household의 전체공개(visibility='public') 레시피를 둘러보는 화면(우리 가구 것은 이미
+ * "우리집 레시피"에 보이므로 제외). RecipesPage와 같은 그리드/리스트 카드 레이아웃을 그대로
+ * 재사용하되(RecipeCard/RecipeListItem), 데이터 출처가 household 공유 store가 아니라 화면
+ * 진입 시 1회 조회하는 fetchPublicRecipes라서 별도 컴포넌트로 분리했다.
  */
 export function DiscoverRecipesPage({
   onSelectEntry,
@@ -22,6 +23,7 @@ export function DiscoverRecipesPage({
 }) {
   const { user } = useSession();
   const { recipes: myRecipes } = useRecipes();
+  const householdId = getCurrentHouseholdId();
   const { mode: viewMode, setMode: setViewMode } = useRecipeViewMode();
   const [entries, setEntries] = useState<PublicRecipeEntry[]>([]);
   const [ingredientNameById, setIngredientNameById] = useState<Map<string, string>>(new Map());
@@ -34,11 +36,11 @@ export function DiscoverRecipesPage({
   const [sortMode, setSortMode] = useState<SortMode>('recent');
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !householdId) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchPublicRecipes(user.id, myRecipes)
+    fetchPublicRecipes(user.id, householdId, myRecipes)
       .then(async (result) => {
         if (cancelled) return;
         setEntries(result.entries);

@@ -190,8 +190,9 @@
     콘솔의 Rate Limits 페이지에서 이 모델 기준 값을 볼 것.
 - **DB 전환(Supabase) — 진행 중**: localStorage 단독 구조를 다중 사용자가 가능한 진짜 백엔드로
   옮기는 작업. 배경: User-Household는 N:1(가족 여러 명이 하나의 household 공유), 재료(ingredients)는
-  household 단위로 공유, 레시피(recipes)는 user 단위 소유(기본 비공개, `is_public`으로 전체공개 전환
-  가능해서 다른 유저가 참조/복사 가능), 로그인은 **구글 소셜 로그인이 메인 + 이메일/비밀번호가 정식
+  household 단위로 공유, 레시피(recipes)는 user 단위 소유하되 `visibility`로 3단계 공개범위(개인
+  소유/가구 공유(기본)/전체 공개 — 10차 확장에서 `is_public` boolean을 대체함, 아래 "레시피 탐색/복사"
+  항목 참고), 로그인은 **구글 소셜 로그인이 메인 + 이메일/비밀번호가 정식
   보조 수단**(`src/features/auth/LoginPage.tsx`). 이메일 로그인은 개발 편의용이 아니라 정식 기능 —
   구글 계정이 없거나 네트워크 제약으로 구글 접속이 막힌 환경(예: 특정 회사 네트워크)에서도 로그인할 수
   있어야 한다는 요구사항. Supabase Auth 내장 기능이라 별도 콘솔 설정 없이 동작하고, `profiles` 자동
@@ -305,14 +306,35 @@
     걸 방지하려고 뺐음 — 담기는 상세 화면에 이미 있고, 삭제는 상세 화면(`RecipeDetailPage.tsx`)의
     "수정" 옆으로 옮김. 알러지 배지도 카드에서는 뺐음(이미 알러지 제외 필터가 있어 중복 판단) — 필요해지면
     다시 넣을 수 있음
-- **레시피 탐색/복사(다른 가구 공개 레시피 둘러보기)**: `RecipesFeature.tsx`에 "내 레시피"/"🔎 둘러보기"
+- **레시피 탐색/복사(다른 가구 공개 레시피 둘러보기)**: `RecipesFeature.tsx`에 "우리집 레시피"/"🔎 둘러보기"
   칩 토글 추가(별도 하단 탭 대신 기존 레시피 탭 안에서 전환 — 탐색은 가끔 쓰는 보조 기능이라 4개
   네비게이션 탭에 자리를 더 안 씀). 그리드/리스트 카드(`RecipeCard`/`RecipeListItem`)는 `RecipesPage.tsx`
   것을 그대로 재사용하되, `tags: Tag[]` 대신 `tagNames: string[]`을 받도록 리팩터링(다른 household의
   태그는 로컬 `useTags()` 목록에 없어서 이름을 미리 문자열로 뽑아 넘겨야 함), `ownerLabel`/`cornerBadge`
   prop을 추가해 "OO님의 레시피"/"이미 있음" 표시를 지원.
-  - **RLS 보완이 핵심 작업이었음**: `recipes` 테이블 자체의 RLS(`recipes_select_public_or_own` — "본인 것
-    + is_public=true")는 이미 Phase 1 설계 때부터 되어 있어서 손댈 게 없었음. 진짜 문제는 공개 레시피가
+  - **공개 범위 3단계로 확장(`visibility`) — 처음엔 boolean `is_public`으로 시작했다가 곧바로 개편함**:
+    실사용해보니 "레시피는 user 소유, is_public 켜면 전체공개"만으로는 **같은 가구 식구끼리도 서로의
+    레시피가 자동으로 안 보이는** 문제가 있었음(가족 앱인데 정작 가족끼리 공유가 안 되는 구조). 그래서
+    `is_public boolean`을 `visibility text`(`'private'` 개인 소유 / `'household'` 가구 공유(**기본값**)
+    / `'public'` 전체 공개) 3단계로 교체(`supabase/migrations/0010_recipe_visibility_household_sharing.sql`,
+    `schema.sql` 동기화, 기존 `is_public=false` 행은 전부 `household`로 마이그레이션됨 — 1인 가구는
+    체감 차이 없지만 진짜 비공개를 원했다면 편집 화면에서 다시 "개인 소유"로 바꿔야 함).
+    `recipes_select_visibility` RLS는 `visibility='public' or user_id=auth.uid() or (visibility=
+    'household' and shares_household_with(user_id))` — `household_members` 재귀 방지용으로 이미
+    만들어둔 `shares_household_with()` 헬퍼 함수를 그대로 재사용. `recipe_tags`/`recipe_likes` 등
+    파생 정책들도 전부 같은 3항 조건으로 갱신.
+    - **"우리집 레시피" 목록 재정의**: 이제 단순 "내 것"이 아니라 **내 것(등급 무관) + 우리 가구원이
+      만든 household/public 등급 레시피**(가구원의 private는 안 보임)를 보여줌. RLS만으로는 "다른
+      가구의 public 레시피"까지 다 통과되므로(둘러보기 전용 범위), `createRecipesRepository.getAll()`이
+      먼저 `fetchHouseholdMemberIds(householdId)`(`household.ts`, `household_members` 조회)로 우리
+      가구원 id 목록을 구한 뒤 `.in('user_id', memberIds).or('visibility.neq.private,user_id.eq.'+
+      userId)`로 좁힘 — RLS가 허용하는 범위 중에서도 "이 화면에 필요한 만큼만" 클라이언트가 한 번 더
+      제한하는 패턴(바로 아래 "내 레시피에 남의 공개 레시피가 섞여 나오던" 버그와 같은 종류의 교훈).
+    - **둘러보기도 가구원 제외**: `fetchPublicRecipes(userId, householdId, myRecipes)`가 우리 가구원
+      (나 포함)의 public 레시피는 이미 "우리집 레시피"에 나오므로 제외하고, 진짜 다른 가구의 public만
+      보여줌.
+  - **RLS 보완이 핵심 작업이었음(0007)**: `recipes` 테이블 자체의 RLS는 이미 Phase 1 설계 때부터
+    있었어서 손댈 게 없었음(이후 위 visibility 개편에서 조건만 확장됨). 진짜 문제는 공개 레시피가
     "참조하는" 다른 테이블들 — `tags`/`ingredients`/`profiles`는 전부 household(또는 본인) 단위로만
     보이게 막혀있어서, 다른 household의 공개 레시피를 열어도 그 레시피가 쓰는 태그 이름/재료 이름/
     작성자 이름을 하나도 못 읽어오는 문제가 있었음(레시피 행 자체는 보이는데 참조된 이름들이 비어보임).
@@ -348,9 +370,9 @@
     `supabase/migrations/0008_public_recipe_images_storage.sql`로 "공개 레시피가 참조하는 이미지는
     다운로드만 추가로 허용"하는 정책을 넣음(0006의 household 전용 정책과 별개로 추가, 업로드/삭제는
     여전히 household 전용). 복사 완료 후 `confirm()`으로 "편집 화면으로 이동할까요?" 안내.
-  - **공개(`is_public`) 토글**: `RecipeEditor.tsx` 하단(조리 순서 다음)에 "다른 사람들도 이 레시피를
-    볼 수 있게 공개하기" 토글 추가, 켜면 경고 문구 노출. 상세 화면에는 안 넣음(스펙상 편집 화면에만
-    필요).
+  - **공개 범위(`visibility`) 선택**: `RecipeEditor.tsx` 하단(조리 순서 다음)에 개인 소유/가구 공유
+    (기본)/전체 공개 3단 select 추가, 전체 공개 선택 시 경고 문구 노출. 상세 화면에는 안 넣음(스펙상
+    편집 화면에만 필요).
   - **범위에서 뺀 것**: 시드 레시피 4개(`src/data/seed.ts`)를 공개로 미리 심어두는 건 스킵 — 이 시드는
     실제 DB에 한 번도 들어간 적 없는 미사용 TypeScript 참고 데이터라(Supabase 전환 후 새 household는
     항상 빈 상태로 시작) 토글할 실제 DB 행 자체가 없음. 초기 콘텐츠 문제는 여러 household가 실제로
@@ -426,6 +448,13 @@
   안드로이드 위주)는 기술적으로 가능. 매번 AI 호출하면 느리고 비용 드니, 자주 쓰는 명령(시작/다음/얼마나 남았어)은
   키워드 매칭으로 즉시 처리하고 자유 질문("이거 얼마나 끓여야해?")만 기존 AI 채팅으로 넘기는 하이브리드 구조 추천.
   MVP는 TTS(타이머 완료 음성 알림)부터, STT는 다음 단계로
+- **가구 간 팔로우/구독(레시피 visibility 다음 단계)**: 지금은 다른 가구 레시피를 보려면 "전체 공개"뿐이라
+  전부 아니면 전무 식인데, 사용자가 많아지면 "이 가구만 팔로우해서 그 가구가 공개한 레시피는 항상 보기"
+  같은 가구-대-가구 연결 관계를 만들고 싶다는 아이디어(2026-07-29 논의). 지금 3단계
+  (private/household/public) 구조 위에 `household_follows`(follower_household_id, followed_household_id)
+  같은 테이블을 얹으면 될 것 같음 — 예를 들어 "팔로우한 가구의 household 등급 레시피까지 보이게" 정책을
+  추가하는 식. 사용자 수가 늘어나서 "전체 공개 둘러보기"만으로는 관계性이 부족해질 때 진행하기로 하고
+  지금은 스킵.
 
 ## 핵심 기능 요구사항
 
@@ -528,7 +557,7 @@ Recipe {
   estimatedMinutes?: number  // 예상 조리시간(분), 규칙 기반 자동 계산 또는 수동 입력
   finalImageId?: string  // 완성 사진(AI 생성 또는 업로드), Supabase Storage 경로 참조
   sourceRecipeId?: string  // 공개 레시피를 복사해온 경우 원본 id(DB recipes.source_recipe_id 실컬럼)
-  isPublic?: boolean  // 다른 사용자도 조회 가능한지(DB recipes.is_public 실컬럼, 기본 false)
+  visibility?: 'private' | 'household' | 'public'  // 공개 범위(DB recipes.visibility 실컬럼, 기본 household)
   // allergens는 저장하지 않음 — ingredients를 통해 항상 파생(computed) 계산
   // imageId/finalImageId는 Supabase Storage(src/data/imageStore.ts)에 저장된 이미지 경로 참조(실제 데이터 아님)
 }

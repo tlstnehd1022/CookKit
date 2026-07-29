@@ -37,7 +37,7 @@ export function RecipeDetailPage({
   // 공개된 내 레시피는 다른 사람이 얼마나 좋아했는지(좋아요 수) 조회 전용으로 보여준다 —
   // 내 레시피에 내가 좋아요를 누르는 건 의미가 없어서 토글 버튼은 안 두고 숫자만 표시.
   useEffect(() => {
-    if (!recipe?.isPublic || !user) {
+    if (recipe?.visibility !== 'public' || !user) {
       setLikeCount(null);
       return;
     }
@@ -50,7 +50,7 @@ export function RecipeDetailPage({
     return () => {
       cancelled = true;
     };
-  }, [recipe?.id, recipe?.isPublic, user?.id]);
+  }, [recipe?.id, recipe?.visibility, user?.id]);
 
   if (!recipe) {
     return (

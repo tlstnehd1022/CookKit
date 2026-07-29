@@ -77,7 +77,7 @@ export async function initializeDataLayer(householdId: string, userId: string): 
     ingredientsStore.setRepo(createIngredientsRepository(householdId)),
     categoriesStore.setRepo(createCategoriesRepository(householdId)),
     tagsStore.setRepo(createTagsRepository(householdId)),
-    recipesStore.setRepo(createRecipesRepository(userId)),
+    recipesStore.setRepo(createRecipesRepository(userId, householdId)),
   ]);
 }
 

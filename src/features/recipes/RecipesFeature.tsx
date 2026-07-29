@@ -107,7 +107,7 @@ export function RecipesFeature() {
         estimatedMinutes: entry.recipe.estimatedMinutes,
         finalImageId: newFinalImageId,
         sourceRecipeId: entry.recipe.id,
-        isPublic: false,
+        visibility: 'household',
       };
       await saveRecipe(newRecipe);
 
@@ -133,7 +133,7 @@ export function RecipesFeature() {
             className={`chip selectable ${listMode === 'mine' ? 'active' : ''}`}
             onClick={() => setListMode('mine')}
           >
-            내 레시피
+            우리집 레시피
           </button>
           <button
             className={`chip selectable ${listMode === 'discover' ? 'active' : ''}`}

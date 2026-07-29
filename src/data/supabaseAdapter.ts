@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabaseClient';
+import { fetchHouseholdMemberIds } from './household';
 import type { CrudRepository } from './repository';
-import type { Category, Ingredient, Recipe, Tag } from './types';
+import type { Category, Ingredient, Recipe, RecipeVisibility, Tag } from './types';
 
 // household 단위로 공유되는 단순 테이블(categories/tags) 공용 팩토리.
 // ingredients/recipes는 컬럼 매핑이 더 복잡해서(예: recipes는 태그 조인) 별도로 구현한다.
@@ -114,15 +115,17 @@ export function rowToRecipe(row: Record<string, unknown>): Recipe {
     estimatedMinutes: content.estimatedMinutes,
     finalImageId: content.finalImageId,
     sourceRecipeId: (row.source_recipe_id as string | null) ?? undefined,
-    isPublic: Boolean(row.is_public),
+    visibility: (row.visibility as RecipeVisibility | null) ?? 'household',
   };
 }
 
 /**
  * recipes는 user 소유(공유 household 아님) + recipe_tags 조인이 필요해서 공용 팩토리를 안 쓴다.
- * RLS가 이미 "본인 것 + is_public=true"만 내려주므로 select에는 별도 필터가 필요 없다.
+ * RLS가 "본인 것 + visibility='household'인 가구원 것 + visibility='public'"을 다 통과시켜주지만,
+ * "우리집 레시피" 목록은 그중 딱 "내 것 + 우리 가구원 것"만 보여줘야 해서(다른 가구의 public
+ * 레시피까지 섞이면 안 됨 — 그건 둘러보기 화면 몫) getAll()에서 household 멤버 id로 한 번 더 좁힌다.
  */
-export function createRecipesRepository(userId: string): CrudRepository<Recipe> {
+export function createRecipesRepository(userId: string, householdId: string): CrudRepository<Recipe> {
   async function saveOne(recipe: Recipe): Promise<void> {
     const { error: upsertError } = await supabase.from('recipes').upsert({
       id: recipe.id,
@@ -137,10 +140,10 @@ export function createRecipesRepository(userId: string): CrudRepository<Recipe> 
         estimatedMinutes: recipe.estimatedMinutes,
         finalImageId: recipe.finalImageId,
       } satisfies RecipeContent,
-      // is_public/source_recipe_id는 실제 컬럼이라 명시적으로 보냄 — RecipeEditor가
+      // visibility/source_recipe_id는 실제 컬럼이라 명시적으로 보냄 — RecipeEditor가
       // rowToRecipe로 읽어온 기존 값을 폼 상태에 들고 있다가 그대로 다시 보내므로
-      // (existing?.isPublic ?? false 식으로 초기화) 의도치 않게 되돌아가지 않음.
-      is_public: recipe.isPublic ?? false,
+      // (existing?.visibility ?? 'household' 식으로 초기화) 의도치 않게 되돌아가지 않음.
+      visibility: recipe.visibility ?? 'household',
       source_recipe_id: recipe.sourceRecipeId ?? null,
     });
     if (upsertError) throw upsertError;
@@ -158,13 +161,15 @@ export function createRecipesRepository(userId: string): CrudRepository<Recipe> 
 
   return {
     async getAll() {
-      // user_id로 명시적으로 필터링 — RLS는 "본인 것 + is_public=true"를 다 통과시켜주므로
-      // 필터 없이 조회하면 다른 사람의 공개 레시피까지 "내 레시피" 목록에 섞여 나오는 버그가
-      // 있었음(둘러보기 기능을 만들면서 발견). "내 레시피"는 소유권 기준으로만 걸러야 한다.
+      // "내 것" + "우리 가구원이 만든 household/public 등급 레시피"만 — 소유권과 무관하게
+      // RLS를 통과하는 다른 가구의 public 레시피까지 섞여 나오면 안 되므로(둘러보기 전용),
+      // 먼저 가구원 id 목록으로 좁힌 뒤 visibility로 한 번 더 거른다.
+      const memberIds = await fetchHouseholdMemberIds(householdId);
       const { data, error } = await supabase
         .from('recipes')
         .select('*, recipe_tags(tag_id)')
-        .eq('user_id', userId);
+        .in('user_id', memberIds.length > 0 ? memberIds : [userId])
+        .or(`visibility.neq.private,user_id.eq.${userId}`);
       if (error) throw error;
       return (data ?? []).map(rowToRecipe);
     },

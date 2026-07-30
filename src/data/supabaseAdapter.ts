@@ -75,6 +75,7 @@ export function createIngredientsRepository(householdId: string): CrudRepository
       preferred_unit: ingredient.preferredUnit ?? null,
       preferred_method: ingredient.preferredMethod ?? null,
       owned: ingredient.owned,
+      expiration_date: ingredient.expirationDate ?? null,
     }),
     (row) => ({
       id: row.id as string,
@@ -85,6 +86,7 @@ export function createIngredientsRepository(householdId: string): CrudRepository
       preferredUnit: (row.preferred_unit as string | null) ?? undefined,
       preferredMethod: (row.preferred_method as string | null) ?? undefined,
       owned: Boolean(row.owned),
+      expirationDate: (row.expiration_date as string | null) ?? undefined,
     }),
   );
 }

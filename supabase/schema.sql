@@ -146,6 +146,8 @@ create table public.ingredients (
   allergens text[] not null default '{}',
   preferred_unit text,
   preferred_method text,
+  -- 0016: 유통기한(선택) — 화면 임박 배지 + 예정된 웹 푸시 알림(Vercel Cron)이 참조
+  expiration_date date,
   created_at timestamptz not null default now()
 );
 -- 참고: quantity/unit은 요청하신 스키마 그대로 넣었습니다. 기존 앱(localStorage 버전)은

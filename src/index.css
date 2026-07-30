@@ -13,6 +13,7 @@
   --chip-bg: #efe7d6;
   --danger: #b0342a;
   --success: #4f7942;
+  --warning: #a5720e;
   --radius: 12px;
   color-scheme: light;
 
@@ -36,6 +37,7 @@
   --chip-bg: #3a362e;
   --danger: #e2685a;
   --success: #8fbf7a;
+  --warning: #d9a552;
   color-scheme: dark;
 }
 
@@ -349,6 +351,23 @@ h2 {
 .chip.allergen {
   background: color-mix(in srgb, var(--danger) 15%, var(--chip-bg));
   color: var(--danger);
+}
+
+/* 유통기한 임박/경과 배지 — 재료 목록(IngredientsPage)에서 사용 */
+.chip.expiration-urgent {
+  background: color-mix(in srgb, var(--danger) 18%, var(--chip-bg));
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.chip.expiration-soon {
+  background: color-mix(in srgb, var(--warning) 18%, var(--chip-bg));
+  color: var(--warning);
+}
+
+.chip.expiration-expired {
+  background: var(--chip-bg);
+  color: var(--text-secondary);
 }
 
 .chip button {

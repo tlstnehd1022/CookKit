@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useCategories, useIngredients, usePantryStatus, makeId } from '../../data/store';
 import { CategoryManager } from './CategoryManager';
 import { COMMON_UNITS } from '../../data/units';
+import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
 import type { Ingredient } from '../../data/types';
 
 export function IngredientsPage() {
@@ -30,6 +31,16 @@ export function IngredientsPage() {
     (ingredient) => !categories.some((c) => c.id === ingredient.categoryId),
   );
 
+  // 유통기한 임박/경과 재료 요약 — 카테고리와 무관하게 전체 재료 중에서 뽑아 가장 급한 순으로 보여줌
+  const expiringSoon = useMemo(() => {
+    return ingredients
+      .map((ingredient) => ({ ingredient, info: getExpirationInfo(ingredient.expirationDate) }))
+      .filter((entry): entry is { ingredient: Ingredient; info: NonNullable<typeof entry.info> } =>
+        Boolean(entry.info),
+      )
+      .sort((a, b) => a.info.daysLeft - b.info.daysLeft);
+  }, [ingredients]);
+
   return (
     <div>
       <div className="row">
@@ -43,6 +54,25 @@ export function IngredientsPage() {
           </button>
         </div>
       </div>
+
+      {expiringSoon.length > 0 && (
+        <>
+          <div className="section-title">⏰ 유통기한 임박/경과 ({expiringSoon.length})</div>
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="chip-row" style={{ marginTop: 0 }}>
+              {expiringSoon.map(({ ingredient, info }) => (
+                <button
+                  key={ingredient.id}
+                  className={`chip expiration-${info.level}`}
+                  onClick={() => setEditingDetailsId(ingredient.id)}
+                >
+                  {ingredient.name} · {formatExpirationBadge(info)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       {groups.map(({ category, items }) => {
         const isCollapsed = collapsed.has(category.id);
@@ -140,12 +170,22 @@ function IngredientRow({
   onDelete: () => void;
 }) {
   const hasPreference = Boolean(ingredient.preferredUnit || ingredient.preferredMethod);
+  const expirationInfo = getExpirationInfo(ingredient.expirationDate);
   return (
     <div className="row" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {ingredient.name}
         </span>
+        {expirationInfo && (
+          <button
+            className={`chip expiration-${expirationInfo.level}`}
+            style={{ flexShrink: 0 }}
+            onClick={onEditDetails}
+          >
+            {formatExpirationBadge(expirationInfo)}
+          </button>
+        )}
         {ingredient.allergens.length > 0 ? (
           <button className="chip allergen" style={{ flexShrink: 0 }} onClick={onEditDetails}>
             ⚠ {ingredient.allergens.length}
@@ -172,6 +212,7 @@ interface IngredientDetailPatch {
   allergens: string[];
   preferredUnit?: string;
   preferredMethod?: string;
+  expirationDate?: string;
 }
 
 const METHOD_PRESETS = ['다진 것', '편으로', '그라인더로', '가루로', '생것 그대로'];
@@ -189,6 +230,7 @@ function IngredientDetailModal({
   const [allergens, setAllergens] = useState<string[]>(ingredient.allergens);
   const [draft, setDraft] = useState('');
   const [preferredUnit, setPreferredUnit] = useState(ingredient.preferredUnit ?? '');
+  const [expirationDate, setExpirationDate] = useState(ingredient.expirationDate ?? '');
 
   const initialMethod = ingredient.preferredMethod ?? '';
   const isInitialPreset = METHOD_PRESETS.includes(initialMethod);
@@ -232,6 +274,27 @@ function IngredientDetailModal({
               추가
             </button>
           </div>
+        </div>
+
+        <div className="section-title">유통기한 (선택)</div>
+        <div className="field">
+          <label>유통기한</label>
+          <div className="row" style={{ gap: 8 }}>
+            <input
+              type="date"
+              value={expirationDate}
+              onChange={(e) => setExpirationDate(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            {expirationDate && (
+              <button className="btn small" onClick={() => setExpirationDate('')}>
+                지우기
+              </button>
+            )}
+          </div>
+          <p className="text-muted" style={{ marginTop: 4 }}>
+            설정해두면 재료 목록에 임박 배지가 표시되고, 알림을 켜두면 미리 알려드려요.
+          </p>
         </div>
 
         <div className="section-title">개인 선호 (AI 레시피 생성/수정 시 참고됨)</div>
@@ -291,6 +354,7 @@ function IngredientDetailModal({
                   selectedMethod === CUSTOM_METHOD_VALUE
                     ? customMethodText.trim() || undefined
                     : selectedMethod || undefined,
+                expirationDate: expirationDate || undefined,
               })
             }
           >

@@ -15,6 +15,8 @@ export interface Ingredient {
   preferredMethod?: string;
   /** 보유 여부(household 공유) — 예전엔 별도 PantryStatus 맵이었으나 DB 전환 후 재료 행에 통합 */
   owned: boolean;
+  /** 유통기한(YYYY-MM-DD, 선택) — 없으면 배지/알림 대상에서 제외 */
+  expirationDate?: string;
 }
 
 export interface RecipeIngredient {

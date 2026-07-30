@@ -1,4 +1,4 @@
-import type { ExtractedRecipe } from './claudeClient';
+import type { ExtractedRecipe } from './claudeClient.js';
 
 export interface RecipeSnapshot {
   name: string;

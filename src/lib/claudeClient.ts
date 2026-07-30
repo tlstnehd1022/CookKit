@@ -6,8 +6,8 @@ import {
   type ChatResult,
   type ChatTurn,
   type ExistingContext,
-} from './aiChat';
-import type { RecipeSnapshot } from './recipeDiff';
+} from './aiChat.js';
+import type { RecipeSnapshot } from './recipeDiff.js';
 
 export const AVAILABLE_MODELS = [
   { id: 'claude-opus-4-8', label: 'Claude Opus 4.8 (기본, 가장 정확함)' },

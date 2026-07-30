@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireUser, AuthError } from './_lib/auth';
-import { getUserApiKey } from './_lib/apiKeyStore';
-import { extractRecipeFromYoutubeMeta } from '../src/lib/geminiClient';
+import { requireUser, AuthError } from './_lib/auth.js';
+import { getUserApiKey } from './_lib/apiKeyStore.js';
+import { extractRecipeFromYoutubeMeta } from '../src/lib/geminiClient.js';
 
 // 유튜브 영상 제목/설명란(+자막) → 레시피 구조화(Gemini 전용). 영상 제목/설명란 자체는
 // YouTube Data API(settings.youtubeApiKey)로 클라이언트에서 이미 가져온 뒤 여기로 넘어옴 —

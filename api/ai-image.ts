@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireUser, AuthError } from './_lib/auth';
-import { getUserApiKey } from './_lib/apiKeyStore';
-import { generateImageWithRetry } from '../src/lib/geminiClient';
+import { requireUser, AuthError } from './_lib/auth.js';
+import { getUserApiKey } from './_lib/apiKeyStore.js';
+import { generateImageWithRetry } from '../src/lib/geminiClient.js';
 
 // 조리 단계/완성 사진 이미지 생성(Gemini 전용 — Claude는 이미지 생성 미지원, aiProvider 설정과
 // 무관하게 항상 Gemini 키를 씀, 기존 클라이언트 로직과 동일). generateImageWithRetry 안에서

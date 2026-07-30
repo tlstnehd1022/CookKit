@@ -1,5 +1,5 @@
-import type { ExtractedRecipe } from './claudeClient';
-import type { RecipeSnapshot } from './recipeDiff';
+import type { ExtractedRecipe } from './claudeClient.js';
+import type { RecipeSnapshot } from './recipeDiff.js';
 
 export interface ChatTurn {
   role: 'user' | 'assistant';

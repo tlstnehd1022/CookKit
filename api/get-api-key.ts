@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireUser, AuthError } from './_lib/auth';
-import { getUserApiKey, maskApiKey, isValidProvider } from './_lib/apiKeyStore';
+import { requireUser, AuthError } from './_lib/auth.js';
+import { getUserApiKey, maskApiKey, isValidProvider } from './_lib/apiKeyStore.js';
 
 // 설정 화면에 마스킹된 키만 보여주기 위한 조회 — 평문 전체를 클라이언트로 내려보내지 않는다
 // (앞 6자리+****+뒤 4자리만). 실제 AI 호출에 쓰는 평문 키 조회는 api/ai-*.ts가 서버 내부에서만

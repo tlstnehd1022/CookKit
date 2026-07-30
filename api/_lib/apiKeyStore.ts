@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from './supabaseAdmin';
+import { getSupabaseAdmin } from './supabaseAdmin.js';
 
 export type AiProvider = 'anthropic' | 'gemini';
 export const VALID_PROVIDERS: AiProvider[] = ['anthropic', 'gemini'];

@@ -7,9 +7,9 @@ import {
   type ChatResult,
   type ChatTurn,
   type ExistingContext,
-} from './aiChat';
-import type { RecipeSnapshot } from './recipeDiff';
-import { extractYoutubeVideoId } from './youtubeTranscript';
+} from './aiChat.js';
+import type { RecipeSnapshot } from './recipeDiff.js';
+import { extractYoutubeVideoId } from './youtubeTranscript.js';
 
 export const GEMINI_DEFAULT_MODEL = 'gemini-3.6-flash';
 // 조리 단계 이미지 생성 전용 모델("Nano Banana" 계열) — 텍스트 모델과 별개로 관리.

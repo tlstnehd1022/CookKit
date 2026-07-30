@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireUser, AuthError } from './_lib/auth';
-import { getUserApiKey, isValidProvider } from './_lib/apiKeyStore';
-import { chatAboutRecipe as claudeChatAboutRecipe } from '../src/lib/claudeClient';
-import { chatAboutRecipe as geminiChatAboutRecipe } from '../src/lib/geminiClient';
+import { requireUser, AuthError } from './_lib/auth.js';
+import { getUserApiKey, isValidProvider } from './_lib/apiKeyStore.js';
+import { chatAboutRecipe as claudeChatAboutRecipe } from '../src/lib/claudeClient.js';
+import { chatAboutRecipe as geminiChatAboutRecipe } from '../src/lib/geminiClient.js';
 
 // 대화형 레시피 생성/수정(propose_recipe 툴 포함)을 서버에서 대신 호출한다. 브라우저는 더 이상
 // Anthropic/Gemini API 키를 들고 있지 않음 — 로그인 세션으로 본인 확인 후, Vault에 저장된 본인

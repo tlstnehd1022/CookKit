@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireUser, AuthError } from './_lib/auth';
-import { getUserApiKey } from './_lib/apiKeyStore';
-import { extractRecipeFromTranscript } from '../src/lib/claudeClient';
+import { requireUser, AuthError } from './_lib/auth.js';
+import { getUserApiKey } from './_lib/apiKeyStore.js';
+import { extractRecipeFromTranscript } from '../src/lib/claudeClient.js';
 
 // 유튜브 자막 텍스트 → 레시피 구조화(Claude 전용, RecipeEditor.tsx가 aiProvider==='anthropic'
 // 일 때만 호출). Gemini는 별도로 api/ai-extract-youtube-meta.ts를 쓴다(기존에도 제공자별로

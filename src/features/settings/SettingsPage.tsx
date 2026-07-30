@@ -6,6 +6,7 @@ import { useHousehold } from '../../data/household';
 import { useProfile } from '../../data/profile';
 import { useTheme } from '../../data/theme';
 import { useApiKeyStatus } from '../../data/apiKeys';
+import { useNotificationSettings, isIosNotInstalled } from '../../data/pushNotifications';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { getErrorMessage } from '../../lib/errorMessage';
 
@@ -24,6 +25,7 @@ export function SettingsPage() {
   const anthropicKeyStatus = useApiKeyStatus('anthropic');
   const geminiKeyStatus = useApiKeyStatus('gemini');
   const youtubeKeyStatus = useApiKeyStatus('youtube');
+  const notificationSettings = useNotificationSettings();
 
   const [migrating, setMigrating] = useState(false);
   const [migrationError, setMigrationError] = useState<string | null>(null);
@@ -85,6 +87,38 @@ export function SettingsPage() {
             <span className="knob" />
           </button>
         </div>
+      </div>
+
+      <div className="section-title">유통기한 알림</div>
+      <div className="card">
+        <div className="row">
+          <span>유통기한 알림 받기</span>
+          <button
+            className={`toggle ${notificationSettings.enabled ? 'on' : ''}`}
+            onClick={() => notificationSettings.toggle(!notificationSettings.enabled)}
+            aria-label="유통기한 알림 전환"
+            disabled={notificationSettings.loading || !notificationSettings.supported}
+          >
+            <span className="knob" />
+          </button>
+        </div>
+        <p className="text-muted" style={{ marginTop: 8 }}>
+          켜두면 재료의 유통기한이 3일 이내로 임박했을 때 매일 한 번 알림을 보내드려요.
+        </p>
+        {!notificationSettings.supported && (
+          <p className="text-muted" style={{ marginTop: 4 }}>
+            이 브라우저는 웹 푸시 알림을 지원하지 않아요.
+          </p>
+        )}
+        {isIosNotInstalled() && (
+          <p className="text-muted" style={{ marginTop: 4 }}>
+            📱 iOS(아이폰/아이패드)에서는 Safari 공유 버튼 → "홈 화면에 추가"로 앱을 설치한
+            상태에서만 알림을 받을 수 있어요. 브라우저 탭 상태로는 알림이 오지 않아요.
+          </p>
+        )}
+        {notificationSettings.error && (
+          <p style={{ marginTop: 4, color: 'var(--danger)' }}>⚠️ {notificationSettings.error}</p>
+        )}
       </div>
 
       {showMigrationBanner && (

@@ -477,3 +477,26 @@ revoke execute on function public.get_user_api_key(uuid, text) from public;
 revoke execute on function public.get_user_api_key(uuid, text) from anon;
 revoke execute on function public.get_user_api_key(uuid, text) from authenticated;
 grant execute on function public.get_user_api_key(uuid, text) to service_role;
+
+-- ---- push_subscriptions (0017) — 웹 푸시 구독 정보(유통기한 알림용) --------------------------
+-- 구독 정보 자체는 비밀값이 아니라 RLS만으로 본인 것만 관리. 실제 발송은 service_role로
+-- api/check-expiring-ingredients.ts(Vercel Cron)가 처리. 자세한 배경은 0017 마이그레이션 참고.
+create table public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  endpoint text not null,
+  subscription_data jsonb not null,
+  created_at timestamptz not null default now(),
+  unique (user_id, endpoint)
+);
+
+alter table public.push_subscriptions enable row level security;
+
+create policy "push_subscriptions_select_own" on public.push_subscriptions
+  for select using (user_id = auth.uid());
+
+create policy "push_subscriptions_insert_own" on public.push_subscriptions
+  for insert with check (user_id = auth.uid());
+
+create policy "push_subscriptions_delete_own" on public.push_subscriptions
+  for delete using (user_id = auth.uid());

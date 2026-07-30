@@ -1,8 +1,32 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import { setActiveTab, type Tab } from './data/activeTab'
 
 const root = createRoot(document.getElementById('root')!)
+
+// 유통기한 알림 클릭 시(src/sw.ts의 notificationclick) 이미 열려있는 창은 postMessage로,
+// 새로 연 창은 ?tab= 쿼리스트링으로 어떤 탭을 열지 알려준다 — 이 앱은 라우터가 없는 탭
+// 기반 SPA라 URL 자체로 화면을 구분하지 않으므로, 시작 시 한 번 읽어서 전역 탭 store에 반영.
+const VALID_TABS: Tab[] = ['recipes', 'shopping', 'ingredients', 'settings']
+function isTab(value: string | null): value is Tab {
+  return Boolean(value) && VALID_TABS.includes(value as Tab)
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    const tab = (event.data as { type?: string; tab?: string } | undefined)?.tab ?? null
+    if (event.data?.type === 'cookkit-navigate' && isTab(tab)) {
+      setActiveTab(tab)
+    }
+  })
+}
+
+const initialTab = new URLSearchParams(window.location.search).get('tab')
+if (isTab(initialTab)) {
+  setActiveTab(initialTab)
+  window.history.replaceState({}, '', window.location.pathname)
+}
 
 // theme/App은 동적 import로 불러온다 — 정적 import였다면 supabaseClient.ts 같은 곳에서
 // 모듈 최상단에 던지는 에러(예: 환경변수 누락)가 React가 마운트되기도 전에 터져서 완전히

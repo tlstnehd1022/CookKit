@@ -58,6 +58,12 @@
   1회성 마이그레이션 배너도 추가. 실사용 중 YouTube Data API 키도 같은 방식으로 포함시켰고
   (원래는 범위 밖이었으나 요청으로 추가), 더 이상 의미 없어진 "데이터 백업"(JSON 내보내기/
   가져오기) 기능도 이번에 함께 제거. 자세한 내용은 아래 "API 키 Vault 전환" 항목 참고.
+- **14차 확장 진행 중 — 재료 유통기한 관리 + PWA/웹 푸시 알림**: 재료에 유통기한(선택) 필드를
+  추가하고 목록 화면에 임박/경과 배지 표시(1-2번, 완료·자체 검증 후 커밋). 이어서 PWA 설치
+  지원(manifest+서비스워커, vite-plugin-pwa)과 유통기한 임박 시 매일 1회 웹 푸시 알림(Vercel
+  Cron)까지 구현(3-4번). iOS "홈 화면에 추가" 안내 문구도 코드는 완성해뒀지만 iOS 실기기
+  테스트는 나중으로 미룸(안드로이드만 우선 확인). 영수증 촬영 자동 인식은 이번 범위에서 제외
+  (별도 진행 예정). 자세한 내용은 아래 "유통기한 관리 + PWA/웹 푸시 알림" 항목 참고.
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
@@ -544,6 +550,53 @@
     60+2+60+4+60초 가까이 걸릴 수 있음 — Vercel 함수 자체의 `maxDuration`을 넉넉히 잡아야 도중에
     함수가 먼저 끊기지 않음(`api/youtube-transcript.ts`가 이미 Fluid Compute를 전제로 120초를 쓰고
     있어서 같은 전제 위에 설정).
+- **유통기한 관리 + PWA/웹 푸시 알림(14차 확장)**: `Ingredient.expirationDate?: string`(YYYY-MM-DD,
+  선택 — `0016_ingredient_expiration.sql`, `ingredients.expiration_date`) 추가. `src/lib/
+  expiration.ts`의 `getExpirationInfo()`가 오늘 날짜 기준으로 `expired`(경과)/`urgent`(3일
+  이내)/`soon`(4~7일) 세 단계를 계산하고, 화면(재료 목록 각 행 + 상단 "유통기한 임박/경과"
+  요약 섹션)과 서버(알림 발송 대상 판단) 양쪽이 이 함수 하나를 공유해서 기준이 어긋나지 않게
+  함(제공자 로직 재사용의 반복되는 패턴). 배지는 `.chip.expiration-{level}` 클래스(신규
+  `--warning` CSS 변수 추가, 기존 `.chip.allergen`의 color-mix 패턴 그대로 따름).
+  - **PWA(vite-plugin-pwa)**: `strategies: 'injectManifest'`로 설정(자동 생성 서비스워커
+    `generateSW`가 아니라 커스텀 소스 `src/sw.ts`를 씀 — push/notificationclick 이벤트를 직접
+    다뤄야 해서). 아이콘은 아직 임시(`scripts/generate-pwa-icons.mjs`가 순수 Node
+    `zlib.deflateSync`로 PNG를 직접 인코딩해서 만든 accent 색상 배경 + cream 원형 단색
+    아이콘 — 이 프로젝트엔 실제 로고 에셋이 없었고 이미지 생성/변환 도구도 없어서 절차적으로
+    최소한의 유효한 아이콘만 만들어둔 것, 나중에 실제 로고로 교체할 것). `index.html`에
+    `apple-mobile-web-app-*` 메타태그 + `apple-touch-icon`도 추가(iOS는 web manifest를 온전히
+    안 따라서 별도 필요).
+  - **알림 클릭 시 탭 전환**: 이 앱은 라우터 없는 탭 기반 SPA라 URL로 화면을 구분하지 않음 —
+    `src/sw.ts`의 `notificationclick`이 이미 열린 창엔 `postMessage({type:'cookkit-navigate',
+    tab})`, 새 창은 `/?tab=ingredients`로 열고, `main.tsx`가 시작 시 이 메시지/쿼리스트링을
+    읽어서 `src/data/activeTab.ts`(API 키 "설정으로 이동" 버튼에서 이미 쓰던 전역 탭 store)로
+    전환한다.
+  - **웹 푸시 구독(`src/data/pushNotifications.ts`)**: `useNotificationSettings()` 훅이 브라우저
+    Notification/Push API로 구독하고, 구독 정보(endpoint+공개키 — 비밀값 아님)를
+    `push_subscriptions` 테이블에 저장(`0017_push_subscriptions.sql`). 이 테이블은 Vault 없이
+    RLS만으로 본인 것만 조회/추가/삭제 허용(API 키와 달리 "이 기기로 보내달라"는 정보일 뿐이라
+    서버 경유가 굳이 필요 없다고 판단) — 실제 발송(VAPID 비밀키 필요)만 서버(service_role)가
+    처리. 설정 화면 "유통기한 알림 받기" 토글이 이 훅을 사용.
+  - **VAPID 키**: `npx web-push generate-vapid-keys`로 생성한 키 쌍 — 공개키는
+    `VITE_VAPID_PUBLIC_KEY`(클라이언트 번들에 노출돼도 안전, 구독 암호화용), 비밀키는
+    `VAPID_PRIVATE_KEY`(Vercel 환경변수로만, 서버 전용 — 노출되면 임의로 우리 구독자에게 푸시를
+    보낼 수 있게 되므로 서비스 롤 키에 준하게 취급).
+  - **발송 트리거(Vercel Cron)**: `vercel.json`의 `crons`(`0 0 * * *` = 매일 UTC 0시 = 한국시간
+    오전 9시)가 `api/check-expiring-ingredients.ts`를 매일 1회 호출. Vercel이 `CRON_SECRET`
+    환경변수를 설정해두면 호출 시 `Authorization: Bearer <CRON_SECRET>`를 자동으로 실어 보내므로
+    이 값으로 "진짜 Vercel Cron 호출"인지 검증(외부에서 임의로 이 엔드포인트를 두드려 알림을
+    스팸처럼 보내는 것 방지). 유통기한 있는 재료 전체를 가져와 `getExpirationInfo`로
+    urgent/expired만 걸러 household별로 묶고, household 구성원 중 구독이 있는 사용자에게
+    `web-push`로 발송 — 재료 이름을 최대 3개까지 미리보기로 넣고 나머지는 개수로 요약. 발송
+    실패가 404/410(구독 만료/기기에서 이미 해제)이면 그 구독 행을 정리(다음 실행 때 또 실패하지
+    않도록), 그 외 에러는 로그만 남기고 계속 진행.
+  - **범위에서 뺀 것**: 영수증 촬영으로 재료를 자동 인식/등록하는 기능은 이번 요청에서 명시적으로
+    제외(별도로 진행 예정) — 유통기한 입력은 재료 상세 모달에서 수동으로만 가능.
+  - **테스트 순서**: SQL Editor에서 `0016`/`0017` 마이그레이션 실행 → Vercel 환경변수에
+    `VITE_VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`CRON_SECRET` 추가 → 배포 후 안드로이드에서
+    먼저 확인(iOS는 전체 기능/디자인이 다 끝난 뒤 한 번에 확인 예정이라 이번엔 제외). Cron은
+    매일 정해진 시간에만 실행되므로 즉시 테스트하려면 `curl -H "Authorization: Bearer
+    $CRON_SECRET" https://<배포 도메인>/api/check-expiring-ingredients`로 직접 호출하거나 Vercel
+    대시보드의 Cron Jobs 탭에서 수동 실행.
 - **난이도/조리시간 자동 판단**: `Recipe.difficulty`('easy'|'medium'|'hard') / `difficultyReason`(판단
   근거 한 문장) / `estimatedMinutes`(예상 조리시간 분)를 추가. 실제 저장은 다른 중첩 데이터와 마찬가지로
   `recipes.content` jsonb 안에 담김(`supabaseAdapter.ts`).
@@ -727,6 +780,7 @@ Ingredient {
   preferredUnit?: string (예: '작은술' — AI 레시피 생성 시 참고),
   preferredMethod?: string (예: '그라인더로 갈아서' — AI 레시피 생성 시 참고),
   owned: boolean (보유 여부 — household 공유, Supabase ingredients.owned 컬럼)
+  expirationDate?: string (YYYY-MM-DD, 선택 — 임박 배지/웹 푸시 알림 판단 기준)
 }
 
 Category {

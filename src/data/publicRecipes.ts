@@ -3,6 +3,18 @@ import { fetchHouseholdMemberIds } from './household';
 import { rowToRecipe } from './supabaseAdapter';
 import type { Recipe } from './types';
 
+// PostgREST의 .in()은 값들을 GET 요청 쿼리스트링에 그대로 나열하는데, id 개수가 많아지면
+// (예: 공개 레시피가 수백 개로 늘어나 참조하는 재료 id가 수백~수천 개가 되면) URL이 너무 길어져
+// "Bad Request"로 거부된다(둘러보기 화면에서 실제로 겪은 문제). 한 번에 넘길 개수를 제한해
+// 여러 번 나눠 조회한 뒤 합친다.
+const IN_QUERY_CHUNK_SIZE = 150;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
 // "둘러보기" 화면 전용 — 다른 household의 전체공개(visibility='public') 레시피를 조회한다.
 // 우리 가구원의 public 레시피는 이미 "우리집 레시피" 목록에 나오므로 여기서는 제외한다.
 // household 공유 store(store.ts)와 달리 계속 구독하는 캐시가 아니라 화면 진입 시 1회 조회하는
@@ -57,22 +69,30 @@ export async function fetchPublicRecipes(
   const authorUserIds = Array.from(new Set(rows.map((row) => row.user_id as string)));
   let householdNameByUserId = new Map<string, string>();
   if (authorUserIds.length > 0) {
-    const { data: memberRows, error: memberError } = await supabase
-      .from('household_members')
-      .select('user_id, household_id')
-      .in('user_id', authorUserIds);
-    if (memberError) throw memberError;
+    const memberRows = (
+      await Promise.all(
+        chunk(authorUserIds, IN_QUERY_CHUNK_SIZE).map(async (ids) => {
+          const { data, error } = await supabase.from('household_members').select('user_id, household_id').in('user_id', ids);
+          if (error) throw error;
+          return data ?? [];
+        }),
+      )
+    ).flat();
     const householdIdByUserId = new Map(
-      (memberRows ?? []).map((r) => [r.user_id as string, r.household_id as string]),
+      memberRows.map((r) => [r.user_id as string, r.household_id as string]),
     );
     const householdIds = Array.from(new Set(householdIdByUserId.values()));
     if (householdIds.length > 0) {
-      const { data: householdRows, error: householdError } = await supabase
-        .from('households')
-        .select('id, name')
-        .in('id', householdIds);
-      if (householdError) throw householdError;
-      const nameByHouseholdId = new Map((householdRows ?? []).map((r) => [r.id as string, r.name as string]));
+      const householdRows = (
+        await Promise.all(
+          chunk(householdIds, IN_QUERY_CHUNK_SIZE).map(async (ids) => {
+            const { data, error } = await supabase.from('households').select('id, name').in('id', ids);
+            if (error) throw error;
+            return data ?? [];
+          }),
+        )
+      ).flat();
+      const nameByHouseholdId = new Map(householdRows.map((r) => [r.id as string, r.name as string]));
       householdNameByUserId = new Map(
         Array.from(householdIdByUserId.entries())
           .map(([userId, householdId]) => [userId, nameByHouseholdId.get(householdId)])
@@ -91,12 +111,16 @@ export async function fetchPublicRecipes(
   }
   let ingredientNameById = new Map<string, string>();
   if (allIngredientIds.size > 0) {
-    const { data: ingRows, error: ingError } = await supabase
-      .from('ingredients')
-      .select('id, name')
-      .in('id', Array.from(allIngredientIds));
-    if (ingError) throw ingError;
-    ingredientNameById = new Map((ingRows ?? []).map((r) => [r.id as string, r.name as string]));
+    const ingRows = (
+      await Promise.all(
+        chunk(Array.from(allIngredientIds), IN_QUERY_CHUNK_SIZE).map(async (ids) => {
+          const { data, error } = await supabase.from('ingredients').select('id, name').in('id', ids);
+          if (error) throw error;
+          return data ?? [];
+        }),
+      )
+    ).flat();
+    ingredientNameById = new Map(ingRows.map((r) => [r.id as string, r.name as string]));
   }
 
   const copiedSourceIds = new Set(

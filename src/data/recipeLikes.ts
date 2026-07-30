@@ -1,5 +1,16 @@
 import { supabase } from '../lib/supabaseClient';
 
+// .in()은 값들을 GET 요청 쿼리스트링에 그대로 나열해서, 레시피 수가 많아지면(둘러보기 화면에
+// 공개 레시피가 수백 개로 늘어난 경우 등) URL이 너무 길어져 "Bad Request"로 거부된다 —
+// src/data/publicRecipes.ts에서 같은 문제를 겪고 고친 것과 동일한 패턴.
+const IN_QUERY_CHUNK_SIZE = 150;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
 // 공개 레시피 좋아요(하트). household 공유 store가 아니라 필요한 화면(둘러보기, 공개 레시피
 // 상세, 내 레시피 상세)에서 그때그때 조회한다 — 좋아요 수는 실시간 동기화까지는 필요 없는
 // 가벼운 부가 정보라 계속 구독하는 캐시로 만들 필요가 없다고 판단.
@@ -14,10 +25,17 @@ export async function fetchLikeInfo(recipeIds: string[], currentUserId: string):
   const result = new Map<string, LikeInfo>(recipeIds.map((id) => [id, { likeCount: 0, likedByMe: false }]));
   if (recipeIds.length === 0) return result;
 
-  const { data, error } = await supabase.from('recipe_likes').select('recipe_id, user_id').in('recipe_id', recipeIds);
-  if (error) throw error;
+  const data = (
+    await Promise.all(
+      chunk(recipeIds, IN_QUERY_CHUNK_SIZE).map(async (ids) => {
+        const { data, error } = await supabase.from('recipe_likes').select('recipe_id, user_id').in('recipe_id', ids);
+        if (error) throw error;
+        return data ?? [];
+      }),
+    )
+  ).flat();
 
-  for (const row of data ?? []) {
+  for (const row of data) {
     const recipeId = row.recipe_id as string;
     const entry = result.get(recipeId);
     if (!entry) continue;

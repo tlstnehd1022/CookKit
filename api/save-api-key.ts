@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser, AuthError } from './_lib/auth.js';
-import { saveUserApiKey, isValidProvider } from './_lib/apiKeyStore.js';
+import { saveUserApiKey, isValidApiKeyProvider } from './_lib/apiKeyStore.js';
 
 // 로그인한 사용자의 API 키를 Vault에 암호화 저장한다. anon 키로는 Vault에 접근할 수 없고
 // (0014 마이그레이션 참고) 이 함수만 SUPABASE_SERVICE_ROLE_KEY로 접근 가능 — 클라이언트는
@@ -20,8 +20,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const user = await requireUser(req);
     const { provider, apiKey } = (req.body ?? {}) as { provider?: unknown; apiKey?: unknown };
 
-    if (!isValidProvider(provider)) {
-      res.status(400).json({ error: 'invalid_provider', message: 'provider는 anthropic 또는 gemini여야 합니다.' });
+    if (!isValidApiKeyProvider(provider)) {
+      res
+        .status(400)
+        .json({ error: 'invalid_provider', message: 'provider는 anthropic, gemini, youtube 중 하나여야 합니다.' });
       return;
     }
     const trimmed = typeof apiKey === 'string' ? apiKey.trim() : '';

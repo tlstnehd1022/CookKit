@@ -55,7 +55,9 @@
   localStorage 평문 저장에서 Supabase Vault 암호화 저장으로, 실제 AI 호출(대화/이미지 생성/유튜브
   자막→레시피 추출)도 브라우저 직접 호출에서 서버리스 함수 경유로 전환. 설정 화면의 키 입력 UI도
   마스킹 표시 + 인라인 편집 방식으로 개편, 기존에 localStorage에 남아있던 평문 키를 서버로 옮기는
-  1회성 마이그레이션 배너도 추가. 자세한 내용은 아래 "API 키 Vault 전환" 항목 참고.
+  1회성 마이그레이션 배너도 추가. 실사용 중 YouTube Data API 키도 같은 방식으로 포함시켰고
+  (원래는 범위 밖이었으나 요청으로 추가), 더 이상 의미 없어진 "데이터 백업"(JSON 내보내기/
+  가져오기) 기능도 이번에 함께 제거. 자세한 내용은 아래 "API 키 Vault 전환" 항목 참고.
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
@@ -289,6 +291,7 @@
     - **백업(JSON 내보내기/가져오기)**: `backup.ts`가 이제 스토어의 캐시 스냅샷(`getIngredientsSnapshot()`
       등, React 훅이 아닌 일반 함수)을 읽고, 가져오기는 각 `replaceAllX`를 await하도록 변경. pantryStatus는
       가져올 때 각 재료의 `owned` 필드로 다시 접어넣음(백업 JSON 포맷 자체는 안 바꿈).
+      **(13차 확장에서 이 기능 자체를 제거함 — "데이터 백업" 항목 참고, `backup.ts`는 더 이상 없음.)**
     - **버그(수정 완료) — ID를 uuid로 변경**: `makeId(prefix)`가 localStorage 시절 그대로 `cat-xxx`/
       `recipe-xxx` 형태의 문자열을 만들고 있어서, Supabase의 모든 `id` 컬럼이 `uuid` 타입인 것과 충돌 —
       새 재료/태그/카테고리/레시피를 만들 때마다 `invalid input syntax for type uuid` 400 에러로 저장이
@@ -494,12 +497,21 @@
     번들링해줌) — apiKey만 클라이언트가 보내던 것에서 서버가 Vault에서 복호화한 값으로 바뀔 뿐,
     프롬프트/툴 스키마/재시도 로직은 완전히 동일해서 "서버 경유해도 기존과 동일한 품질의 에러
     메시지가 보이는지" 같은 걱정이 애초에 생기지 않음(로직 중복이 없으므로 동작이 갈릴 여지가 없음).
-    반대로 `buildStepImagePrompt`/`buildFinalDishImagePrompt`/`fetchYoutubeVideoMeta`(YouTube Data
-    API, `settings.youtubeApiKey`)처럼 API 키가 필요 없거나 이번 전환 범위 밖인 함수는 그대로
-    클라이언트에 남아있음.
-  - **YouTube Data API 키는 이번 전환 대상이 아님**: `settings.youtubeApiKey`는 계속 localStorage
-    평문 그대로 둠 — Anthropic/Gemini 키와 달리 읽기 전용 공개 데이터(영상 제목/설명란) 조회용이라
-    민감도가 낮고, 원래도 선택 사항이라 범위를 좁게 유지하는 쪽을 택함.
+    반대로 `buildStepImagePrompt`/`buildFinalDishImagePrompt`처럼 API 키 자체가 필요 없는 순수
+    프롬프트 빌더 함수는 그대로 클라이언트에 남아있음.
+  - **YouTube Data API 키도 뒤이어 같은 방식으로 Vault 전환(0015)**: 처음엔 "읽기 전용 공개
+    데이터 조회용이라 민감도가 낮다"는 이유로 범위 밖으로 뒀었으나, 사용자 요청으로 바로 이어서
+    포함시킴. 저장소 계층의 provider 타입을 `'anthropic' | 'gemini'`에서 `ApiKeyProvider =
+    'anthropic' | 'gemini' | 'youtube'`로 넓히고(`api/_lib/apiKeyStore.ts`, `src/data/apiKeys.ts`
+    — `settings.aiProvider`와는 다른 축이라 별도 타입으로 분리), `user_api_keys.provider`
+    체크 제약도 함께 넓힘(`0015_youtube_api_key_provider.sql`). `api/youtube-meta.ts`가
+    `fetchYoutubeVideoMeta`(geminiClient.ts, 원래도 키를 인자로 받는 순수 함수라 그대로 재사용)를
+    서버에서 호출 — 이 키는 여전히 완전한 선택 사항이라, 키가 없거나 조회 자체가 실패해도(영상
+    비공개 등) 에러 대신 `{ meta: null }`로 조용히 응답하고 자막만으로 계속 진행한다(기존
+    클라이언트 쪽 try/catch 무시 동작을 서버로 그대로 옮김). `api/ai-chat.ts`의 provider
+    검증은 넓어진 `isValidApiKeyProvider`를 쓰지 않고 `'anthropic'|'gemini'`만 직접 체크 —
+    대화 제공자 선택과 키 저장소의 provider 개념이 다르다는 걸 명확히 하기 위함(대화에 youtube가
+    올 일은 없어야 함).
   - **클라이언트 진입점**: `src/lib/aiProxy.ts`(로그인 세션의 access token을 `Authorization: Bearer`
     로 실어 `/api/ai-*` 호출, `ApiProxyError`(코드+메시지)를 던짐) + `src/data/apiKeys.ts`의
     `useApiKeyStatus(provider)`(설정 화면에서 마스킹된 키 상태 조회/저장, `useProfile()`과 같은 패턴).
@@ -682,13 +694,12 @@
 - 필터: 전체 / 구매 필요 / 보유
 - 재료별 "실제 필요량"과 "장 볼 때 사야 할 추천 단위"는 별개 값으로 관리
 
-### 4. 데이터 백업 (JSON 내보내기/가져오기)
-- 로컬 저장만 쓰므로 브라우저 데이터 삭제 시 유실 위험, DB 연동 전환 시에도 마이그레이션 통로 필요
-- "내보내기" 시 recipes, ingredients, categories, tags, pantryStatus 전체를 하나의 JSON 스냅샷으로 다운로드
-- "가져오기" 시 JSON 업로드하면 로컬 저장소에 복원(전체 교체)
-- 이 JSON 스키마를 나중에 DB 마이그레이션 스크립트의 기준 포맷으로도 재사용할 것
-- **알려진 한계**: 조리 단계 이미지(IndexedDB)는 이 백업 스냅샷에 포함되지 않음 — 내보내기/가져오기해도
-  이미지는 유지/복원되지 않고 `RecipeStep.imageId` 참조만 남아 깨진 상태가 될 수 있음(다시 생성 필요)
+### 4. 데이터 백업 — 기능 제거됨(13차 확장)
+`localStorage` 단독 시절(Phase 1~2) "브라우저 데이터 삭제 시 유실 위험"을 대비한 JSON 내보내기/
+가져오기 기능(`src/data/backup.ts`, 설정 화면 "데이터 백업" 섹션)이 있었으나, Supabase DB 전환
+완료 후에는 그 전제 자체가 사라져서(데이터가 브라우저가 아니라 Supabase에 있음) 삭제함. "가져오기"
+(복원)가 household 전체 데이터를 통째로 덮어쓰는 방식이라 다인원 공유 환경에서는 오히려 위험도가
+더 큰 기능이었던 것도 삭제 이유 중 하나.
 
 ## 데이터 모델 (최신)
 ```

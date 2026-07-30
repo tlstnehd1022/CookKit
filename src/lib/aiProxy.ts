@@ -77,3 +77,10 @@ export async function generateImage(model: string, prompt: string): Promise<stri
   const result = await callAiApi<{ dataUrl: string }>('/api/ai-image', { model, prompt });
   return result.dataUrl;
 }
+
+/** YouTube Data API 키도 선택 사항이라, 키가 없거나 조회가 실패해도 서버가 meta: null로 조용히
+ * 응답한다(api/youtube-meta.ts 참고) — 호출부에서 별도로 없음/실패를 구분해 처리할 필요 없음. */
+export async function fetchYoutubeVideoMeta(url: string): Promise<YoutubeVideoMeta | null> {
+  const result = await callAiApi<{ meta: YoutubeVideoMeta | null }>('/api/youtube-meta', { url });
+  return result.meta;
+}

@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser, AuthError } from './_lib/auth.js';
-import { getUserApiKey, isValidProvider } from './_lib/apiKeyStore.js';
+import { getUserApiKey } from './_lib/apiKeyStore.js';
 import { chatAboutRecipe as claudeChatAboutRecipe } from '../src/lib/claudeClient.js';
 import { chatAboutRecipe as geminiChatAboutRecipe } from '../src/lib/geminiClient.js';
 
@@ -33,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       currentRecipe?: unknown;
     };
 
-    if (!isValidProvider(provider)) {
+    if (provider !== 'anthropic' && provider !== 'gemini') {
       res.status(400).json({ error: 'invalid_provider', message: 'provider는 anthropic 또는 gemini여야 합니다.' });
       return;
     }

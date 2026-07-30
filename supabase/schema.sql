@@ -409,7 +409,8 @@ create extension if not exists supabase_vault;
 
 create table public.user_api_keys (
   user_id uuid not null references public.profiles(id) on delete cascade,
-  provider text not null check (provider in ('anthropic', 'gemini')),
+  -- youtube는 0015에서 추가(YouTube Data API 키도 같은 방식으로 Vault 저장)
+  provider text not null check (provider in ('anthropic', 'gemini', 'youtube')),
   secret_id uuid not null references vault.secrets(id) on delete cascade,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

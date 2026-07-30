@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSettings } from '../../data/settings';
 import { useSession } from '../../data/session';
@@ -7,12 +7,12 @@ import { useProfile } from '../../data/profile';
 import { useTheme } from '../../data/theme';
 import { useApiKeyStatus } from '../../data/apiKeys';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
-import { downloadBackup, restoreBackupFromFile } from '../../data/backup';
 import { getErrorMessage } from '../../lib/errorMessage';
 
 // 예전엔 localStorage에 평문으로 저장하던 API 키를 Supabase Vault로 옮긴 뒤로 다시 안 보여주기
-// 위한 1회성 플래그 — settings.anthropicApiKey/geminiApiKey에 값이 남아있는데 이 플래그가 없으면
-// "옮길까요?" 배너를 보여준다(마이그레이션 완료/건너뛰기 둘 다 이 플래그를 세워서 다시 안 뜨게 함).
+// 위한 1회성 플래그 — settings.anthropicApiKey/geminiApiKey/youtubeApiKey에 값이 남아있는데 이
+// 플래그가 없으면 "옮길까요?" 배너를 보여준다(마이그레이션 완료/건너뛰기 둘 다 이 플래그를 세워서
+// 다시 안 뜨게 함).
 const API_KEY_MIGRATION_FLAG = 'cookkit:apiKeyMigrated';
 
 export function SettingsPage() {
@@ -23,16 +23,16 @@ export function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
   const anthropicKeyStatus = useApiKeyStatus('anthropic');
   const geminiKeyStatus = useApiKeyStatus('gemini');
-  const [youtubeKeyDraft, setYoutubeKeyDraft] = useState(settings.youtubeApiKey);
-  const [importMessage, setImportMessage] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const youtubeKeyStatus = useApiKeyStatus('youtube');
 
   const [migrating, setMigrating] = useState(false);
   const [migrationError, setMigrationError] = useState<string | null>(null);
   const [migrationDone, setMigrationDone] = useState(
     () => localStorage.getItem(API_KEY_MIGRATION_FLAG) === 'true',
   );
-  const showMigrationBanner = Boolean((settings.anthropicApiKey || settings.geminiApiKey) && !migrationDone);
+  const showMigrationBanner = Boolean(
+    (settings.anthropicApiKey || settings.geminiApiKey || settings.youtubeApiKey) && !migrationDone,
+  );
 
   async function runKeyMigration() {
     setMigrating(true);
@@ -40,7 +40,8 @@ export function SettingsPage() {
     try {
       if (settings.anthropicApiKey) await anthropicKeyStatus.saveKey(settings.anthropicApiKey);
       if (settings.geminiApiKey) await geminiKeyStatus.saveKey(settings.geminiApiKey);
-      updateSettings({ anthropicApiKey: '', geminiApiKey: '' });
+      if (settings.youtubeApiKey) await youtubeKeyStatus.saveKey(settings.youtubeApiKey);
+      updateSettings({ anthropicApiKey: '', geminiApiKey: '', youtubeApiKey: '' });
       localStorage.setItem(API_KEY_MIGRATION_FLAG, 'true');
       setMigrationDone(true);
     } catch (err) {
@@ -66,33 +67,6 @@ export function SettingsPage() {
     const { error } = await supabase.from('households').update({ name: trimmed }).eq('id', household.id);
     if (error) throw error;
     await refreshHousehold();
-  }
-
-  interface SaveStatus {
-    text: string;
-    ok: boolean;
-  }
-  const [youtubeStatus, setYoutubeStatus] = useState<SaveStatus | null>(null);
-
-  function saveYoutubeKey() {
-    try {
-      updateSettings({ youtubeApiKey: youtubeKeyDraft.trim() });
-      setYoutubeStatus({ text: '저장되었습니다.', ok: true });
-    } catch (err) {
-      setYoutubeStatus({ text: err instanceof Error ? err.message : '저장에 실패했습니다.', ok: false });
-    }
-  }
-
-  async function handleImportFile(file: File) {
-    if (!confirm('가져오기를 진행하면 현재 저장된 모든 데이터가 백업 파일 내용으로 대체됩니다. 계속할까요?')) {
-      return;
-    }
-    try {
-      await restoreBackupFromFile(file);
-      setImportMessage('가져오기가 완료되었습니다.');
-    } catch (err) {
-      setImportMessage(err instanceof Error ? err.message : '가져오기에 실패했습니다.');
-    }
   }
 
   return (
@@ -192,32 +166,16 @@ export function SettingsPage() {
 
           <div className="section-title">YouTube Data API 키 (유튜브 변환용, 선택)</div>
           <div className="card">
-            <div className="field">
-              <label>API 키 (Google Cloud Console에서 무료 발급)</label>
-              <input
-                type="password"
-                value={youtubeKeyDraft}
-                onChange={(e) => {
-                  setYoutubeKeyDraft(e.target.value);
-                  setYoutubeStatus(null);
-                }}
-                placeholder="AIza..."
-              />
-            </div>
-            <p className="text-muted">
-              공식 YouTube API는 자막까지는 제공하지 않지만, 영상 제목/설명란을 함께 가져와 자막 자동 추출
-              결과와 합쳐서 정확도를 더 높이는 데 씁니다. 자막 자체는 별도 서버리스 함수로 자동 추출되므로,
-              이 키를 입력하지 않아도 유튜브 변환은 정상 동작합니다(완전히 선택 사항).
-            </p>
-            <button className="btn primary" onClick={saveYoutubeKey}>
-              저장
-            </button>
-            {youtubeStatus && (
-              <p style={{ marginTop: 8, color: youtubeStatus.ok ? 'var(--success)' : 'var(--danger)' }}>
-                {youtubeStatus.ok ? '✅ ' : '⚠️ '}
-                {youtubeStatus.text}
-              </p>
-            )}
+            <InlineEditRow
+              label="API 키"
+              value={youtubeKeyStatus.status?.hasKey ? (youtubeKeyStatus.status.maskedKey ?? '') : ''}
+              placeholder="AIza... (Google Cloud Console에서 무료 발급)"
+              startEmpty
+              helperText="공식 YouTube API는 자막까지는 제공하지 않지만, 영상 제목/설명란을 함께 가져와 자막 자동
+                추출 결과와 합쳐서 정확도를 더 높이는 데 씁니다. 이 키가 없어도 유튜브 변환은 정상
+                동작합니다(완전히 선택 사항). 저장하면 서버에 암호화되어 보관됩니다."
+              onSave={(next) => youtubeKeyStatus.saveKey(next)}
+            />
           </div>
         </>
       )}
@@ -248,34 +206,6 @@ export function SettingsPage() {
           </div>
         </>
       )}
-
-      <div className="section-title">데이터 백업</div>
-      <div className="card">
-        <p className="text-muted">
-          로컬 저장소만 사용하므로 브라우저 데이터가 삭제되면 모든 정보가 유실됩니다. 정기적으로 내보내기를
-          해두는 것을 권장합니다.
-        </p>
-        <div className="row">
-          <button className="btn" onClick={downloadBackup}>
-            JSON 내보내기
-          </button>
-          <button className="btn" onClick={() => fileInputRef.current?.click()}>
-            JSON 가져오기
-          </button>
-        </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/json"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleImportFile(file);
-            e.target.value = '';
-          }}
-        />
-        {importMessage && <p style={{ marginTop: 8 }}>{importMessage}</p>}
-      </div>
 
       <div className="section-title">가구</div>
       <div className="card">

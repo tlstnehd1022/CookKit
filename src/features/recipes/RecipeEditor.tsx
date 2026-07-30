@@ -236,14 +236,8 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       setYoutubeStage('analyzing');
       let result: ExtractedRecipe;
       if (isGemini) {
-        let meta: geminiClient.YoutubeVideoMeta | null = null;
-        if (settings.youtubeApiKey) {
-          try {
-            meta = await geminiClient.fetchYoutubeVideoMeta(settings.youtubeApiKey, youtubeUrl.trim());
-          } catch {
-            // YouTube Data API 조회 실패 시에도 자막 텍스트만으로 계속 진행
-          }
-        }
+        // 키가 없거나 조회 실패해도 서버가 meta: null로 응답(선택 사항 — 자막만으로 계속 진행)
+        const meta = await aiProxy.fetchYoutubeVideoMeta(youtubeUrl.trim()).catch(() => null);
         const combinedTranscript = [transcriptText, youtubeManualText.trim()].filter(Boolean).join('\n\n');
         result = await aiProxy.extractRecipeFromYoutubeMeta(
           settings.geminiModel,

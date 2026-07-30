@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useSession } from './session';
 import { getErrorMessage } from '../lib/errorMessage';
-import type { AiProvider } from './settings';
+
+// settings.ts의 AiProvider('anthropic'|'gemini')는 "어떤 AI로 대화할지" 선택이고, 이 키 저장소는
+// YouTube Data API 키(0015)도 같은 방식으로 다뤄서 별도 타입을 쓴다.
+export type ApiKeyProvider = 'anthropic' | 'gemini' | 'youtube';
 
 export interface ApiKeyStatus {
   hasKey: boolean;
@@ -10,11 +13,11 @@ export interface ApiKeyStatus {
 }
 
 /**
- * 설정 화면에서 Anthropic/Gemini API 키의 저장 여부(마스킹된 값)를 조회하고 새 키를 저장한다.
- * 실제 평문 키는 클라이언트에 전혀 내려오지 않음 — 저장은 api/save-api-key.ts, 조회는
+ * 설정 화면에서 Anthropic/Gemini/YouTube API 키의 저장 여부(마스킹된 값)를 조회하고 새 키를
+ * 저장한다. 실제 평문 키는 클라이언트에 전혀 내려오지 않음 — 저장은 api/save-api-key.ts, 조회는
  * api/get-api-key.ts(마스킹된 값만 반환)를 거친다. household.ts/profile.ts와 같은 패턴.
  */
-export function useApiKeyStatus(provider: AiProvider) {
+export function useApiKeyStatus(provider: ApiKeyProvider) {
   const { user } = useSession();
   const [status, setStatus] = useState<ApiKeyStatus | null>(null);
   const [loading, setLoading] = useState(true);

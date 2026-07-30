@@ -339,7 +339,7 @@ function computeDifficulty(ingredientCount: number, cookMinutes: number, stepCou
 // 8. 레시피 1건 처리
 // ----------------------------------------------------------------------------
 interface ProcessResult {
-  status: 'created' | 'skipped_duplicate' | 'skipped_no_ingredients' | 'failed';
+  status: 'created' | 'skipped_duplicate' | 'skipped_no_ingredients' | 'skipped_category_filter' | 'failed';
   rcpSeq: string;
   name: string;
   detail?: string;
@@ -356,9 +356,21 @@ async function recipeAlreadyExists(rcpSeq: string): Promise<boolean> {
   return Boolean(data);
 }
 
-async function processRow(row: FoodApiRow, householdId: string, categoryId: string, seedBatchId: string): Promise<ProcessResult> {
+async function processRow(
+  row: FoodApiRow,
+  householdId: string,
+  categoryId: string,
+  seedBatchId: string,
+  categoryFilter?: string[],
+): Promise<ProcessResult> {
   const rcpSeq = row.RCP_SEQ;
   const name = row.RCP_NM?.trim() || `레시피 ${rcpSeq}`;
+
+  // 특정 RCP_PAT2(요리종류)만 골라 담고 싶을 때 쓰는 필터 — 카테고리 분포가 한쪽(반찬)에
+  // 쏠렸을 때 후식/국&찌개 등 부족한 종류만 추가로 채워 넣는 용도.
+  if (categoryFilter && categoryFilter.length > 0 && !categoryFilter.includes(row.RCP_PAT2?.trim())) {
+    return { status: 'skipped_category_filter', rcpSeq, name };
+  }
 
   if (await recipeAlreadyExists(rcpSeq)) {
     return { status: 'skipped_duplicate', rcpSeq, name };
@@ -443,12 +455,17 @@ async function processRow(row: FoodApiRow, householdId: string, categoryId: stri
 // 9. 메인
 // ----------------------------------------------------------------------------
 async function main() {
-  const [startArg, endArg, batchArg] = process.argv.slice(2);
+  const [startArg, endArg, batchArg, categoryFilterArg] = process.argv.slice(2);
   const start = Number.parseInt(startArg ?? '1', 10);
   const end = Number.parseInt(endArg ?? '20', 10);
   const seedBatchId = batchArg ?? `public-data-${new Date().toISOString().slice(0, 10)}`;
+  // 5번째 인자로 "후식,국&찌개"처럼 쉼표로 RCP_PAT2 값을 주면 그 카테고리만 골라 담는다
+  // (카테고리 분포가 한쪽으로 쏠렸을 때 부족한 종류만 추가 수집하는 용도).
+  const categoryFilter = categoryFilterArg ? categoryFilterArg.split(',').map((s) => s.trim()) : undefined;
 
-  console.log(`공공데이터 API에서 ${start}~${end}번 레시피를 가져옵니다 (batch: ${seedBatchId})`);
+  console.log(
+    `공공데이터 API에서 ${start}~${end}번 레시피를 가져옵니다 (batch: ${seedBatchId}${categoryFilter ? `, 카테고리 필터: ${categoryFilter.join('/')}` : ''})`,
+  );
 
   const { householdId, categoryId } = await ensureSystemHousehold();
   await preloadCaches(householdId);
@@ -458,15 +475,18 @@ async function main() {
 
   const results: ProcessResult[] = [];
   for (const row of rows) {
-    const result = await processRow(row, householdId, categoryId, seedBatchId);
+    const result = await processRow(row, householdId, categoryId, seedBatchId, categoryFilter);
     results.push(result);
-    console.log(`[${result.status}] ${result.name} (RCP_SEQ:${result.rcpSeq})${result.detail ? ` - ${result.detail}` : ''}`);
+    if (result.status !== 'skipped_category_filter') {
+      console.log(`[${result.status}] ${result.name} (RCP_SEQ:${result.rcpSeq})${result.detail ? ` - ${result.detail}` : ''}`);
+    }
   }
 
   const summary = {
     created: results.filter((r) => r.status === 'created').length,
     skipped_duplicate: results.filter((r) => r.status === 'skipped_duplicate').length,
     skipped_no_ingredients: results.filter((r) => r.status === 'skipped_no_ingredients').length,
+    skipped_category_filter: results.filter((r) => r.status === 'skipped_category_filter').length,
     failed: results.filter((r) => r.status === 'failed').length,
   };
   console.log('\n===== 요약 =====');

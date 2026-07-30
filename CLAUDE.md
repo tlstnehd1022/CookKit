@@ -51,6 +51,11 @@
   저장해 작성자 표시 옆에 작은 아이콘으로 노출. household 생성 화면과 설정 화면 양쪽에 이름
   짓기 가이드 문구("우리집"류의 특정인 기준 호칭보다 "김영희네"처럼 누가 봐도 자연스러운 이름
   추천) 추가. 자세한 내용은 아래 "작성자 표시/프로필" 항목 참고.
+- **13차 확장 완료 — API 키 Vault 전환(DB 전환 Phase 4)**: Anthropic/Gemini API 키를 브라우저
+  localStorage 평문 저장에서 Supabase Vault 암호화 저장으로, 실제 AI 호출(대화/이미지 생성/유튜브
+  자막→레시피 추출)도 브라우저 직접 호출에서 서버리스 함수 경유로 전환. 설정 화면의 키 입력 UI도
+  마스킹 표시 + 인라인 편집 방식으로 개편, 기존에 localStorage에 남아있던 평문 키를 서버로 옮기는
+  1회성 마이그레이션 배너도 추가. 자세한 내용은 아래 "API 키 Vault 전환" 항목 참고.
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
@@ -84,10 +89,13 @@
   storage key는 `cookkit:{userId}:...` 형태로 이미 사용자 네임스페이스가 걸려 있음(`src/data/repos.ts`) —
   지금은 사용자가 하나뿐이라 동적 재키잉은 하지 않고 고정 접두사만 사용, 실제 다중 사용자 전환 시 이 부분만 일반화하면 됨
 - **AI 연동(자연어/유튜브/대화 → 레시피 변환)**: 두 개 제공자를 설정 화면에서 선택 가능(`aiProvider: 'anthropic'|'gemini'`, 기본값 Gemini — 무료 쿼터 때문에 추천).
-  - **Anthropic**: 브라우저에서 `@anthropic-ai/sdk`를 `dangerouslyAllowBrowser: true`로 직접 호출 (`src/lib/claudeClient.ts`)
+  - **Anthropic**: `@anthropic-ai/sdk`로 호출 (`src/lib/claudeClient.ts`)
   - **Gemini**: SDK 없이 REST 엔드포인트(`generativelanguage.googleapis.com`)를 fetch로 직접 호출 (`src/lib/geminiClient.ts`).
     유튜브 변환은 YouTube Data API(선택, 무료)로 제목/설명란만 가져오고, 자막은 공식 API로 못 가져오므로 사용자가 직접 붙여넣는 방식으로 보완
-  - API 키들은 전부 설정 화면에서 사용자가 입력해 localStorage에 저장(개인용 앱 전제, 공개 배포 시 키 노출 위험 있음)
+  - **API 키는 Supabase Vault에 암호화 저장 + 실제 호출은 서버 경유(13차 확장, 아래 "API 키 Vault
+    전환" 항목 참고)** — `claudeClient.ts`/`geminiClient.ts`의 함수들(`chatAboutRecipe`,
+    `extractRecipeFromTranscript` 등)은 원래도 apiKey를 인자로 받는 순수 함수라 브라우저/서버
+    양쪽에서 동일하게 재사용됨. 이 문단의 나머지 설명(모델 ID 관리 등)은 여전히 유효.
   - Gemini 모델명은 제공자가 자주 구세대 모델을 신규 키에 차단하므로(예: 2026-07-09부터 `gemini-2.5-flash` 차단),
     설정 화면에서 직접 모델 ID를 입력받게 되어 있음 — 오류 시 최신 모델 ID로 교체 필요
   - **이미지 생성 모델도 설정에서 교체 가능**(`settings.geminiImageModel`, 기본값 `GEMINI_IMAGE_MODEL`
@@ -104,7 +112,7 @@
   CORS를 허용하지 않아 브라우저에서 실행하면 무조건 막힘(Node/서버 환경에서만 동작). 그래서 이 부분만
   `api/youtube-transcript.ts`(Vercel Serverless Function)로 분리해 서버에서 실행하고, 프론트는
   `/api/youtube-transcript?url=...`를 호출해 이미 추출된 자막 텍스트만 받아옴(`src/lib/youtubeTranscript.ts`).
-  그 외 모든 기능(레시피/재료/장보기/AI 호출 자체)은 여전히 브라우저 단독 + localStorage.
+  (13차 확장에서 AI 호출 자체도 서버 경유로 전환됨 — 아래 "API 키 Vault 전환" 항목 참고.)
   - 로컬 개발 시 `npm run dev`(순수 Vite)로는 `/api/*`가 안 뜸 — `npm run dev:full`(`vercel dev`)로 실행해야
     프론트+서버리스 함수가 같이 뜸. 배포는 GitHub 저장소를 Vercel 프로젝트에 연결해두면 push할 때마다
     자동 빌드/배포됨(이미 기기 간 코드 동기화를 GitHub로 하고 있어서 자연스럽게 이어짐)
@@ -293,9 +301,9 @@
       항상 fallback으로 빠져 실제 에러 내용이 안 보임. `src/lib/errorMessage.ts`의 `getErrorMessage()`로
       통일(Error 인스턴스와 `{message}` 객체 둘 다 처리) — Supabase 호출을 감싸는 catch 블록은 항상 이
       헬퍼를 쓸 것. 겸사겸사 `console.error`도 같이 남겨서 화면 문구와 별개로 콘솔에서 원본 에러 확인 가능.
-    - **아직 안 함(Phase 4)**: API 키(Anthropic/Gemini) 저장을 localStorage 평문 → Supabase Vault
-      암호화 + 서버리스 함수 경유로 전환하는 작업, household 신규 데이터 없음(새 household는 빈 상태로
-      시작 — 기존 로컬 데이터를 옮기는 마이그레이션 스크립트는 별도로 요청 시 진행)
+    - **Phase 4 완료 — API 키 Vault 전환**: 13차 확장에서 완료. 아래 "API 키 Vault 전환" 항목 참고.
+      household 신규 데이터 없음(새 household는 빈 상태로 시작 — 기존 로컬 데이터를 옮기는 마이그레이션
+      스크립트는 별도로 요청 시 진행)는 여전히 미착수.
     - **버그(수정 완료) — 카테고리 중복 생성 레이스 컨디션**: 재료 관리 화면에서 같은 이름 카테고리인데도
       그루핑이 안 되는 문제 발견 — 그루핑 로직(`categoryId` 정확 비교) 자체는 문제 없었고, 원인은
       `RecipeEditor.tsx`의 `applyExtractedResult`(AI 대화/유튜브 반영 공통 경로)가 새 재료들을
@@ -450,7 +458,80 @@
     늘어놓는 대신, 닉네임/household 이름은 평소엔 "라벨: 값 [변경]"만 조용히 보여주다가 [변경]을
     누르면 그 자리가 입력창+[취소]/[저장]으로 바뀌는 인라인 편집 컴포넌트(`SettingsPage.tsx`의
     `InlineEditRow`)를 새로 만들어 적용 — 자주 안 바꾸는 값을 계속 입력 폼 형태로 노출해두면
-    화면이 번잡해 보인다는 피드백에 따른 디자인.
+    화면이 번잡해 보인다는 피드백에 따른 디자인. 이 컴포넌트는 이후 API 키 마스킹 표시에도
+    재사용됨(아래 "API 키 Vault 전환" 항목의 `startEmpty` 옵션 참고).
+- **API 키 Vault 전환(DB 전환 Phase 4)**: Anthropic/Gemini API 키를 브라우저 localStorage 평문
+  저장 → Supabase Vault 암호화 저장으로, 실제 AI 호출도 브라우저 직접 호출 → 서버리스 함수 경유로
+  전환. 유튜브 자막 추출/썸네일 프록시("서버 도입 1호/2호")에 이은 세 번째 서버 확장이지만, 이번엔
+  "CORS 우회"가 아니라 "민감정보(API 키)를 브라우저에 안 두기"가 목적이라 성격이 다름 — 브라우저는
+  이제 Anthropic/Gemini API 키를 아예 들고 있지 않는다.
+  - **Vault 스키마**(`supabase/migrations/0014_api_key_vault.sql`): `user_api_keys(user_id,
+    provider, secret_id, updated_at)` — 실제 키 값은 담지 않고 `vault.secrets`를 가리키는 참조만
+    저장(household 아니라 user 단위, 각자 자기 키를 씀). `vault.secrets`/`vault.decrypted_secrets`는
+    PostgREST에 노출되지 않는 스키마라 supabase-js로 직접 접근이 원천적으로 불가능(anon/service_role
+    키 어느 쪽으로도) — 공식 권장 패턴대로 `public` 스키마에 `save_user_api_key`/`get_user_api_key`
+    SECURITY DEFINER 래퍼 함수를 두고, 그 실행 권한도 `service_role`에만 부여(anon/authenticated는
+    revoke). `user_api_keys` 테이블 자체도 RLS는 켜두되 정책을 하나도 안 만듦(anon/authenticated
+    접근 자체를 차단) — "본인 키만 조회/저장 가능"은 RLS가 아니라 서버리스 함수가 요청자의 로그인
+    세션(JWT)을 검증해서 그 user_id로만 함수를 호출하는 방식으로 보장(`api/_lib/auth.ts`의
+    `requireUser` — Supabase anon 클라이언트로 `auth.getUser(token)`만 하면 되고 service_role은
+    필요 없음). **SQL Editor에서 이 마이그레이션 실행 필요** + Vercel 프로젝트에 새 환경변수
+    `SUPABASE_SERVICE_ROLE_KEY` 추가 필요(반드시 `VITE_` 접두사 없이 — 접두사가 붙으면 Vite가
+    클라이언트 번들에 그대로 인라인해서 브라우저에 노출시키므로 절대 금지, `api/_lib/
+    supabaseAdmin.ts`에 이 경고를 주석으로 남겨둠).
+  - **서버리스 함수 구성**: `api/_lib/`(언더스코어 접두사 폴더는 Vercel이 라우트로 등록하지 않는
+    공식 컨벤션)에 공용 헬퍼 3개 — `auth.ts`(`requireUser`), `supabaseAdmin.ts`(service_role
+    클라이언트), `apiKeyStore.ts`(`saveUserApiKey`/`getUserApiKey`/`maskApiKey`). 실제 엔드포인트는
+    `api/save-api-key.ts`(키 저장), `api/get-api-key.ts`(마스킹된 키만 반환 — "앞 6자리+****+뒤
+    4자리", 설정 화면 표시용), `api/ai-chat.ts`(대화형 propose_recipe, 두 제공자 공용),
+    `api/ai-extract-transcript.ts`(Claude 전용, 자막→레시피), `api/ai-extract-youtube-meta.ts`
+    (Gemini 전용, 영상 메타+자막→레시피), `api/ai-image.ts`(Gemini 전용, 조리 단계/완성 사진 생성).
+  - **핵심 설계 — 클라이언트/서버가 같은 프롬프트·툴 로직을 공유**: `src/lib/claudeClient.ts`/
+    `geminiClient.ts`의 `chatAboutRecipe`/`extractRecipeFromTranscript`/
+    `extractRecipeFromYoutubeMeta`/`generateImageWithRetry`는 원래도 apiKey를 인자로 받는 순수
+    함수였어서(브라우저 전용 API를 쓰지 않음), 로직을 서버용으로 새로 옮겨 적을 필요 없이 `api/ai-*.ts`
+    가 그대로 import해서 쓴다(Vercel 함수 빌드가 `api/`에서 `src/`로의 상대 경로 import를 그대로
+    번들링해줌) — apiKey만 클라이언트가 보내던 것에서 서버가 Vault에서 복호화한 값으로 바뀔 뿐,
+    프롬프트/툴 스키마/재시도 로직은 완전히 동일해서 "서버 경유해도 기존과 동일한 품질의 에러
+    메시지가 보이는지" 같은 걱정이 애초에 생기지 않음(로직 중복이 없으므로 동작이 갈릴 여지가 없음).
+    반대로 `buildStepImagePrompt`/`buildFinalDishImagePrompt`/`fetchYoutubeVideoMeta`(YouTube Data
+    API, `settings.youtubeApiKey`)처럼 API 키가 필요 없거나 이번 전환 범위 밖인 함수는 그대로
+    클라이언트에 남아있음.
+  - **YouTube Data API 키는 이번 전환 대상이 아님**: `settings.youtubeApiKey`는 계속 localStorage
+    평문 그대로 둠 — Anthropic/Gemini 키와 달리 읽기 전용 공개 데이터(영상 제목/설명란) 조회용이라
+    민감도가 낮고, 원래도 선택 사항이라 범위를 좁게 유지하는 쪽을 택함.
+  - **클라이언트 진입점**: `src/lib/aiProxy.ts`(로그인 세션의 access token을 `Authorization: Bearer`
+    로 실어 `/api/ai-*` 호출, `ApiProxyError`(코드+메시지)를 던짐) + `src/data/apiKeys.ts`의
+    `useApiKeyStatus(provider)`(설정 화면에서 마스킹된 키 상태 조회/저장, `useProfile()`과 같은 패턴).
+    `RecipeChatPanel.tsx`/`RecipeEditor.tsx`의 모든 AI 호출 지점이 `claudeClient`/`geminiClient`
+    직접 호출에서 `aiProxy.*` 호출로 교체됨.
+  - **설정 화면 UI**: API 키 입력도 `InlineEditRow`로 통일하되, 기존 값을 다시 보여주지 않고 항상
+    빈 입력창에서 새로 입력받도록 `startEmpty` 옵션을 추가(일반적인 보안 UX 패턴 — "변경"을 누르면
+    마스킹된 값이 아니라 빈 칸에서 시작). 표시값은 `useApiKeyStatus`가 돌려주는 마스킹된 문자열
+    (없으면 "(미설정)").
+  - **에러 처리 — "키 없음"은 서버가 최종 판단**: 클라이언트에서 사전에 `settings.xxxApiKey` 존재
+    여부를 체크하던 방식(이제 그 필드 자체가 안 쓰임)을 없애고, 서버가 Vault 조회 결과 키가 없으면
+    `{error: 'no_api_key', message: '...'}` (HTTP 400)를 반환 → `ApiProxyError.code === 'no_api_key'`
+    를 감지해서 에러 메시지 아래에 "설정으로 이동" 버튼을 보여줌. 이 버튼이 실제로 설정 탭으로
+    전환할 수 있어야 해서, `App.tsx`의 탭 상태를 로컬 `useState`에서 전역 store(`src/data/
+    activeTab.ts`, `useSyncExternalStore` 패턴)로 옮김 — 예전엔 탭 상태가 `App.tsx` 안에 갇혀있어서
+    레시피 편집/채팅 화면에서 "설정 탭으로 보내기"가 불가능했음.
+  - **기존 localStorage 평문 키 마이그레이션**: 설정 화면 진입 시 `settings.anthropicApiKey`/
+    `geminiApiKey`(둘 다 예전 필드, 마이그레이션 감지 목적으로만 남겨둠)에 값이 남아있고
+    `localStorage['cookkit:apiKeyMigrated']`가 없으면 "안전하게 옮길까요?" 배너 표시. "옮기기"를
+    누르면 각 키를 `/api/save-api-key`로 전송한 뒤 `settings`에서 지우고 플래그를 세움, "나중에"를
+    눌러도 플래그는 세워서 다시 안 뜨게 함(개인 1인 사용 앱이라 "묻지 않기" 선택을 존중 — 다만 이
+    경우 예전 평문 키는 그대로 localStorage에 남으므로, 신경 쓰인다면 브라우저 devtools에서 직접
+    지우거나 플래그를 지우고 다시 마이그레이션을 띄울 수 있음).
+  - **스트리밍은 원래도 안 씀**: 서버 경유 전환 전에도 Claude/Gemini 호출 둘 다 비스트리밍
+    (`messages.create`/`generateContent`, `streamGenerateContent` 아님)이었어서, "서버리스 함수를
+    거쳐도 스트리밍이 유지되는가"는 애초에 해당 사항이 없었음 — 응답은 항상 완결된 JSON을 한 번에
+    받아서 화면에 반영하는 방식 그대로.
+  - **이미지 생성 함수 타임아웃(`maxDuration: 200`)**: `generateImageWithRetry`가 내부적으로 60초
+    타임아웃 + 429/503/408 재시도(최대 3회, 지수 백오프 2초→4초)를 이미 갖고 있어서, 최악의 경우
+    60+2+60+4+60초 가까이 걸릴 수 있음 — Vercel 함수 자체의 `maxDuration`을 넉넉히 잡아야 도중에
+    함수가 먼저 끊기지 않음(`api/youtube-transcript.ts`가 이미 Fluid Compute를 전제로 120초를 쓰고
+    있어서 같은 전제 위에 설정).
 - **난이도/조리시간 자동 판단**: `Recipe.difficulty`('easy'|'medium'|'hard') / `difficultyReason`(판단
   근거 한 문장) / `estimatedMinutes`(예상 조리시간 분)를 추가. 실제 저장은 다른 중첩 데이터와 마찬가지로
   `recipes.content` jsonb 안에 담김(`supabaseAdapter.ts`).

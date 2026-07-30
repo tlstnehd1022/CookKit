@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useCategories, useIngredients, useRecipes, useTags, makeId, getCurrentHouseholdId } from '../../data/store';
 import { useSettings } from '../../data/settings';
-import * as claudeClient from '../../lib/claudeClient';
+import { setActiveTab } from '../../data/activeTab';
+// geminiClient는 이제 API 키가 필요 없는 순수 함수(프롬프트 생성)와 youtubeApiKey(범위 밖, 계속
+// 클라이언트에서 직접 씀)를 쓰는 fetchYoutubeVideoMeta만 남음 — 실제 AI 호출(대화/추출/이미지
+// 생성)은 aiProxy를 거쳐 서버로 감(Phase 4, API 키 Vault 전환).
 import * as geminiClient from '../../lib/geminiClient';
+import * as aiProxy from '../../lib/aiProxy';
+import { ApiProxyError } from '../../lib/aiProxy';
 import type { ExtractedRecipe } from '../../lib/claudeClient';
 import type { ExistingContext } from '../../lib/aiChat';
 import type { Difficulty, Recipe, RecipeIngredient, RecipeStep, RecipeVisibility } from '../../data/types';
@@ -82,6 +87,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   const [youtubeManualText, setYoutubeManualText] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiMissingApiKey, setAiMissingApiKey] = useState(false);
   const [aiWarning, setAiWarning] = useState<string | null>(null);
   const [youtubeStage, setYoutubeStage] = useState<'idle' | 'extracting' | 'analyzing'>('idle');
   const [pendingYoutubeResult, setPendingYoutubeResult] = useState<ExtractedRecipe | null>(null);
@@ -200,17 +206,10 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   const isGemini = settings.aiProvider === 'gemini';
 
   async function runYoutubeConversion() {
-    if (isGemini && !settings.geminiApiKey) {
-      setAiError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
-      return;
-    }
-    if (!isGemini && !settings.anthropicApiKey) {
-      setAiError('설정 화면에서 Anthropic API 키를 먼저 입력해주세요.');
-      return;
-    }
     if (!youtubeUrl.trim()) return;
     setAiLoading(true);
     setAiError(null);
+    setAiMissingApiKey(false);
     setAiWarning(null);
     setYoutubeStage('extracting');
     try {
@@ -246,20 +245,14 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           }
         }
         const combinedTranscript = [transcriptText, youtubeManualText.trim()].filter(Boolean).join('\n\n');
-        result = await geminiClient.extractRecipeFromYoutubeMeta(
-          settings.geminiApiKey,
+        result = await aiProxy.extractRecipeFromYoutubeMeta(
           settings.geminiModel,
           meta,
           combinedTranscript,
           existingContext,
         );
       } else {
-        result = await claudeClient.extractRecipeFromTranscript(
-          settings.anthropicApiKey,
-          settings.model,
-          transcriptText,
-          existingContext,
-        );
+        result = await aiProxy.extractRecipeFromTranscript(settings.model, transcriptText, existingContext);
       }
       setPendingYoutubeResult(result);
       setPendingYoutubeDiff(summarizeRecipeDiff(currentRecipeSnapshot, result));
@@ -268,7 +261,10 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       setPendingYoutubeVideoId(extractYoutubeVideoId(youtubeUrl.trim()));
       setUseYoutubeThumbnail(true);
     } catch (err) {
-      setAiError(err instanceof Error ? err.message : '유튜브 변환에 실패했습니다.');
+      if (err instanceof ApiProxyError && err.code === 'no_api_key') {
+        setAiMissingApiKey(true);
+      }
+      setAiError(getErrorMessage(err, '유튜브 변환에 실패했습니다.'));
     } finally {
       setAiLoading(false);
       setYoutubeStage('idle');
@@ -388,15 +384,12 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
 
   const [imageGeneratingIndex, setImageGeneratingIndex] = useState<number | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [imageMissingApiKey, setImageMissingApiKey] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [finalImageId, setFinalImageId] = useState<string | undefined>(existing?.finalImageId);
   const [finalImageGenerating, setFinalImageGenerating] = useState(false);
 
   async function generateImageForStep(index: number) {
-    if (!settings.geminiApiKey) {
-      setImageError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
-      return;
-    }
     if (!householdId) {
       setImageError('household 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
       return;
@@ -404,15 +397,19 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     const step = steps[index];
     if (!step) return;
     setImageError(null);
+    setImageMissingApiKey(false);
     setImageGeneratingIndex(index);
     try {
       const prompt = geminiClient.buildStepImagePrompt(name || '이름 없는 레시피', step);
-      const dataUrl = await geminiClient.generateStepImage(settings.geminiApiKey, settings.geminiImageModel, prompt);
+      const dataUrl = await aiProxy.generateImage(settings.geminiImageModel, prompt);
       const imageId = isStorageImagePath(step.imageId) ? step.imageId : buildImagePath(householdId, stableRecipeId, 'step');
       await saveImage(imageId, dataUrl);
       updateStepRow(index, { imageId });
     } catch (err) {
-      setImageError(err instanceof Error ? err.message : '이미지 생성에 실패했습니다.');
+      if (err instanceof ApiProxyError && err.code === 'no_api_key') {
+        setImageMissingApiKey(true);
+      }
+      setImageError(getErrorMessage(err, '이미지 생성에 실패했습니다.'));
     } finally {
       setImageGeneratingIndex(null);
     }
@@ -437,35 +434,35 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
 
   /** 완성 사진을 생성해 저장하고 finalImageId를 갱신한다. 배치 생성/단일 버튼 양쪽에서 공유. */
   async function generateFinalImageInternal(recipeNameForPrompt: string): Promise<void> {
-    if (!settings.geminiApiKey || !householdId) {
-      throw new Error('Gemini API 키 또는 household 정보가 없습니다.');
+    if (!householdId) {
+      throw new Error('household 정보가 없습니다.');
     }
     const prompt = geminiClient.buildFinalDishImagePrompt(
       recipeNameForPrompt || '이름 없는 레시피',
       currentMainIngredientNames(),
       currentTagNames(),
     );
-    const dataUrl = await geminiClient.generateFinalDishImage(settings.geminiApiKey, settings.geminiImageModel, prompt);
+    const dataUrl = await aiProxy.generateImage(settings.geminiImageModel, prompt);
     const path = isStorageImagePath(finalImageId) ? finalImageId : buildImagePath(householdId, stableRecipeId, 'final');
     await saveImage(path, dataUrl);
     setFinalImageId(path);
   }
 
   async function generateFinalImage() {
-    if (!settings.geminiApiKey) {
-      setImageError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
-      return;
-    }
     if (!householdId) {
       setImageError('household 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
       return;
     }
     setImageError(null);
+    setImageMissingApiKey(false);
     setFinalImageGenerating(true);
     try {
       await generateFinalImageInternal(name);
     } catch (err) {
-      setImageError(err instanceof Error ? err.message : '완성 사진 생성에 실패했습니다.');
+      if (err instanceof ApiProxyError && err.code === 'no_api_key') {
+        setImageMissingApiKey(true);
+      }
+      setImageError(getErrorMessage(err, '완성 사진 생성에 실패했습니다.'));
     } finally {
       setFinalImageGenerating(false);
     }
@@ -536,10 +533,10 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     recipeNameForPrompt: string,
     includeFinal: boolean,
   ) {
-    const apiKey = settings.geminiApiKey;
-    if (!apiKey || !householdId) return;
+    if (!householdId) return;
     if (indexes.length === 0 && !includeFinal) return;
     setImageError(null);
+    setImageMissingApiKey(false);
     const total = indexes.length + (includeFinal ? 1 : 0);
     setBatchProgress({ done: 0, total });
     // 로컬 state(batchProgress)뿐 아니라 전역 store에도 같이 기록 — 다른 탭으로 이동해서
@@ -558,12 +555,15 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           if (!step) return;
           try {
             const prompt = geminiClient.buildStepImagePrompt(recipeNameForPrompt, step);
-            const dataUrl = await geminiClient.generateStepImage(apiKey, settings.geminiImageModel, prompt);
+            const dataUrl = await aiProxy.generateImage(settings.geminiImageModel, prompt);
             const imageId = isStorageImagePath(step.imageId) ? step.imageId : buildImagePath(householdId, stableRecipeId, 'step');
             await saveImage(imageId, dataUrl);
             updateStepRow(stepIndex, { imageId });
           } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
+            if (err instanceof ApiProxyError && err.code === 'no_api_key') {
+              setImageMissingApiKey(true);
+            }
+            const message = getErrorMessage(err);
             console.error(`[이미지 생성 실패] 단계 ${stepIndex + 1} (${step.title}):`, message);
             failures.push(`${stepIndex + 1}단계: ${message}`);
           } finally {
@@ -578,7 +578,10 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       try {
         await generateFinalImageInternal(recipeNameForPrompt);
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        if (err instanceof ApiProxyError && err.code === 'no_api_key') {
+          setImageMissingApiKey(true);
+        }
+        const message = getErrorMessage(err);
         console.error('[완성 사진 생성 실패]', message);
         failures.push(`완성 사진: ${message}`);
       } finally {
@@ -595,10 +598,6 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   }
 
   function confirmAndRunBatchForCurrentSteps() {
-    if (!settings.geminiApiKey) {
-      setImageError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
-      return;
-    }
     if (steps.length === 0 && !finalImageId) return;
     const existingStepCount = steps.filter((s) => s.imageId).length;
     const existingCount = existingStepCount + (finalImageId ? 1 : 0);
@@ -630,7 +629,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     newSteps: { title: string; content: string }[],
     recipeName: string,
   ) {
-    if (settings.aiProvider !== 'gemini' || !settings.geminiApiKey) return;
+    if (settings.aiProvider !== 'gemini') return;
     const totalCount = newSteps.length + 1; // +1은 완성 사진
     const manyStepsNote =
       totalCount >= BATCH_WARN_THRESHOLD ? ` 항목이 많아(${totalCount}개) 시간이 좀 더 걸릴 수 있어요.` : '';
@@ -772,7 +771,16 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           </div>
         )}
 
-        {aiError && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{aiError}</p>}
+        {aiError && (
+          <div style={{ marginTop: 8 }}>
+            <p style={{ color: 'var(--danger)', marginBottom: aiMissingApiKey ? 6 : 0 }}>{aiError}</p>
+            {aiMissingApiKey && (
+              <button className="btn small" onClick={() => setActiveTab('settings')}>
+                설정으로 이동
+              </button>
+            )}
+          </div>
+        )}
         {aiWarning && <p className="text-muted" style={{ marginTop: 8 }}>⚠️ {aiWarning}</p>}
       </div>
 
@@ -1097,7 +1105,16 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         </div>
       ))}
       {imageError && (
-        <p style={{ color: 'var(--danger)', whiteSpace: 'pre-wrap' }}>{imageError}</p>
+        <div>
+          <p style={{ color: 'var(--danger)', whiteSpace: 'pre-wrap', marginBottom: imageMissingApiKey ? 6 : 0 }}>
+            {imageError}
+          </p>
+          {imageMissingApiKey && (
+            <button className="btn small" onClick={() => setActiveTab('settings')}>
+              설정으로 이동
+            </button>
+          )}
+        </div>
       )}
       <button className="btn small" onClick={addStepRow}>
         + 조리 단계 추가

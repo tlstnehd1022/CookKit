@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ShoppingListPage } from './features/shopping-list/ShoppingListPage';
 import { RecipesFeature } from './features/recipes/RecipesFeature';
 import { IngredientsPage } from './features/ingredients/IngredientsPage';
@@ -10,8 +10,7 @@ import { useHousehold } from './data/household';
 import { initializeDataLayer, resetDataLayer, useDataLayerLoading } from './data/store';
 import { initializeShoppingSelection, resetShoppingSelection } from './data/shoppingSelection';
 import { useImageGenerationCompletionMessage, useImageGenerationStatus } from './data/imageGenerationStatus';
-
-type Tab = 'recipes' | 'shopping' | 'ingredients' | 'settings';
+import { setActiveTab, useActiveTab, type Tab } from './data/activeTab';
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'recipes', label: '레시피', icon: '📖' },
@@ -24,7 +23,7 @@ function App() {
   const { user, loaded } = useSession();
   const { household, loading: householdLoading, refresh: refreshHousehold } = useHousehold();
   const dataLoading = useDataLayerLoading();
-  const [tab, setTab] = useState<Tab>('recipes');
+  const tab = useActiveTab();
   const imageGenStatus = useImageGenerationStatus();
   const imageGenCompletionMessage = useImageGenerationCompletionMessage();
 
@@ -94,7 +93,7 @@ function App() {
       </main>
       <nav className="app-nav">
         {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setActiveTab(t.id)}>
             <span className="icon">{t.icon}</span>
             <span>{t.label}</span>
           </button>

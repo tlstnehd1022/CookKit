@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSettings } from '../../data/settings';
-import * as claudeClient from '../../lib/claudeClient';
-import * as geminiClient from '../../lib/geminiClient';
+import { setActiveTab } from '../../data/activeTab';
+import * as aiProxy from '../../lib/aiProxy';
+import { ApiProxyError } from '../../lib/aiProxy';
 import type { ChatTurn, ExistingContext } from '../../lib/aiChat';
 import type { ExtractedRecipe } from '../../lib/claudeClient';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
@@ -27,6 +28,7 @@ export function RecipeChatPanel({
   const [error, setError] = useState<string | null>(null);
   const [pendingRecipe, setPendingRecipe] = useState<ExtractedRecipe | null>(null);
   const [pendingDiff, setPendingDiff] = useState<DiffLine[]>([]);
+  const [missingApiKey, setMissingApiKey] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -43,45 +45,31 @@ export function RecipeChatPanel({
     const text = (overrideText ?? input).trim();
     if (!text || loading) return;
 
-    if (isGemini && !settings.geminiApiKey) {
-      setError('설정 화면에서 Gemini API 키를 먼저 입력해주세요.');
-      return;
-    }
-    if (!isGemini && !settings.anthropicApiKey) {
-      setError('설정 화면에서 Anthropic API 키를 먼저 입력해주세요.');
-      return;
-    }
-
     const nextHistory: ChatTurn[] = [...messages, { role: 'user', text }];
     setMessages(nextHistory);
     setInput('');
     setError(null);
+    setMissingApiKey(false);
     setLoading(true);
     try {
-      const result = isGemini
-        ? await geminiClient.chatAboutRecipe(
-            settings.geminiApiKey,
-            settings.geminiModel,
-            nextHistory,
-            useWebSearch,
-            existingContext,
-            currentRecipe,
-          )
-        : await claudeClient.chatAboutRecipe(
-            settings.anthropicApiKey,
-            settings.model,
-            nextHistory,
-            useWebSearch,
-            existingContext,
-            currentRecipe,
-          );
+      const result = await aiProxy.chatAboutRecipe(
+        settings.aiProvider,
+        isGemini ? settings.geminiModel : settings.model,
+        nextHistory,
+        useWebSearch,
+        existingContext,
+        currentRecipe,
+      );
       setMessages([...nextHistory, { role: 'assistant', text: result.reply }]);
       if (result.updatedRecipe) {
         setPendingRecipe(result.updatedRecipe);
         setPendingDiff(summarizeRecipeDiff(currentRecipe, result.updatedRecipe));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '대화 중 오류가 발생했습니다.');
+      if (err instanceof ApiProxyError && err.code === 'no_api_key') {
+        setMissingApiKey(true);
+      }
+      setError(getErrorMessage(err, '대화 중 오류가 발생했습니다.'));
     } finally {
       setLoading(false);
     }
@@ -219,7 +207,16 @@ export function RecipeChatPanel({
         </div>
       )}
 
-      {error && <p style={{ color: 'var(--danger)', marginBottom: 8 }}>{error}</p>}
+      {error && (
+        <div style={{ marginBottom: 8 }}>
+          <p style={{ color: 'var(--danger)', marginBottom: missingApiKey ? 6 : 0 }}>{error}</p>
+          {missingApiKey && (
+            <button className="btn small" onClick={() => setActiveTab('settings')}>
+              설정으로 이동
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="field">
         <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

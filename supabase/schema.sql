@@ -398,3 +398,79 @@ create policy "recipe_likes_insert_own" on public.recipe_likes
 
 create policy "recipe_likes_delete_own" on public.recipe_likes
   for delete using (user_id = auth.uid());
+
+-- ---- user_api_keys (0014) — Anthropic/Gemini API 키 Vault 암호화 저장 ----------------------
+-- 실제 키 값은 vault.secrets에 암호화 저장하고, 이 테이블은 그 참조(secret_id)만 가진다.
+-- household가 아니라 user 단위. "본인 키만 조회/저장 가능"은 RLS가 아니라 서버리스 함수가
+-- 로그인 세션(JWT)을 검증해서 그 user_id로만 동작하게 하는 방식으로 보장한다 — 아래 함수들이
+-- service_role 전용이라 클라이언트는 어차피 이 경로로 접근할 수 없다. 자세한 배경은
+-- supabase/migrations/0014_api_key_vault.sql 참고.
+create extension if not exists supabase_vault;
+
+create table public.user_api_keys (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  provider text not null check (provider in ('anthropic', 'gemini')),
+  secret_id uuid not null references vault.secrets(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, provider)
+);
+
+alter table public.user_api_keys enable row level security;
+
+create or replace function public.save_user_api_key(p_user_id uuid, p_provider text, p_secret text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  existing_secret_id uuid;
+begin
+  if p_provider not in ('anthropic', 'gemini') then
+    raise exception 'invalid provider: %', p_provider;
+  end if;
+
+  select secret_id into existing_secret_id
+  from public.user_api_keys
+  where user_id = p_user_id and provider = p_provider;
+
+  if existing_secret_id is not null then
+    perform vault.update_secret(existing_secret_id, p_secret);
+    update public.user_api_keys
+      set updated_at = now()
+      where user_id = p_user_id and provider = p_provider;
+  else
+    existing_secret_id := vault.create_secret(p_secret, p_user_id::text || ':' || p_provider);
+    insert into public.user_api_keys (user_id, provider, secret_id)
+    values (p_user_id, p_provider, existing_secret_id);
+  end if;
+end;
+$$;
+
+create or replace function public.get_user_api_key(p_user_id uuid, p_provider text)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  result text;
+begin
+  select vs.decrypted_secret into result
+  from public.user_api_keys k
+  join vault.decrypted_secrets vs on vs.id = k.secret_id
+  where k.user_id = p_user_id and k.provider = p_provider;
+  return result;
+end;
+$$;
+
+revoke execute on function public.save_user_api_key(uuid, text, text) from public;
+revoke execute on function public.save_user_api_key(uuid, text, text) from anon;
+revoke execute on function public.save_user_api_key(uuid, text, text) from authenticated;
+grant execute on function public.save_user_api_key(uuid, text, text) to service_role;
+
+revoke execute on function public.get_user_api_key(uuid, text) from public;
+revoke execute on function public.get_user_api_key(uuid, text) from anon;
+revoke execute on function public.get_user_api_key(uuid, text) from authenticated;
+grant execute on function public.get_user_api_key(uuid, text) to service_role;

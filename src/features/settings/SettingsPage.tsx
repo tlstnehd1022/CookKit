@@ -5,9 +5,15 @@ import { useSession } from '../../data/session';
 import { useHousehold } from '../../data/household';
 import { useProfile } from '../../data/profile';
 import { useTheme } from '../../data/theme';
+import { useApiKeyStatus } from '../../data/apiKeys';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { downloadBackup, restoreBackupFromFile } from '../../data/backup';
 import { getErrorMessage } from '../../lib/errorMessage';
+
+// 예전엔 localStorage에 평문으로 저장하던 API 키를 Supabase Vault로 옮긴 뒤로 다시 안 보여주기
+// 위한 1회성 플래그 — settings.anthropicApiKey/geminiApiKey에 값이 남아있는데 이 플래그가 없으면
+// "옮길까요?" 배너를 보여준다(마이그레이션 완료/건너뛰기 둘 다 이 플래그를 세워서 다시 안 뜨게 함).
+const API_KEY_MIGRATION_FLAG = 'cookkit:apiKeyMigrated';
 
 export function SettingsPage() {
   const { settings, updateSettings } = useSettings();
@@ -15,11 +21,39 @@ export function SettingsPage() {
   const { household, refresh: refreshHousehold } = useHousehold();
   const { profile, updateDisplayName } = useProfile();
   const { theme, toggleTheme } = useTheme();
-  const [anthropicKeyDraft, setAnthropicKeyDraft] = useState(settings.anthropicApiKey);
-  const [geminiKeyDraft, setGeminiKeyDraft] = useState(settings.geminiApiKey);
+  const anthropicKeyStatus = useApiKeyStatus('anthropic');
+  const geminiKeyStatus = useApiKeyStatus('gemini');
   const [youtubeKeyDraft, setYoutubeKeyDraft] = useState(settings.youtubeApiKey);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [migrating, setMigrating] = useState(false);
+  const [migrationError, setMigrationError] = useState<string | null>(null);
+  const [migrationDone, setMigrationDone] = useState(
+    () => localStorage.getItem(API_KEY_MIGRATION_FLAG) === 'true',
+  );
+  const showMigrationBanner = Boolean((settings.anthropicApiKey || settings.geminiApiKey) && !migrationDone);
+
+  async function runKeyMigration() {
+    setMigrating(true);
+    setMigrationError(null);
+    try {
+      if (settings.anthropicApiKey) await anthropicKeyStatus.saveKey(settings.anthropicApiKey);
+      if (settings.geminiApiKey) await geminiKeyStatus.saveKey(settings.geminiApiKey);
+      updateSettings({ anthropicApiKey: '', geminiApiKey: '' });
+      localStorage.setItem(API_KEY_MIGRATION_FLAG, 'true');
+      setMigrationDone(true);
+    } catch (err) {
+      setMigrationError(getErrorMessage(err, '마이그레이션 중 오류가 발생했습니다.'));
+    } finally {
+      setMigrating(false);
+    }
+  }
+
+  function dismissKeyMigration() {
+    localStorage.setItem(API_KEY_MIGRATION_FLAG, 'true');
+    setMigrationDone(true);
+  }
 
   async function saveNickname(next: string) {
     await updateDisplayName(next);
@@ -38,27 +72,7 @@ export function SettingsPage() {
     text: string;
     ok: boolean;
   }
-  const [anthropicStatus, setAnthropicStatus] = useState<SaveStatus | null>(null);
-  const [geminiStatus, setGeminiStatus] = useState<SaveStatus | null>(null);
   const [youtubeStatus, setYoutubeStatus] = useState<SaveStatus | null>(null);
-
-  function saveAnthropicKey() {
-    try {
-      updateSettings({ anthropicApiKey: anthropicKeyDraft.trim() });
-      setAnthropicStatus({ text: '저장되었습니다.', ok: true });
-    } catch (err) {
-      setAnthropicStatus({ text: err instanceof Error ? err.message : '저장에 실패했습니다.', ok: false });
-    }
-  }
-
-  function saveGeminiKey() {
-    try {
-      updateSettings({ geminiApiKey: geminiKeyDraft.trim() });
-      setGeminiStatus({ text: '저장되었습니다.', ok: true });
-    } catch (err) {
-      setGeminiStatus({ text: err instanceof Error ? err.message : '저장에 실패했습니다.', ok: false });
-    }
-  }
 
   function saveYoutubeKey() {
     try {
@@ -99,6 +113,30 @@ export function SettingsPage() {
         </div>
       </div>
 
+      {showMigrationBanner && (
+        <>
+          <div className="section-title">API 키 저장 방식 변경 안내</div>
+          <div className="card" style={{ border: '1px solid var(--accent)' }}>
+            <p className="text-muted" style={{ marginTop: 0 }}>
+              지금까지 입력해둔 API 키가 브라우저에 평문으로 저장돼 있어요. 서버에 암호화해서 안전하게
+              옮기고, 브라우저에서는 지울까요? 옮기고 나면 이 키로 직접 브라우저에서 AI를 호출하지 않고
+              서버를 거쳐서 호출해요.
+            </p>
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn small" onClick={dismissKeyMigration} disabled={migrating}>
+                나중에
+              </button>
+              <button className="btn small primary" onClick={runKeyMigration} disabled={migrating}>
+                {migrating ? '옮기는 중...' : '안전하게 옮기기'}
+              </button>
+            </div>
+            {migrationError && (
+              <p style={{ marginTop: 8, color: 'var(--danger)' }}>⚠️ {migrationError}</p>
+            )}
+          </div>
+        </>
+      )}
+
       <div className="section-title">AI 제공자 (자연어/유튜브 → 레시피 변환용)</div>
       <div className="card">
         <div className="field">
@@ -112,8 +150,8 @@ export function SettingsPage() {
           </select>
         </div>
         <p className="text-muted">
-          ⚠️ 여기 입력하는 키는 브라우저 localStorage에만 저장되며, 변환 요청 시 브라우저에서 직접 해당 API로
-          전송됩니다. 본인만 사용하는 환경에서만 입력하세요. 공개된 기기나 배포된 앱에서는 사용하지 마세요.
+          API 키는 Supabase Vault에 암호화되어 저장되고, 실제 AI 호출도 브라우저가 아니라 서버를 거쳐
+          처리돼요. 브라우저에는 평문 키가 전혀 남지 않습니다.
         </p>
       </div>
 
@@ -121,19 +159,16 @@ export function SettingsPage() {
         <>
           <div className="section-title">Gemini API 키</div>
           <div className="card">
-            <div className="field">
-              <label>API 키 (Google AI Studio에서 무료 발급)</label>
-              <input
-                type="password"
-                value={geminiKeyDraft}
-                onChange={(e) => {
-                  setGeminiKeyDraft(e.target.value);
-                  setGeminiStatus(null);
-                }}
-                placeholder="AIza..."
-              />
-            </div>
-            <div className="field">
+            <InlineEditRow
+              label="API 키"
+              value={geminiKeyStatus.status?.hasKey ? (geminiKeyStatus.status.maskedKey ?? '') : ''}
+              placeholder="AIza... (Google AI Studio에서 무료 발급)"
+              startEmpty
+              helperText="저장하면 서버에 암호화되어 보관되고, 이후엔 항상 마스킹된 값만 보여요. 기존 키를 다시
+                보여주지 않으니, 바꾸려면 새 키를 처음부터 입력해주세요."
+              onSave={(next) => geminiKeyStatus.saveKey(next)}
+            />
+            <div className="field" style={{ marginTop: 12 }}>
               <label>사용 모델 ID</label>
               <input
                 value={settings.geminiModel}
@@ -153,15 +188,6 @@ export function SettingsPage() {
                 <code> gemini-2.5-flash-image</code>(무료 티어, 하루 약 500장)로 바꿔보세요.
               </p>
             </div>
-            <button className="btn primary" onClick={saveGeminiKey}>
-              저장
-            </button>
-            {geminiStatus && (
-              <p style={{ marginTop: 8, color: geminiStatus.ok ? 'var(--success)' : 'var(--danger)' }}>
-                {geminiStatus.ok ? '✅ ' : '⚠️ '}
-                {geminiStatus.text}
-              </p>
-            )}
           </div>
 
           <div className="section-title">YouTube Data API 키 (유튜브 변환용, 선택)</div>
@@ -200,19 +226,16 @@ export function SettingsPage() {
         <>
           <div className="section-title">Anthropic API 키</div>
           <div className="card">
-            <div className="field">
-              <label>API 키</label>
-              <input
-                type="password"
-                value={anthropicKeyDraft}
-                onChange={(e) => {
-                  setAnthropicKeyDraft(e.target.value);
-                  setAnthropicStatus(null);
-                }}
-                placeholder="sk-ant-..."
-              />
-            </div>
-            <div className="field">
+            <InlineEditRow
+              label="API 키"
+              value={anthropicKeyStatus.status?.hasKey ? (anthropicKeyStatus.status.maskedKey ?? '') : ''}
+              placeholder="sk-ant-... (새 키 입력)"
+              startEmpty
+              helperText="저장하면 서버에 암호화되어 보관되고, 이후엔 항상 마스킹된 값만 보여요. 기존 키를 다시
+                보여주지 않으니, 바꾸려면 새 키를 처음부터 입력해주세요."
+              onSave={(next) => anthropicKeyStatus.saveKey(next)}
+            />
+            <div className="field" style={{ marginTop: 12 }}>
               <label>사용 모델</label>
               <select value={settings.model} onChange={(e) => updateSettings({ model: e.target.value })}>
                 {AVAILABLE_MODELS.map((model) => (
@@ -222,15 +245,6 @@ export function SettingsPage() {
                 ))}
               </select>
             </div>
-            <button className="btn primary" onClick={saveAnthropicKey}>
-              저장
-            </button>
-            {anthropicStatus && (
-              <p style={{ marginTop: 8, color: anthropicStatus.ok ? 'var(--success)' : 'var(--danger)' }}>
-                {anthropicStatus.ok ? '✅ ' : '⚠️ '}
-                {anthropicStatus.text}
-              </p>
-            )}
           </div>
         </>
       )}
@@ -327,12 +341,15 @@ function InlineEditRow({
   placeholder,
   helperText,
   onSave,
+  startEmpty,
 }: {
   label: string;
   value: string;
   placeholder?: string;
   helperText?: string;
   onSave: (next: string) => Promise<void>;
+  /** API 키처럼 기존 값을 다시 보여주지 않고 항상 빈 입력창에서 새로 입력받고 싶을 때(선택) */
+  startEmpty?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -340,7 +357,7 @@ function InlineEditRow({
   const [error, setError] = useState<string | null>(null);
 
   function startEditing() {
-    setDraft(value);
+    setDraft(startEmpty ? '' : value);
     setError(null);
     setEditing(true);
   }

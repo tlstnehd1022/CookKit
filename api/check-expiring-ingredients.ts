@@ -10,6 +10,7 @@ import { getExpirationInfo } from '../src/lib/expiration.js';
 export const config = { maxDuration: 60 };
 
 interface HouseholdIngredient {
+  id: string;
   name: string;
   daysLeft: number;
 }
@@ -39,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // "임박(3일 이내)/경과" 여부를 판단한다(로직 중복 없이 화면 배지 기준과 항상 일치시킴).
     const { data: ingredients, error: ingredientsError } = await admin
       .from('ingredients')
-      .select('household_id, name, expiration_date')
+      .select('id, household_id, name, expiration_date')
       .not('expiration_date', 'is', null);
     if (ingredientsError) throw ingredientsError;
 
@@ -49,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!info || info.level === 'soon') continue; // 'urgent'|'expired'만 알림 대상
       const householdId = row.household_id as string;
       const list = householdIngredients.get(householdId) ?? [];
-      list.push({ name: row.name as string, daysLeft: info.daysLeft });
+      list.push({ id: row.id as string, name: row.name as string, daysLeft: info.daysLeft });
       householdIngredients.set(householdId, list);
     }
 
@@ -102,6 +103,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         title: '🥬 유통기한 임박 재료가 있어요',
         body,
         tab: 'ingredients',
+        // 알림 클릭 시 이 재료들로 스크롤+하이라이트(src/sw.ts → main.tsx →
+        // IngredientsPage.tsx) — 너무 길어지지 않게 상위 10개까지만 실어보냄
+        ingredientIds: sorted.slice(0, 10).map((i) => i.id),
       });
 
       for (const sub of userSubscriptions) {

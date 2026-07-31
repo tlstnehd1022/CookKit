@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCategories, useIngredients, usePantryStatus, makeId } from '../../data/store';
 import { CategoryManager } from './CategoryManager';
 import { COMMON_UNITS } from '../../data/units';
 import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
+import { useHighlightIngredientIds, clearHighlightIngredientIds } from '../../data/highlightIngredients';
 import type { Ingredient } from '../../data/types';
 
 export function IngredientsPage() {
@@ -13,6 +14,7 @@ export function IngredientsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const highlightIds = useHighlightIngredientIds();
 
   function toggleCollapsed(categoryId: string) {
     setCollapsed((prev) => {
@@ -22,6 +24,25 @@ export function IngredientsPage() {
       return next;
     });
   }
+
+  // 유통기한 알림을 클릭해서 들어온 경우 — 강조할 재료가 접힌 카테고리 안에 있으면 펼쳐주고,
+  // 몇 초 뒤에는 강조 상태를 지워서(전역 store) 다음에 이 탭에 다시 왔을 때 남아있지 않게 한다.
+  useEffect(() => {
+    if (highlightIds.length === 0) return;
+    const categoryIdsToExpand = new Set(
+      ingredients.filter((i) => highlightIds.includes(i.id)).map((i) => i.categoryId),
+    );
+    if (categoryIdsToExpand.size > 0) {
+      setCollapsed((prev) => {
+        const next = new Set(prev);
+        categoryIdsToExpand.forEach((id) => next.delete(id));
+        return next;
+      });
+    }
+    const timer = setTimeout(() => clearHighlightIngredientIds(), 4000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightIds]);
 
   const groups = categories.map((category) => ({
     category,
@@ -107,6 +128,7 @@ export function IngredientsPage() {
                   onToggleOwned={() => setOwned(ingredient.id, !pantryStatus[ingredient.id])}
                   onEditDetails={() => setEditingDetailsId(ingredient.id)}
                   onDelete={() => deleteIngredient(ingredient.id)}
+                  highlighted={highlightIds.includes(ingredient.id)}
                 />
               ))}
           </div>
@@ -124,6 +146,7 @@ export function IngredientsPage() {
               onToggleOwned={() => setOwned(ingredient.id, !pantryStatus[ingredient.id])}
               onEditDetails={() => setEditingDetailsId(ingredient.id)}
               onDelete={() => deleteIngredient(ingredient.id)}
+              highlighted={highlightIds.includes(ingredient.id)}
             />
           ))}
         </div>
@@ -162,17 +185,32 @@ function IngredientRow({
   onToggleOwned,
   onEditDetails,
   onDelete,
+  highlighted,
 }: {
   ingredient: Ingredient;
   owned: boolean;
   onToggleOwned: () => void;
   onEditDetails: () => void;
   onDelete: () => void;
+  /** 유통기한 알림을 클릭해서 들어온 경우, 그 알림이 가리키는 재료면 true — 스크롤+반짝임 강조 */
+  highlighted?: boolean;
 }) {
   const hasPreference = Boolean(ingredient.preferredUnit || ingredient.preferredMethod);
   const expirationInfo = getExpirationInfo(ingredient.expirationDate);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (highlighted) {
+      rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlighted]);
+
   return (
-    <div className="row" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+    <div
+      ref={rowRef}
+      className={`row ${highlighted ? 'ingredient-row-highlight' : ''}`}
+      style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {ingredient.name}

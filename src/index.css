@@ -370,6 +370,23 @@ h2 {
   color: var(--text-secondary);
 }
 
+/* 유통기한 알림을 눌러서 들어왔을 때 해당 재료 행을 잠깐 강조(IngredientsPage) */
+@keyframes ingredient-highlight-flash {
+  0%,
+  100% {
+    background: transparent;
+  }
+  15%,
+  55% {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+}
+
+.ingredient-row-highlight {
+  animation: ingredient-highlight-flash 1.8s ease-in-out;
+  border-radius: 8px;
+}
+
 .chip button {
   background: none;
   border: none;

@@ -2,12 +2,14 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import { setActiveTab, type Tab } from './data/activeTab'
+import { setHighlightIngredientIds } from './data/highlightIngredients'
 
 const root = createRoot(document.getElementById('root')!)
 
 // 유통기한 알림 클릭 시(src/sw.ts의 notificationclick) 이미 열려있는 창은 postMessage로,
-// 새로 연 창은 ?tab= 쿼리스트링으로 어떤 탭을 열지 알려준다 — 이 앱은 라우터가 없는 탭
-// 기반 SPA라 URL 자체로 화면을 구분하지 않으므로, 시작 시 한 번 읽어서 전역 탭 store에 반영.
+// 새로 연 창은 ?tab=/?highlight= 쿼리스트링으로 어떤 탭을 열고 어떤 재료를 강조할지 알려준다 —
+// 이 앱은 라우터가 없는 탭 기반 SPA라 URL 자체로 화면을 구분하지 않으므로, 시작 시 한 번
+// 읽어서 전역 store에 반영한다(activeTab.ts/highlightIngredients.ts).
 const VALID_TABS: Tab[] = ['recipes', 'shopping', 'ingredients', 'settings']
 function isTab(value: string | null): value is Tab {
   return Boolean(value) && VALID_TABS.includes(value as Tab)
@@ -15,16 +17,19 @@ function isTab(value: string | null): value is Tab {
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', (event) => {
-    const tab = (event.data as { type?: string; tab?: string } | undefined)?.tab ?? null
-    if (event.data?.type === 'cookkit-navigate' && isTab(tab)) {
-      setActiveTab(tab)
-    }
+    const data = event.data as { type?: string; tab?: string; ingredientIds?: string[] } | undefined
+    if (data?.type !== 'cookkit-navigate') return
+    if (isTab(data.tab ?? null)) setActiveTab(data.tab as Tab)
+    if (data.ingredientIds && data.ingredientIds.length > 0) setHighlightIngredientIds(data.ingredientIds)
   })
 }
 
-const initialTab = new URLSearchParams(window.location.search).get('tab')
-if (isTab(initialTab)) {
-  setActiveTab(initialTab)
+const searchParams = new URLSearchParams(window.location.search)
+const initialTab = searchParams.get('tab')
+const initialHighlight = searchParams.get('highlight')
+if (isTab(initialTab)) setActiveTab(initialTab)
+if (initialHighlight) setHighlightIngredientIds(initialHighlight.split(',').filter(Boolean))
+if (initialTab || initialHighlight) {
   window.history.replaceState({}, '', window.location.pathname)
 }
 

@@ -249,6 +249,68 @@ h2 {
   white-space: nowrap;
 }
 
+/* 넷플릭스/왓챠 스타일 가로 스크롤 행(RecipeRowSection) — 레시피가 많아져도 첫 화면 진입 시
+   세로 스크롤 길이를 짧게 유지하기 위한 구조. 기존 .recipe-card를 그대로 재사용하되 크기만
+   .recipe-card-row로 축소한다. */
+.recipe-row-section {
+  margin-bottom: 18px;
+}
+
+.recipe-row-scroll {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 8px 2px 10px;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.recipe-row-scroll > * {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+.recipe-card.recipe-card-row {
+  width: 128px;
+}
+
+.recipe-card-row .recipe-card-image,
+.recipe-card-row .recipe-card-placeholder {
+  aspect-ratio: 1 / 1;
+}
+
+.recipe-card-row .recipe-card-body {
+  padding: 8px;
+  gap: 2px;
+}
+
+.recipe-card-row .recipe-card-body .recipe-title {
+  font-size: 13px;
+}
+
+.recipe-row-more-card {
+  width: 90px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--chip-bg);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.recipe-row-more-card:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--chip-bg));
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .recipe-list {
   display: flex;
   flex-direction: column;

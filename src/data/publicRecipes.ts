@@ -9,6 +9,12 @@ import type { Recipe } from './types';
 // 여러 번 나눠 조회한 뒤 합친다.
 const IN_QUERY_CHUNK_SIZE = 150;
 
+// scripts/seed-recipes-from-public-data.ts가 공공데이터(식약처) 기반 레시피를 넣을 때 쓰는
+// 시스템 계정(0011 마이그레이션에서 SQL로 생성, 정상 가입 플로우를 거치지 않아 프로필 정보가
+// 없다) — 둘러보기 화면에서 이 계정의 레시피는 "진짜 사용자" 레시피와 섞지 않고 별도
+// "CookKit 추천 레시피" 섹션으로 분리해서 보여준다.
+export const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000001';
+
 function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
@@ -22,6 +28,8 @@ function chunk<T>(items: T[], size: number): T[][] {
 export interface PublicRecipeEntry {
   recipe: Recipe;
   tagNames: string[];
+  /** 작성자 user_id — 시스템 계정(SYSTEM_USER_ID) 여부 판단 등에 사용 */
+  authorUserId: string;
   authorName: string;
   authorAvatarUrl?: string;
   /** 작성자의 가구 이름("OO님의 레시피 (영희네)" 표기용) — 못 찾으면(가구 미소속 등) 생략 */
@@ -131,11 +139,17 @@ export async function fetchPublicRecipes(
     const recipe = rowToRecipe(row);
     const recipeTags = (row.recipe_tags as { tag_id: string; tags: { name: string } | null }[] | null) ?? [];
     const tagNames = recipeTags.map((rt) => rt.tags?.name).filter((n): n is string => Boolean(n));
-    const authorName = recipe.authorName || '이름 없는 사용자';
-    const authorHouseholdName = householdNameByUserId.get(row.user_id as string);
+    const authorUserId = row.user_id as string;
+    const isSystemAuthor = authorUserId === SYSTEM_USER_ID;
+    // 시스템 계정은 정상 가입 플로우를 거치지 않아 프로필 닉네임이 없다 — "이름 없는 사용자"
+    // 대신 항상 "CookKit"으로 통일 표시하고, 소속 household 이름("CookKit 시스템")도 진짜
+    // household와 헷갈릴 수 있어 생략한다.
+    const authorName = isSystemAuthor ? 'CookKit' : recipe.authorName || '이름 없는 사용자';
+    const authorHouseholdName = isSystemAuthor ? undefined : householdNameByUserId.get(authorUserId);
     return {
       recipe,
       tagNames,
+      authorUserId,
       authorName,
       authorAvatarUrl: recipe.authorAvatarUrl,
       authorHouseholdName,

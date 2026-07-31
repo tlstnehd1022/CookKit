@@ -3,6 +3,14 @@ import { useIngredientsById, useRecipes, useTags } from '../../data/store';
 import { collectAllAllergens, computeRecipeAllergens, computeTotalCookMinutes } from '../../data/computed';
 import { useStoredImage } from '../../data/imageStore';
 import { useRecipeViewMode } from '../../data/viewMode';
+import {
+  RecipeCategoryDetailPage,
+  RecipeRowSection,
+  groupRowItemsByTagName,
+  splitTagRows,
+  type RecipeRowItem,
+  type TagRow,
+} from './RecipeRowSection';
 import type { Ingredient, Recipe, Tag } from '../../data/types';
 
 // 태그 이름별 대표 이모지 — 대표 이미지(조리 단계 이미지)가 없는 레시피의 플레이스홀더용.
@@ -44,6 +52,7 @@ export function RecipesPage({
   const [excludedAllergens, setExcludedAllergens] = useState<string[]>([]);
   const [pantryOnly, setPantryOnly] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
+  const [categoryDetail, setCategoryDetail] = useState<{ title: string; items: RecipeRowItem[] } | null>(null);
 
   // 검색은 재료 이름까지 훑어야 해서(레시피 개수가 늘어날 걸 감안하면) 매 키 입력마다 바로
   // 필터링하지 않고 300ms 디바운스 — 지금 데이터 규모에선 사실 없어도 되지만, 나중에 레시피가
@@ -107,18 +116,79 @@ export function RecipesPage({
     );
   }
 
+  // 검색어/태그/알러지 제외/보유 재료 필터가 하나라도 걸려있으면 행(넷플릭스 스타일 가로 스크롤)
+  // 대신 기존 필터링된 그리드/리스트 결과 화면을 보여준다(요구사항 3) — "행 탐색"과 "검색 결과"는
+  // 서로 다른 화면이라는 게 이 기능의 핵심 설계라 명확히 분기한다.
+  const hasActiveFilter =
+    debouncedSearch.length > 0 || activeTagIds.length > 0 || excludedAllergens.length > 0 || pantryOnly;
+  const isRowMode = !hasActiveFilter && recipes.length > 0;
+
+  // 행 구조에서는 항상 "최근 추가순"으로 카드를 배열한다(요구사항 5) — 이후 각 행은 이 순서를
+  // 그대로 물려받아 필터만 다르게 적용한다.
+  const recentSortedRecipes = useMemo(
+    () =>
+      [...recipes].sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bTime - aTime;
+      }),
+    [recipes],
+  );
+
+  const rowItems: RecipeRowItem[] = useMemo(
+    () =>
+      recentSortedRecipes.map((recipe) => ({
+        id: recipe.id,
+        recipe,
+        tagNames: resolveRecipeTagNames(recipe, tags),
+        onClick: () => onSelectRecipe(recipe.id),
+        ownerLabel: recipe.authorName ? `${recipe.authorName}님의 레시피` : undefined,
+        ownerAvatarUrl: recipe.authorAvatarUrl,
+      })),
+    [recentSortedRecipes, tags, onSelectRecipe],
+  );
+
+  const pantryRowItems = useMemo(
+    () => rowItems.filter((item) => isMakeableWithPantry(item.recipe, ingredientsById)),
+    [rowItems, ingredientsById],
+  );
+
+  const tagTypeByName = useMemo(() => new Map(tags.map((tag) => [tag.name, tag.type])), [tags]);
+  const { cuisineRows, styleRows } = useMemo(
+    () => splitTagRows(groupRowItemsByTagName(rowItems), tagTypeByName),
+    [rowItems, tagTypeByName],
+  );
+
+  function openTagRow(row: TagRow) {
+    setCategoryDetail({ title: row.title, items: row.items });
+  }
+
+  if (categoryDetail) {
+    return (
+      <RecipeCategoryDetailPage
+        title={categoryDetail.title}
+        items={categoryDetail.items}
+        onBack={() => setCategoryDetail(null)}
+      />
+    );
+  }
+
   return (
     <div>
       <div className="row">
         <h1>레시피 관리</h1>
         <div className="chip-row" style={{ marginTop: 0 }}>
-          <button
-            className="btn small"
-            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-            title={viewMode === 'grid' ? '리스트로 보기' : '그리드로 보기'}
-          >
-            {viewMode === 'grid' ? '☰' : '▦'}
-          </button>
+          {/* 첫 화면(행 구조)에서는 그리드/리스트 toggle이 필요 없음 — 검색/필터로 넘어가거나
+              행에서 "더보기"로 들어간 카테고리 상세 화면에서만 다시 노출됨 */}
+          {!isRowMode && (
+            <button
+              className="btn small"
+              onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+              title={viewMode === 'grid' ? '리스트로 보기' : '그리드로 보기'}
+            >
+              {viewMode === 'grid' ? '☰' : '▦'}
+            </button>
+          )}
           <button className="btn small" onClick={onManageTags}>
             태그 관리
           </button>
@@ -168,39 +238,6 @@ export function RecipesPage({
         </>
       )}
 
-      <div className="row">
-        <div className="section-title" style={{ margin: 0 }}>
-          레시피 목록 ({sorted.length})
-        </div>
-        {recipes.length > 0 && (
-          <select
-            value={sortMode}
-            onChange={(e) => setSortMode(e.target.value as SortMode)}
-            style={{ width: 'auto', fontSize: 13 }}
-          >
-            <option value="recent">최근 추가순</option>
-            <option value="name">이름순</option>
-          </select>
-        )}
-      </div>
-
-      {sorted.length === 0 && recipes.length > 0 && (
-        <div className="empty-hint" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          조건에 맞는 레시피가 없어요.
-          <button
-            className="btn small"
-            style={{ alignSelf: 'center' }}
-            onClick={() => {
-              setSearch('');
-              setActiveTagIds([]);
-              setExcludedAllergens([]);
-              setPantryOnly(false);
-            }}
-          >
-            필터 초기화
-          </button>
-        </div>
-      )}
       {recipes.length === 0 && (
         <div className="empty-hint" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           아직 레시피가 없어요. 첫 레시피를 만들어보세요!
@@ -210,31 +247,80 @@ export function RecipesPage({
         </div>
       )}
 
-      {viewMode === 'grid' ? (
-        <div className="recipe-grid">
-          {sorted.map((recipe) => (
-            <RecipeCard
-              key={recipe.id}
-              recipe={recipe}
-              tagNames={resolveRecipeTagNames(recipe, tags)}
-              onClick={() => onSelectRecipe(recipe.id)}
-              ownerLabel={recipe.authorName ? `${recipe.authorName}님의 레시피` : undefined}
-              ownerAvatarUrl={recipe.authorAvatarUrl}
-            />
+      {isRowMode ? (
+        <div>
+          <RecipeRowSection title="🧺 보유 재료로 가능" items={pantryRowItems} onMore={() => setCategoryDetail({ title: '🧺 보유 재료로 가능', items: pantryRowItems })} />
+          <RecipeRowSection title="🆕 최근 추가됨" items={rowItems} onMore={() => setCategoryDetail({ title: '🆕 최근 추가됨', items: rowItems })} />
+          {cuisineRows.map((row) => (
+            <RecipeRowSection key={row.title} title={row.title} items={row.items} onMore={() => openTagRow(row)} />
+          ))}
+          {styleRows.map((row) => (
+            <RecipeRowSection key={row.title} title={row.title} items={row.items} onMore={() => openTagRow(row)} />
           ))}
         </div>
       ) : (
-        <div className="recipe-list">
-          {sorted.map((recipe) => (
-            <RecipeListItem
-              key={recipe.id}
-              recipe={recipe}
-              tagNames={resolveRecipeTagNames(recipe, tags)}
-              onClick={() => onSelectRecipe(recipe.id)}
-              ownerLabel={recipe.authorName ? `${recipe.authorName}님의 레시피` : undefined}
-            />
-          ))}
-        </div>
+        <>
+          <div className="row">
+            <div className="section-title" style={{ margin: 0 }}>
+              레시피 목록 ({sorted.length})
+            </div>
+            {recipes.length > 0 && (
+              <select
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as SortMode)}
+                style={{ width: 'auto', fontSize: 13 }}
+              >
+                <option value="recent">최근 추가순</option>
+                <option value="name">이름순</option>
+              </select>
+            )}
+          </div>
+
+          {sorted.length === 0 && recipes.length > 0 && (
+            <div className="empty-hint" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              조건에 맞는 레시피가 없어요.
+              <button
+                className="btn small"
+                style={{ alignSelf: 'center' }}
+                onClick={() => {
+                  setSearch('');
+                  setActiveTagIds([]);
+                  setExcludedAllergens([]);
+                  setPantryOnly(false);
+                }}
+              >
+                필터 초기화
+              </button>
+            </div>
+          )}
+
+          {viewMode === 'grid' ? (
+            <div className="recipe-grid">
+              {sorted.map((recipe) => (
+                <RecipeCard
+                  key={recipe.id}
+                  recipe={recipe}
+                  tagNames={resolveRecipeTagNames(recipe, tags)}
+                  onClick={() => onSelectRecipe(recipe.id)}
+                  ownerLabel={recipe.authorName ? `${recipe.authorName}님의 레시피` : undefined}
+                  ownerAvatarUrl={recipe.authorAvatarUrl}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="recipe-list">
+              {sorted.map((recipe) => (
+                <RecipeListItem
+                  key={recipe.id}
+                  recipe={recipe}
+                  tagNames={resolveRecipeTagNames(recipe, tags)}
+                  onClick={() => onSelectRecipe(recipe.id)}
+                  ownerLabel={recipe.authorName ? `${recipe.authorName}님의 레시피` : undefined}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -262,6 +348,8 @@ export interface RecipeCardProps {
   cornerBadge?: string;
   /** 좋아요 수(조회 전용) — 값이 있을 때만 표시(선택) */
   likeCount?: number;
+  /** 'row'면 가로 스크롤 행 안에서 쓰는 작은 정사각형 카드로 렌더링(기본은 'default') */
+  size?: 'default' | 'row';
 }
 
 export function RecipeCard({
@@ -272,11 +360,16 @@ export function RecipeCard({
   ownerAvatarUrl,
   cornerBadge,
   likeCount,
+  size = 'default',
 }: RecipeCardProps) {
   const { imageUrl, totalMinutes, placeholderEmoji } = useRecipeCardInfo(recipe, tagNames);
 
   return (
-    <div className="recipe-card" onClick={onClick} style={{ position: 'relative' }}>
+    <div
+      className={`recipe-card ${size === 'row' ? 'recipe-card-row' : ''}`}
+      onClick={onClick}
+      style={{ position: 'relative' }}
+    >
       {cornerBadge && <span className="recipe-card-corner-badge">{cornerBadge}</span>}
       {imageUrl ? (
         <img src={imageUrl} alt={recipe.name} className="recipe-card-image" />
@@ -285,7 +378,7 @@ export function RecipeCard({
       )}
       <div className="recipe-card-body">
         <strong className="recipe-title">{recipe.name}</strong>
-        {tagNames.length > 0 && (
+        {size !== 'row' && tagNames.length > 0 && (
           <div className="chip-row" style={{ marginTop: 0 }}>
             {tagNames.slice(0, 2).map((name) => (
               <span className="chip" key={name}>
@@ -294,11 +387,14 @@ export function RecipeCard({
             ))}
           </div>
         )}
-        <span className="text-muted" style={{ fontSize: 12 }}>
+        <span
+          className="text-muted"
+          style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+        >
           {recipe.servingsBase}인분{totalMinutes > 0 ? ` · 약 ${totalMinutes}분` : ''}
           {likeCount != null ? ` · ❤️ ${likeCount}` : ''}
         </span>
-        {ownerLabel && (
+        {size !== 'row' && ownerLabel && (
           <span className="text-muted" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
             {ownerAvatarUrl && (
               <img

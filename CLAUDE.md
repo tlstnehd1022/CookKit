@@ -58,12 +58,18 @@
   1회성 마이그레이션 배너도 추가. 실사용 중 YouTube Data API 키도 같은 방식으로 포함시켰고
   (원래는 범위 밖이었으나 요청으로 추가), 더 이상 의미 없어진 "데이터 백업"(JSON 내보내기/
   가져오기) 기능도 이번에 함께 제거. 자세한 내용은 아래 "API 키 Vault 전환" 항목 참고.
-- **14차 확장 진행 중 — 재료 유통기한 관리 + PWA/웹 푸시 알림**: 재료에 유통기한(선택) 필드를
+- **14차 확장 완료 — 재료 유통기한 관리 + PWA/웹 푸시 알림**: 재료에 유통기한(선택) 필드를
   추가하고 목록 화면에 임박/경과 배지 표시(1-2번, 완료·자체 검증 후 커밋). 이어서 PWA 설치
   지원(manifest+서비스워커, vite-plugin-pwa)과 유통기한 임박 시 매일 1회 웹 푸시 알림(Vercel
-  Cron)까지 구현(3-4번). iOS "홈 화면에 추가" 안내 문구도 코드는 완성해뒀지만 iOS 실기기
-  테스트는 나중으로 미룸(안드로이드만 우선 확인). 영수증 촬영 자동 인식은 이번 범위에서 제외
-  (별도 진행 예정). 자세한 내용은 아래 "유통기한 관리 + PWA/웹 푸시 알림" 항목 참고.
+  Cron)까지 구현(3-4번), 실사용 테스트로 발송·설치까지 확인함. 알림을 클릭하면 재료 탭으로
+  이동하면서 그 알림을 유발한 재료로 스크롤+잠깐 배경 강조(flash)되는 것까지 추가로 구현해
+  확인 완료. iOS "홈 화면에 추가" 안내 문구도 코드는 완성해뒀지만 iOS 실기기 테스트는 나중으로
+  미룸(안드로이드만 우선 확인). 영수증 촬영 자동 인식은 이번 범위에서 제외(별도 진행 예정).
+  자세한 내용은 아래 "유통기한 관리 + PWA/웹 푸시 알림" 항목 참고.
+- **15차 확장 완료 — 공공데이터 기반 대량 레시피 시딩(200개)**: 원래는 유튜브 영상 200개를
+  AI로 분석해 레시피를 대량 생성할 계획이었으나 토큰 비용 문제로 중단하고, 식품의약품안전처
+  공공 레시피 API로 전환해 200개를 가져와 이미 등록 완료. 자세한 내용은 아래 "공공데이터 기반
+  대량 레시피 시딩" 항목 참고.
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
@@ -645,6 +651,48 @@
     Editor에서 이 마이그레이션 실행 필요**(0004처럼 실행 안 하면 화면에서 여전히 빈 섹션으로 보임).
     앞으로 Tag/TagType처럼 DB에 `check` 제약이 걸린 필드에 새 값을 추가할 때는 TypeScript 타입만 고치고
     끝내지 말고 반드시 해당 제약도 같이 마이그레이션할 것 — 이번에 놓친 지점.
+- **공공데이터 기반 대량 레시피 시딩(15차 확장)**: 신규 household는 항상 빈 상태로 시작해서
+  "둘러보기"(다른 가구 공개 레시피) 화면에 볼 게 없다는 초기 콘텐츠 부족 문제 해결용. 처음엔
+  유튜브 영상 200개를 골라 자막 추출(`api/youtube-transcript.ts`) → AI로 레시피 구조화하는
+  계획이었으나, 영상 200개 분량을 전부 AI 호출로 돌리면 토큰 비용이 부담스러운 수준이라 중단
+  (품질 검수 이전에 비용 단계에서 이미 무리라고 판단, 이 계획 자체는 CLAUDE.md에 문서화된 적
+  없이 폐기됨). 대신 식품의약품안전처 공공데이터포털의 "조리식품의 레시피 DB"(COOKRCP01) REST
+  API로 전환 — 이 API는 재료/조리순서/단계별 이미지가 이미 구조화돼 있어서 AI 호출 없이 텍스트
+  파싱만으로 레시피를 만들 수 있음(비용 0원, 실패율도 낮음). 실제로 200개를 가져와 이미 DB에
+  넣은 상태.
+  - **스크립트**: `scripts/seed-recipes-from-public-data.ts`(Node, `node --env-file=.env
+    scripts/seed-recipes-from-public-data.ts <start> <end> [batchId] [categoryFilter]`) —
+    `@supabase/supabase-js`를 service_role 키로 직접 호출해 일반 데이터 레이어(RLS)를 우회하는
+    1회성 관리 스크립트(household 단위 앱 데이터 레이어와는 별도 경로). `RCP_PARTS_DTLS`(재료
+    설명 텍스트)를 정규식으로 `{name, amount, unit}[]`로 파싱, `MANUAL01~20`/`MANUAL_IMG01~20`을
+    조리 단계+단계별 이미지로 매핑. 재료/태그는 이름으로 매칭해 있으면 재사용·없으면 생성(기존
+    AI 반영 로직과 같은 "순차 처리 + 배치 내 캐시" 패턴 — `resolveTag`/`resolveIngredient`,
+    `Promise.all`로 동시 처리하지 않음). 난이도/조리시간도 `recipeDifficulty.ts`/`recipeTime.ts`와
+    동일한 규칙을 스크립트 안에 그대로 복제해 적용(독립 Node 실행 스크립트라 import 대신 로직만
+    옮겨 적음).
+  - **소유 계정**: `cookkit-system`(0011 마이그레이션에서 만든 시스템 계정)이 소유. 이 계정
+    전용 household("CookKit 시스템")를 스크립트가 첫 실행 시 자동으로 만들거나 찾아서
+    (`ensureSystemHousehold`) 그 아래에 재료/태그/카테고리를 쌓음 — household 단위로 격리된
+    구조를 그대로 유지하기 위함.
+  - **이미지도 함께 저장**: 유튜브 썸네일(저작권 우려로 사용자가 명시적으로 선택했을 때만
+    재호스팅)과 달리, 식약처 공공데이터의 조리 단계 이미지는 정부 공공데이터포털이 재사용을
+    허용하는 자료라 `downloadAndStoreImage`로 바로 `recipe-images` Storage에 다운로드해 저장
+    (실패해도 이미지 없이 계속 진행 — 필수 아님).
+  - **공개 범위/출처 표시**: 전부 `visibility: 'public'`로 생성. `Recipe.content` jsonb 안에
+    `sourceType: 'public_data'`, `sourceNote`(식약처+`RCP_SEQ` 출처 문구), `sourceRcpSeq`,
+    `seedBatchId`를 추가로 기록(정식 `Recipe` TypeScript 타입 필드는 아니고 이 스크립트 전용
+    부가 정보 — 화면에서 쓰는 값이 아니라 추적/디버깅/재실행 판단용). **재실행해도 안전**: 넣기
+    전에 같은 `sourceRcpSeq`가 이미 있는지 확인해서 중복 삽입을 막음(`recipeAlreadyExists`).
+  - **카테고리 필터**: 4번째 인자로 `RCP_PAT2` 값(예: "후식", "국&찌개")을 콤마로 넘기면 특정
+    종류만 골라 담을 수 있음 — 특정 카테고리가 너무 적을 때 보충하는 용도로 나중에 추가함.
+  - **버그(수정 완료) — 둘러보기 화면 Bad Request**: 공개 레시피가 200개 넘게 쌓이자
+    `publicRecipes.ts`가 재료/작성자/household 이름을 `.in('id', [...아주 많은 id들])`로 한
+    번에 조회하던 게 URL 길이 제한을 넘어 `400 Bad Request`가 났음. `IN_QUERY_CHUNK_SIZE` 단위로
+    `chunk()`해서 여러 번 나눠 조회하도록 수정 — 앞으로 `.in()`에 넘기는 id 배열이 많아질 수 있는
+    곳(특히 공개 데이터처럼 규모가 커지는 화면)은 이 청크 패턴을 기본으로 쓸 것.
+  - **범위에서 뺀 것**: 유튜브 200개 분석 경로 자체는 완전히 폐기(이 스크립트로 대체) — 향후
+    유튜브 기반 대량 시딩을 다시 시도한다면, 영상 단위로 AI를 호출하는 대신 자막만 모아 배치로
+    한 번에 구조화하는 등 토큰 비용을 먼저 줄이는 방식으로 설계해야 함.
 
 ## 향후 확장 계획 (지금부터 구조는 열어두되 구현은 나중에)
 - **로그인 화면 UX 개선**: 이메일 로그인 흐름을 화면 전환(예: 확인 이메일 발송 화면)까지는 개선했지만,
@@ -769,6 +817,9 @@ Recipe {
   visibility?: 'private' | 'household' | 'public'  // 공개 범위(DB recipes.visibility 실컬럼, 기본 household)
   authorName?: string  // 작성자 닉네임(profiles.display_name) — 저장 안 됨, 조회 시 join으로만 채워짐
   authorAvatarUrl?: string  // 작성자 프로필 사진 URL(profiles.avatar_url) — authorName과 같은 조회 전용 필드
+  // content jsonb에는 sourceType/sourceNote/sourceRcpSeq/seedBatchId도 들어갈 수 있음 — 정식 필드는
+  // 아니고 공공데이터 시딩 스크립트(scripts/seed-recipes-from-public-data.ts)만 기록하는 부가 정보,
+  // "공공데이터 기반 대량 레시피 시딩" 항목 참고
   // allergens는 저장하지 않음 — ingredients를 통해 항상 파생(computed) 계산
   // imageId/finalImageId는 Supabase Storage(src/data/imageStore.ts)에 저장된 이미지 경로 참조(실제 데이터 아님)
 }

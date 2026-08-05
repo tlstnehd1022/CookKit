@@ -82,21 +82,23 @@ export interface CookingLogEntry {
  * 재사용될 가능성을 감안해 안전하게 household_id로 한 번 더 좁혀서 조회한다.
  */
 export async function fetchCookingHistory(householdId: string): Promise<CookingLogEntry[]> {
+  // recipes 테이블의 레시피 이름 컬럼은 title이다(Recipe.name은 supabaseAdapter.ts에서 title로
+  // 매핑되는 앱 레벨 이름 — DB 컬럼 자체는 title).
   const { data, error } = await supabase
     .from('cooking_log')
-    .select('id, recipe_id, cooked_at, memo, recipes(name), profiles(display_name)')
+    .select('id, recipe_id, cooked_at, memo, recipes(title), profiles(display_name)')
     .eq('household_id', householdId)
     .order('cooked_at', { ascending: false })
     .limit(HISTORY_LIMIT);
   if (error) throw error;
 
-  // supabase-js가 select 문자열을 타입 레벨로 파싱할 때 recipes(name)/profiles(display_name)
+  // supabase-js가 select 문자열을 타입 레벨로 파싱할 때 recipes(title)/profiles(display_name)
   // 같은 to-one 임베드도 실제 FK 카디널리티를 몰라 배열 타입으로 추론해서(런타임 값은 항상
   // 단일 객체) 직접 캐스팅이 막힌다 — unknown을 거쳐 실제 런타임 형태로 캐스팅.
   return (data ?? []).map((row) => ({
     id: row.id as string,
     recipeId: row.recipe_id as string,
-    recipeName: (row.recipes as unknown as { name: string } | null)?.name ?? null,
+    recipeName: (row.recipes as unknown as { title: string } | null)?.title ?? null,
     authorName: (row.profiles as unknown as { display_name: string | null } | null)?.display_name ?? null,
     cookedAt: row.cooked_at as string,
     memo: row.memo as string | null,

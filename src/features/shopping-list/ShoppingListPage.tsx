@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useIngredientsById, usePantryStatus, useRecipes } from '../../data/store';
 import { useShoppingSelection } from '../../data/shoppingSelection';
+import { ReceiptScanModal } from './ReceiptScanModal';
 
 type FilterMode = 'all' | 'need' | 'owned';
 
@@ -16,6 +17,7 @@ export function ShoppingListPage() {
   const { pantryStatus, setOwned } = usePantryStatus();
   const { selectedRecipeIds, toggle: toggleRecipe } = useShoppingSelection();
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
+  const [showReceiptScan, setShowReceiptScan] = useState(false);
 
   const aggregated: AggregatedRow[] = useMemo(() => {
     const map = new Map<string, AggregatedRow>();
@@ -43,7 +45,12 @@ export function ShoppingListPage() {
 
   return (
     <div>
-      <h1>장보기 리스트</h1>
+      <div className="row">
+        <h1>장보기 리스트</h1>
+        <button className="btn small" onClick={() => setShowReceiptScan(true)}>
+          📷 영수증으로 재료 업데이트
+        </button>
+      </div>
 
       <div className="section-title">만들 레시피 선택</div>
       {recipes.length === 0 && <div className="empty-hint">등록된 레시피가 없습니다.</div>}
@@ -111,6 +118,8 @@ export function ShoppingListPage() {
           </div>
         );
       })}
+
+      {showReceiptScan && <ReceiptScanModal onClose={() => setShowReceiptScan(false)} />}
     </div>
   );
 }

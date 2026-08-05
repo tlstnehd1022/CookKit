@@ -379,3 +379,93 @@ export async function generateImageWithRetry(apiKey: string, model: string, prom
 
 export const generateStepImage = generateImageWithRetry;
 export const generateFinalDishImage = generateImageWithRetry;
+
+// 영수증 사진 → 식료품 품목 인식(Gemini 비전). rawText(원문 그대로)와 guessedName(정규화된
+// 재료명)을 둘 다 반환해서, 확인 화면에서 사용자가 원본과 대조하며 검토할 수 있게 한다.
+export interface ReceiptItem {
+  rawText: string;
+  guessedName: string;
+  quantity?: number | null;
+  unit?: string | null;
+  /** 이 재료가 속할 것으로 추정되는 카테고리 이름(채소/육류·해산물 등) — 확인 화면의 카테고리
+   * 드롭다운 기본값으로만 쓰이고, 기존 카테고리와 이름이 겹치면 그대로 재사용된다. */
+  categoryName?: string | null;
+  /** 품목명 해석이 불확실하거나 식료품인지 애매하면 true — 확인 화면에서 별도 섹션으로 모아 보여줌 */
+  uncertain?: boolean | null;
+}
+
+const GEMINI_RECEIPT_ITEMS_SCHEMA = {
+  type: 'ARRAY',
+  items: {
+    type: 'OBJECT',
+    properties: {
+      rawText: { type: 'STRING', description: '영수증에 인쇄된 품목명 원문 그대로(축약/오타 포함)' },
+      guessedName: {
+        type: 'STRING',
+        description:
+          '일반적으로 통용되는 식료품 재료 이름으로 정규화한 이름. 예: "무G부침" → "무", 축약/오타가 있으면 ' +
+          '최대한 실제 의미로 해석해줘.',
+      },
+      quantity: { type: 'NUMBER', description: '수량(추정 가능하면 숫자로), 모르면 생략', nullable: true },
+      unit: { type: 'STRING', description: '단위(개, g, 팩, 봉지 등 흔히 쓰는 단위), 모르면 생략', nullable: true },
+      categoryName: {
+        type: 'STRING',
+        description: '이 재료의 카테고리(예: 채소, 육류·해산물, 유제품, 곡류, 소스·양념, 기타). 모르면 생략.',
+        nullable: true,
+      },
+      uncertain: {
+        type: 'BOOLEAN',
+        description: '품목명 해석이 불확실하거나 식료품인지 애매하면 true, 확실하면 생략.',
+        nullable: true,
+      },
+    },
+    required: ['rawText', 'guessedName'],
+  },
+} as const;
+
+const RECEIPT_PROMPT = `이 영수증 이미지에서 식료품 품목명과 수량을 추출해서 JSON 배열로 반환해줘.
+- 품목명이 축약되어 있거나(예: "무G부침") 이해하기 어려우면 최대한 일반적인 재료명으로 해석해서 guessedName에 넣고, 원본은 rawText에 그대로 남겨줘.
+- 수량/단위가 영수증에 표기돼 있으면 추출하고, 없으면 생략해도 돼.
+- 세제, 휴지, 비닐봉투, 적립금, 할인, 카드결제 안내 같은 식료품이 아닌 항목은 결과에서 제외해줘.
+- 해석이 불확실하거나 식료품인지 애매한 항목은 uncertain을 true로 표시해줘.
+- 영수증 이미지가 아니거나 알아볼 수 있는 품목이 하나도 없으면 빈 배열 []을 반환해줘.`;
+
+/** 영수증 이미지(base64, data: 접두사 없이)에서 식료품 품목을 추출한다. 항상 사용자 확인 화면을
+ * 거친 뒤에만 실제로 재료에 반영되며(호출부 책임), 이 함수 자체는 인식만 하고 아무것도 저장하지 않는다. */
+export async function extractReceiptItems(
+  apiKey: string,
+  model: string,
+  imageBase64: string,
+  mimeType: string,
+): Promise<ReceiptItem[]> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: RECEIPT_PROMPT }, { inlineData: { mimeType, data: imageBase64 } }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: GEMINI_RECEIPT_ITEMS_SCHEMA,
+        },
+      }),
+    },
+  );
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Gemini API 요청 실패 (${res.status}): ${body.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) {
+    throw new Error('Gemini 응답에서 텍스트를 찾을 수 없습니다.');
+  }
+  const parsed = JSON.parse(text);
+  if (!Array.isArray(parsed)) {
+    throw new Error('영수증 인식 결과 형식이 올바르지 않습니다.');
+  }
+  return parsed as ReceiptItem[];
+}

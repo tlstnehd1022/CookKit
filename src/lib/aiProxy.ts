@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient';
 import type { ChatResult, ChatTurn, ExistingContext } from './aiChat';
 import type { ExtractedRecipe } from './claudeClient';
-import type { YoutubeVideoMeta } from './geminiClient';
+import type { ReceiptItem, YoutubeVideoMeta } from './geminiClient';
 import type { RecipeSnapshot } from './recipeDiff';
 
 /**
@@ -83,4 +83,15 @@ export async function generateImage(model: string, prompt: string): Promise<stri
 export async function fetchYoutubeVideoMeta(url: string): Promise<YoutubeVideoMeta | null> {
   const result = await callAiApi<{ meta: YoutubeVideoMeta | null }>('/api/youtube-meta', { url });
   return result.meta;
+}
+
+/** 영수증 이미지(base64, data: 접두사 없이)에서 식료품 품목을 인식한다. 결과는 항상 확인 화면
+ * (ReceiptScanModal)을 거친 뒤 사용자가 명시적으로 반영해야만 재료에 저장된다. */
+export async function extractReceiptItems(
+  model: string,
+  imageBase64: string,
+  mimeType: string,
+): Promise<ReceiptItem[]> {
+  const result = await callAiApi<{ items: ReceiptItem[] }>('/api/ai-receipt', { model, imageBase64, mimeType });
+  return result.items;
 }

@@ -3,6 +3,8 @@ import { useIngredientsById, useRecipes, useTags } from '../../data/store';
 import { collectAllAllergens, computeRecipeAllergens, computeTotalCookMinutes } from '../../data/computed';
 import { useStoredImage } from '../../data/imageStore';
 import { useRecipeViewMode } from '../../data/viewMode';
+import { fetchCookingStats } from '../../data/cookingLog';
+import { useSession } from '../../data/session';
 import {
   RecipeCategoryDetailPage,
   RecipeRowSection,
@@ -29,9 +31,7 @@ export function resolveRecipeTagNames(recipe: Recipe, tags: Tag[]): string[] {
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-type SortMode = 'recent' | 'name';
-// '자주 해먹은 순'은 CookingLog(요리 기록)가 아직 미구현이라 이번엔 제외 — 나중에 요리 기록
-// 기능이 생기면 SortMode에 'frequent' 등을 추가하고 기록 횟수로 정렬하면 됨.
+type SortMode = 'recent' | 'name' | 'frequent';
 
 export function RecipesPage({
   onSelectRecipe,
@@ -45,6 +45,7 @@ export function RecipesPage({
   const { recipes } = useRecipes();
   const { tags } = useTags();
   const ingredientsById = useIngredientsById();
+  const { user } = useSession();
   const { mode: viewMode, setMode: setViewMode } = useRecipeViewMode();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -53,6 +54,7 @@ export function RecipesPage({
   const [pantryOnly, setPantryOnly] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [categoryDetail, setCategoryDetail] = useState<{ title: string; items: RecipeRowItem[] } | null>(null);
+  const [cookingCountById, setCookingCountById] = useState<Map<string, number>>(new Map());
 
   // 검색은 재료 이름까지 훑어야 해서(레시피 개수가 늘어날 걸 감안하면) 매 키 입력마다 바로
   // 필터링하지 않고 300ms 디바운스 — 지금 데이터 규모에선 사실 없어도 되지만, 나중에 레시피가
@@ -61,6 +63,25 @@ export function RecipesPage({
     const timer = setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [search]);
+
+  // "자주 해먹은 순" 정렬용 — 레시피 목록이 바뀔 때마다 요리 기록 횟수를 다시 집계한다.
+  useEffect(() => {
+    if (!user || recipes.length === 0) {
+      setCookingCountById(new Map());
+      return;
+    }
+    let cancelled = false;
+    fetchCookingStats(recipes.map((r) => r.id))
+      .then((stats) => {
+        if (cancelled) return;
+        setCookingCountById(new Map(Array.from(stats.entries()).map(([id, s]) => [id, s.count])));
+      })
+      .catch((err) => console.error('요리 기록 집계 실패:', err));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipes.map((r) => r.id).join(','), user?.id]);
 
   const allAllergens = useMemo(
     () => collectAllAllergens(Array.from(ingredientsById.values())),
@@ -100,6 +121,11 @@ export function RecipesPage({
 
   const sorted = [...filtered].sort((a, b) => {
     if (sortMode === 'name') return a.name.localeCompare(b.name, 'ko');
+    if (sortMode === 'frequent') {
+      const diff = (cookingCountById.get(b.id) ?? 0) - (cookingCountById.get(a.id) ?? 0);
+      if (diff !== 0) return diff;
+      // 기록 횟수가 같으면(둘 다 0인 경우 포함) 최근 추가순으로 보조 정렬
+    }
     // 최근 추가순 — createdAt이 없는 경우(이론상 없어야 하지만 방어적으로) 맨 뒤로 보냄
     const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -272,6 +298,7 @@ export function RecipesPage({
               >
                 <option value="recent">최근 추가순</option>
                 <option value="name">이름순</option>
+                <option value="frequent">자주 해먹은 순</option>
               </select>
             )}
           </div>

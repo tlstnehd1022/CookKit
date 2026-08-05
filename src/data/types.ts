@@ -82,14 +82,19 @@ export interface Tag {
 
 export type PantryStatus = Record<string, boolean>;
 
-// 향후 확장 대비 스텁 — Phase 1에서는 UI/저장 로직 미구현
+/** 요리 완료 기록 — household 공유(supabase/migrations/0018_cooking_log.sql, cooking_log 테이블).
+ * src/data/cookingLog.ts에서 조회/생성한다. */
 export interface CookingLog {
   id: string;
   recipeId: string;
-  cookedDate: string;
+  householdId: string;
+  userId: string;
+  /** ISO 타임스탬프 */
+  cookedAt: string;
   memo?: string;
 }
 
+// 향후 확장 대비 스텁 — 아직 UI/저장 로직 미구현
 export interface MenuSet {
   id: string;
   name: string;

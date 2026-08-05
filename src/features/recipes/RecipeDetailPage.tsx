@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { useIngredientsById, useRecipes, useTags } from '../../data/store';
+import { useIngredients, useIngredientsById, useRecipes, useTags, getCurrentHouseholdId } from '../../data/store';
 import { useShoppingSelection } from '../../data/shoppingSelection';
 import { computeRecipeAllergens, scaleAmount } from '../../data/computed';
 import { useStoredImage } from '../../data/imageStore';
 import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
 import { fetchLikeInfo } from '../../data/recipeLikes';
+import { fetchCookingStats, logCooking, type CookingStats } from '../../data/cookingLog';
 import { useSession } from '../../data/session';
+import { CookingLogModal } from './CookingLogModal';
 
 export function RecipeDetailPage({
   recipeId,
@@ -19,12 +21,16 @@ export function RecipeDetailPage({
   const { recipes, deleteRecipe } = useRecipes();
   const { tags } = useTags();
   const ingredientsById = useIngredientsById();
+  const { saveIngredient } = useIngredients();
   const { isSelected, toggle } = useShoppingSelection();
   const { user } = useSession();
+  const householdId = getCurrentHouseholdId();
   const recipe = recipes.find((r) => r.id === recipeId);
   const [servings, setServings] = useState(recipe?.servingsBase ?? 1);
   const [showDifficultyReason, setShowDifficultyReason] = useState(false);
   const [likeCount, setLikeCount] = useState<number | null>(null);
+  const [cookingStats, setCookingStats] = useState<CookingStats | null>(null);
+  const [showCookingLogModal, setShowCookingLogModal] = useState(false);
   // 대표 이미지 우선순위: 완성 사진 > 첫 조리 단계 이미지. recipe가 사라지는 경우(삭제 등)에도
   // 훅 호출 순서가 매 렌더 동일해야 해서 이 useStoredImage는 아래 조기 return보다 위에 둔다.
   const coverImageId = recipe?.finalImageId ?? recipe?.steps.find((step) => step.imageId)?.imageId;
@@ -51,6 +57,40 @@ export function RecipeDetailPage({
       cancelled = true;
     };
   }, [recipe?.id, recipe?.visibility, user?.id]);
+
+  // "이 레시피를 n번 만들었어요" 요약용 — 요리 기록 조회 화면은 따로 없이 이 최소한의 요약만 노출
+  useEffect(() => {
+    if (!recipe) {
+      setCookingStats(null);
+      return;
+    }
+    let cancelled = false;
+    fetchCookingStats([recipe.id])
+      .then((result) => {
+        if (!cancelled) setCookingStats(result.get(recipe.id) ?? null);
+      })
+      .catch((err) => console.error('요리 기록 조회 실패:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [recipe?.id]);
+
+  async function handleConfirmCooking(selectedIngredientIds: string[], memo: string) {
+    if (!recipe || !user || !householdId) {
+      throw new Error('로그인이 필요합니다.');
+    }
+    await logCooking({ recipeId: recipe.id, householdId, userId: user.id, memo });
+    // 체크된 재료만 보유 해제 — 이미 owned=false인 재료는 건드리지 않음
+    for (const ingredientId of selectedIngredientIds) {
+      const ingredient = ingredientsById.get(ingredientId);
+      if (ingredient?.owned) {
+        await saveIngredient({ ...ingredient, owned: false });
+      }
+    }
+    const stats = await fetchCookingStats([recipe.id]);
+    setCookingStats(stats.get(recipe.id) ?? null);
+    setShowCookingLogModal(false);
+  }
 
   if (!recipe) {
     return (
@@ -126,6 +166,16 @@ export function RecipeDetailPage({
       >
         {isSelected(recipe.id) ? '🛒 장보기에 담김 (빼기)' : '🛒 장보기에 담기'}
       </button>
+      <button className="btn" style={{ width: '100%', marginBottom: 8 }} onClick={() => setShowCookingLogModal(true)}>
+        🍳 오늘 만들었어요
+      </button>
+      {cookingStats && cookingStats.count > 0 && (
+        <p className="text-muted" style={{ marginTop: -4, marginBottom: 8, fontSize: 13 }}>
+          이 레시피를 {cookingStats.count}번 만들었어요
+          {cookingStats.lastCookedAt &&
+            ` · 마지막으로 만든 날짜: ${new Date(cookingStats.lastCookedAt).toLocaleDateString('ko-KR')}`}
+        </p>
+      )}
       <div className="chip-row">
         {likeCount != null && <span className="chip">❤️ {likeCount}</span>}
         {recipe.difficulty && <span className="chip">{DIFFICULTY_LABEL[recipe.difficulty]}</span>}
@@ -185,6 +235,15 @@ export function RecipeDetailPage({
       {recipe.steps.map((step, index) => (
         <StepCard key={index} index={index + 1} step={step} />
       ))}
+
+      {showCookingLogModal && (
+        <CookingLogModal
+          recipe={recipe}
+          ingredientsById={ingredientsById}
+          onClose={() => setShowCookingLogModal(false)}
+          onConfirm={handleConfirmCooking}
+        />
+      )}
     </div>
   );
 }

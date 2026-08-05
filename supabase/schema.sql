@@ -230,8 +230,8 @@ create table public.recipe_likes (
 
 create index recipe_likes_recipe_id_idx on public.recipe_likes (recipe_id);
 
--- 참고: CookingLog/MenuSet(요리 기록/손님초대모드)은 앱에서도 아직 UI가 없는 스텁이라
--- 이번 스키마에는 포함하지 않았습니다. 실제로 기능을 만들 때 테이블을 추가하면 됩니다.
+-- 참고: MenuSet(손님초대모드)은 앱에서도 아직 UI가 없는 스텁이라 이번 스키마에는 포함하지
+-- 않았습니다. CookingLog(요리 완료 기록)는 실제로 구현되어 아래쪽에 추가돼 있습니다(0018).
 
 
 -- ============================================================================
@@ -499,4 +499,34 @@ create policy "push_subscriptions_insert_own" on public.push_subscriptions
   for insert with check (user_id = auth.uid());
 
 create policy "push_subscriptions_delete_own" on public.push_subscriptions
+  for delete using (user_id = auth.uid());
+
+-- ---- cooking_log (0018) — 요리 완료 기록 -----------------------------------------------------
+-- household 공유(누가 기록했든 우리집 기록으로 다 같이 조회), 생성은 household 멤버+본인 명의만,
+-- 수정/삭제는 본인 것만. 자세한 배경은 0018 마이그레이션 참고.
+create table public.cooking_log (
+  id uuid primary key default gen_random_uuid(),
+  recipe_id uuid not null references public.recipes(id) on delete cascade,
+  household_id uuid not null references public.households(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  cooked_at timestamptz not null default now(),
+  memo text,
+  created_at timestamptz not null default now()
+);
+
+create index cooking_log_recipe_id_idx on public.cooking_log (recipe_id);
+create index cooking_log_household_id_idx on public.cooking_log (household_id);
+
+alter table public.cooking_log enable row level security;
+
+create policy "cooking_log_select_household" on public.cooking_log
+  for select using (public.is_household_member(household_id));
+
+create policy "cooking_log_insert_household" on public.cooking_log
+  for insert with check (public.is_household_member(household_id) and user_id = auth.uid());
+
+create policy "cooking_log_update_own" on public.cooking_log
+  for update using (user_id = auth.uid());
+
+create policy "cooking_log_delete_own" on public.cooking_log
   for delete using (user_id = auth.uid());

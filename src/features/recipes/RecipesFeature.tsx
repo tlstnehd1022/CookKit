@@ -5,6 +5,7 @@ import { RecipeEditor } from './RecipeEditor';
 import { TagManager } from './TagManager';
 import { DiscoverRecipesPage } from './DiscoverRecipesPage';
 import { PublicRecipeDetailPage } from './PublicRecipeDetailPage';
+import { CookingHistoryPage } from './CookingHistoryPage';
 import type { PublicRecipeEntry } from '../../data/publicRecipes';
 import { useCategories, useIngredients, useRecipes, useTags, makeId, getCurrentHouseholdId } from '../../data/store';
 import { useSession } from '../../data/session';
@@ -16,7 +17,8 @@ type View =
   | { screen: 'list' }
   | { screen: 'detail'; recipeId: string }
   | { screen: 'edit'; recipeId?: string }
-  | { screen: 'discover-detail'; entry: PublicRecipeEntry; ingredientNameById: Map<string, string> };
+  | { screen: 'discover-detail'; entry: PublicRecipeEntry; ingredientNameById: Map<string, string> }
+  | { screen: 'cooking-history' };
 
 type ListMode = 'mine' | 'discover';
 
@@ -149,6 +151,7 @@ export function RecipesFeature() {
           onSelectRecipe={(id) => setView({ screen: 'detail', recipeId: id })}
           onAddRecipe={() => setView({ screen: 'edit' })}
           onManageTags={() => setShowTagManager(true)}
+          onOpenCookingHistory={() => setView({ screen: 'cooking-history' })}
         />
       )}
       {view.screen === 'list' && listMode === 'discover' && (
@@ -181,6 +184,9 @@ export function RecipesFeature() {
           onCopy={() => handleCopyPublicRecipe(view.entry, view.ingredientNameById)}
           copying={copying}
         />
+      )}
+      {view.screen === 'cooking-history' && householdId && (
+        <CookingHistoryPage householdId={householdId} onBack={() => setView({ screen: 'list' })} />
       )}
       {showTagManager && <TagManager onClose={() => setShowTagManager(false)} />}
     </div>

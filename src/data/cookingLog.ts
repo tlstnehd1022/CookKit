@@ -61,3 +61,44 @@ export async function logCooking(params: {
   });
   if (error) throw error;
 }
+
+const HISTORY_LIMIT = 50;
+
+export interface CookingLogEntry {
+  id: string;
+  recipeId: string;
+  /** 삭제됐거나(레시피 삭제) 지금 이 계정에 조회 권한이 없으면(예: 다른 가구원의 비공개
+   * 레시피) null — 화면에서 "(알 수 없는 레시피)"로 대체 표시 */
+  recipeName: string | null;
+  authorName: string | null;
+  cookedAt: string;
+  memo: string | null;
+}
+
+/**
+ * "요리 기록" 화면(CookingHistoryPage) 전용 — 우리 household의 최근 기록을 최신순으로 가져온다.
+ * RLS(cooking_log_select_household)가 이미 household 멤버로 조회 범위를 제한하지만, 여러 조건이
+ * OR로 걸린 테이블이 아니라 household_id 하나뿐이라 명시적 필터도 같은 결과 — 다만 다른 화면에서
+ * 재사용될 가능성을 감안해 안전하게 household_id로 한 번 더 좁혀서 조회한다.
+ */
+export async function fetchCookingHistory(householdId: string): Promise<CookingLogEntry[]> {
+  const { data, error } = await supabase
+    .from('cooking_log')
+    .select('id, recipe_id, cooked_at, memo, recipes(name), profiles(display_name)')
+    .eq('household_id', householdId)
+    .order('cooked_at', { ascending: false })
+    .limit(HISTORY_LIMIT);
+  if (error) throw error;
+
+  // supabase-js가 select 문자열을 타입 레벨로 파싱할 때 recipes(name)/profiles(display_name)
+  // 같은 to-one 임베드도 실제 FK 카디널리티를 몰라 배열 타입으로 추론해서(런타임 값은 항상
+  // 단일 객체) 직접 캐스팅이 막힌다 — unknown을 거쳐 실제 런타임 형태로 캐스팅.
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    recipeId: row.recipe_id as string,
+    recipeName: (row.recipes as unknown as { name: string } | null)?.name ?? null,
+    authorName: (row.profiles as unknown as { display_name: string | null } | null)?.display_name ?? null,
+    cookedAt: row.cooked_at as string,
+    memo: row.memo as string | null,
+  }));
+}

@@ -37,10 +37,12 @@ export function RecipesPage({
   onSelectRecipe,
   onAddRecipe,
   onManageTags,
+  onOpenCookingHistory,
 }: {
   onSelectRecipe: (id: string) => void;
   onAddRecipe: () => void;
   onManageTags: () => void;
+  onOpenCookingHistory: () => void;
 }) {
   const { recipes } = useRecipes();
   const { tags } = useTags();
@@ -215,6 +217,9 @@ export function RecipesPage({
               {viewMode === 'grid' ? '☰' : '▦'}
             </button>
           )}
+          <button className="btn small" onClick={onOpenCookingHistory}>
+            📋 요리 기록
+          </button>
           <button className="btn small" onClick={onManageTags}>
             태그 관리
           </button>

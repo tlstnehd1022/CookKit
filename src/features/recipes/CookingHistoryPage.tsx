@@ -24,11 +24,11 @@ export function CookingHistoryPage({ householdId, onBack }: { householdId: strin
 
   return (
     <div>
-      <div className="row">
-        <button className="btn small" onClick={onBack}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center' }}>
+        <button className="btn small" onClick={onBack} style={{ justifySelf: 'start' }}>
           ← 뒤로
         </button>
-        <h1 style={{ margin: 0 }}>📋 요리 기록</h1>
+        <h1 style={{ margin: 0, justifySelf: 'center' }}>📋 요리 기록</h1>
         <span />
       </div>
 

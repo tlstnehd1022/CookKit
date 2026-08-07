@@ -4,7 +4,7 @@ import type { Recipe } from '../../data/types';
 
 const MAX_RECIPES = 3;
 
-/** "🍳 함께 요리하기" 진입점 — 동시에 진행할 레시피를 2~3개 고른다(그 이상은 실제로 동시 조리가
+/** "🍳 여러개 요리하기" 진입점 — 동시에 진행할 레시피를 2~3개 고른다(그 이상은 실제로 동시 조리가
  * 비현실적이라 제한). 장보기 담기처럼 목록에서 토글하는 방식과 비슷하되, 여기서는 개수 제한이
  * 있어 선택 화면을 따로 둔다. */
 export function MultiCookSelectPage({
@@ -31,7 +31,7 @@ export function MultiCookSelectPage({
         <button className="btn small" onClick={onCancel}>
           ← 뒤로
         </button>
-        <h1 style={{ margin: 0 }}>🍳 함께 요리하기</h1>
+        <h1 style={{ margin: 0 }}>🍳 여러개 요리하기</h1>
         <span />
       </div>
       <p className="text-muted">동시에 진행할 레시피를 2~3개 골라주세요.</p>

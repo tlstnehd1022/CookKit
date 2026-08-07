@@ -8,12 +8,24 @@ import { PublicRecipeDetailPage } from './PublicRecipeDetailPage';
 import { CookingHistoryPage } from './CookingHistoryPage';
 import { MultiCookSelectPage } from './MultiCookSelectPage';
 import { MultiCookPreviewPage } from './MultiCookPreviewPage';
+import { MultiCookModePage } from './MultiCookModePage';
+import { MultiCookLogModal } from './MultiCookLogModal';
 import type { PublicRecipeEntry } from '../../data/publicRecipes';
-import { useCategories, useIngredients, useRecipes, useTags, makeId, getCurrentHouseholdId } from '../../data/store';
+import {
+  useCategories,
+  useIngredients,
+  useIngredientsById,
+  useRecipes,
+  useTags,
+  makeId,
+  getCurrentHouseholdId,
+} from '../../data/store';
 import { useSession } from '../../data/session';
 import { copyImage, isStorageImagePath } from '../../data/imageStore';
 import { getErrorMessage } from '../../lib/errorMessage';
-import type { Recipe, RecipeIngredient, RecipeStep } from '../../data/types';
+import { logCooking } from '../../data/cookingLog';
+import type { OrderedStepRef } from '../../lib/multiCookOrdering';
+import type { CookingLogStepTiming, Recipe, RecipeIngredient, RecipeStep } from '../../data/types';
 
 type View =
   | { screen: 'list' }
@@ -22,7 +34,8 @@ type View =
   | { screen: 'discover-detail'; entry: PublicRecipeEntry; ingredientNameById: Map<string, string> }
   | { screen: 'cooking-history' }
   | { screen: 'multi-cook-select' }
-  | { screen: 'multi-cook-preview'; recipes: Recipe[] };
+  | { screen: 'multi-cook-preview'; recipes: Recipe[] }
+  | { screen: 'multi-cook-mode'; recipes: Recipe[]; order: OrderedStepRef[] };
 
 type ListMode = 'mine' | 'discover';
 
@@ -31,13 +44,49 @@ export function RecipesFeature() {
   const [listMode, setListMode] = useState<ListMode>('mine');
   const [showTagManager, setShowTagManager] = useState(false);
   const [copying, setCopying] = useState(false);
+  // 복합 요리 완료 흐름 — MultiCookModePage를 벗어나 목록으로 돌아간 뒤에도 MultiCookLogModal이
+  // 필요로 하는 정보라 view state와 별개로 들고 있는다(RecipeDetailPage의 pendingStepTimings와
+  // 같은 이유).
+  const [multiCookRecipes, setMultiCookRecipes] = useState<Recipe[]>([]);
+  const [multiCookStepTimings, setMultiCookStepTimings] = useState<CookingLogStepTiming[]>([]);
+  const [showMultiCookLogModal, setShowMultiCookLogModal] = useState(false);
 
   const { user } = useSession();
   const { ingredients, saveIngredient } = useIngredients();
+  const ingredientsById = useIngredientsById();
   const { categories } = useCategories();
   const { tags, saveTag } = useTags();
   const { saveRecipe } = useRecipes();
   const householdId = getCurrentHouseholdId();
+
+  /**
+   * 복합 요리 완료 확인 — 선택한 레시피 각각에 대해 별도로 CookingLog를 남긴다(하나로 합치지
+   * 않음, isMultiRecipe:true). 재료 차감은 ingredientId 기준으로 한 번만(중복 재료 이중 차감
+   * 방지 — MultiCookLogModal이 이미 병합해서 보여준 목록을 그대로 씀).
+   */
+  async function handleConfirmMultiCooking(selectedIngredientIds: string[], memo: string) {
+    if (!user || !householdId) throw new Error('로그인이 필요합니다.');
+    for (const recipe of multiCookRecipes) {
+      const stepTimings = multiCookStepTimings.filter((t) => t.recipeId === recipe.id);
+      await logCooking({
+        recipeId: recipe.id,
+        householdId,
+        userId: user.id,
+        memo,
+        stepTimings,
+        isMultiRecipe: true,
+      });
+    }
+    for (const ingredientId of selectedIngredientIds) {
+      const ingredient = ingredientsById.get(ingredientId);
+      if (ingredient?.owned) {
+        await saveIngredient({ ...ingredient, owned: false });
+      }
+    }
+    setShowMultiCookLogModal(false);
+    setMultiCookRecipes([]);
+    setMultiCookStepTimings([]);
+  }
 
   /**
    * "내 레시피로 복사하기" — 재료/태그는 이름으로 매칭해서 있으면 재사용, 없으면 새로
@@ -204,10 +253,32 @@ export function RecipesFeature() {
           recipes={view.recipes}
           onCancel={() => setView({ screen: 'list' })}
           onReselect={() => setView({ screen: 'multi-cook-select' })}
-          onStart={() => {
-            // B-5(진행 화면)는 다음 단계에서 연결 — 지금은 순서 미리보기까지만.
-            alert('진행 화면(여러 타이머 동시 진행)은 다음 단계에서 연결할 예정이에요. 순서는 여기까지 확인할 수 있어요!');
+          onStart={(order) => setView({ screen: 'multi-cook-mode', recipes: view.recipes, order })}
+        />
+      )}
+      {view.screen === 'multi-cook-mode' && (
+        <MultiCookModePage
+          recipes={view.recipes}
+          order={view.order}
+          onExit={() => setView({ screen: 'list' })}
+          onFinish={(stepTimings) => {
+            setMultiCookRecipes(view.recipes);
+            setMultiCookStepTimings(stepTimings);
+            setView({ screen: 'list' });
+            setShowMultiCookLogModal(true);
           }}
+        />
+      )}
+      {showMultiCookLogModal && (
+        <MultiCookLogModal
+          recipes={multiCookRecipes}
+          ingredientsById={ingredientsById}
+          onClose={() => {
+            setShowMultiCookLogModal(false);
+            setMultiCookRecipes([]);
+            setMultiCookStepTimings([]);
+          }}
+          onConfirm={handleConfirmMultiCooking}
         />
       )}
       {showTagManager && <TagManager onClose={() => setShowTagManager(false)} />}

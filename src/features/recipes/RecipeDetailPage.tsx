@@ -129,16 +129,21 @@ export function RecipeDetailPage({
     }
     const stats = await fetchCookingStats([recipe.id]);
     setCookingStats(stats.get(recipe.id) ?? null);
-    setShowCookingLogModal(false);
+    // 모달은 곧바로 닫지 않고 "완료" 화면(사진 업로드 등)으로 스스로 전환됨 — 여기서는 닫지 않는다.
 
-    // 요리 모드를 거쳐 실제 시간을 측정한 경우에만 조정 제안을 바로 이어서 보여준다("오늘
-    // 만들었어요" 완료 화면이 주 진입점).
+    // 요리 모드를 거쳐 실제 시간을 측정한 경우, 조정 제안이 있으면 계산해서 메인 화면의
+    // "⏱ 조정 제안 있음" 칩으로 노출한다(완료 화면과 모달을 이중으로 띄우지 않기 위해 자동으로
+    // 열지는 않음 — 완료 화면을 닫은 뒤 칩을 눌러 확인).
     if (pendingStepTimings && pendingStepTimings.length > 0) {
       const suggestions = await fetchStepTimingAdjustments(recipe);
       setTimingSuggestions(suggestions);
-      if (suggestions.length > 0) setShowTimingAdjustment(true);
     }
     setPendingStepTimings(undefined);
+  }
+
+  async function handleSetFinalImageFromCookingLog(imageId: string) {
+    if (!recipe) return;
+    await saveRecipe({ ...recipe, finalImageId: imageId });
   }
 
   async function handleApplyTimingAdjustments(accepted: StepAdjustmentSuggestion[]) {
@@ -331,8 +336,14 @@ export function RecipeDetailPage({
         <CookingLogModal
           recipe={recipe}
           ingredientsById={ingredientsById}
+          householdId={householdId}
           onClose={() => setShowCookingLogModal(false)}
           onConfirm={handleConfirmCooking}
+          onSetFinalImage={handleSetFinalImageFromCookingLog}
+          onEditRecipe={() => {
+            setShowCookingLogModal(false);
+            onEdit();
+          }}
         />
       )}
       {showCookingMode && (

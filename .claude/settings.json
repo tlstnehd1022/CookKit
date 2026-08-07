@@ -88,7 +88,8 @@
       "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:5173)",
       "Bash(grep -rn \"toggle \\\\${\" src/features/)",
       "Bash(node \"/c/Users/PEPPER/AppData/Local/Temp/claude/c--projects-CookKit/08c0d2eb-fe5c-4734-af18-c5333f72ce15/scratchpad/test-multicook.mjs\")",
-      "Bash(taskkill //F //PID 30228)"
+      "Bash(taskkill //F //PID 30228)",
+      "Bash(echo \"build exit: $?\")"
     ],
     "deny": [
       "Bash(rm -rf *)",

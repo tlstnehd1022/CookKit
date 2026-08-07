@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState, type ChangeEvent } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSettings } from '../../data/settings';
 import { useSession } from '../../data/session';
@@ -21,7 +21,7 @@ export function SettingsPage() {
   const { settings, updateSettings } = useSettings();
   const { user, logout } = useSession();
   const { household, refresh: refreshHousehold } = useHousehold();
-  const { profile, updateDisplayName } = useProfile();
+  const { profile, updateDisplayName, updateAvatarFromFile, updateAvatarUrl } = useProfile();
   const { theme, toggleTheme } = useTheme();
   const anthropicKeyStatus = useApiKeyStatus('anthropic');
   const geminiKeyStatus = useApiKeyStatus('gemini');
@@ -34,6 +34,9 @@ export function SettingsPage() {
   const [migrationDone, setMigrationDone] = useState(
     () => localStorage.getItem(API_KEY_MIGRATION_FLAG) === 'true',
   );
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const showMigrationBanner = Boolean(
     (settings.anthropicApiKey || settings.geminiApiKey || settings.youtubeApiKey) && !migrationDone,
   );
@@ -62,6 +65,36 @@ export function SettingsPage() {
 
   async function saveNickname(next: string) {
     await updateDisplayName(next);
+  }
+
+  async function handleAvatarFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setAvatarUploading(true);
+    setAvatarError(null);
+    try {
+      await updateAvatarFromFile(file);
+    } catch (err) {
+      console.error('프로필 사진 업로드 실패:', err);
+      setAvatarError(getErrorMessage(err, '프로필 사진 업로드에 실패했습니다.'));
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
+
+  async function handleRevertToGoogleAvatar() {
+    if (!user?.googleAvatarUrl) return;
+    setAvatarUploading(true);
+    setAvatarError(null);
+    try {
+      await updateAvatarUrl(user.googleAvatarUrl);
+    } catch (err) {
+      console.error('구글 사진으로 되돌리기 실패:', err);
+      setAvatarError(getErrorMessage(err, '구글 사진으로 되돌리는 데 실패했습니다.'));
+    } finally {
+      setAvatarUploading(false);
+    }
   }
 
   async function saveHouseholdName(next: string) {
@@ -298,6 +331,32 @@ export function SettingsPage() {
             {user?.email}로 로그인되어 있습니다.
           </p>
         </div>
+        <div className="row" style={{ justifyContent: 'flex-start', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleAvatarFileChange}
+          />
+          <button
+            className="btn"
+            disabled={avatarUploading}
+            onClick={() => avatarInputRef.current?.click()}
+          >
+            {avatarUploading ? '업로드 중...' : '프로필 사진 변경'}
+          </button>
+          {user?.googleAvatarUrl && user.googleAvatarUrl !== profile?.avatarUrl && (
+            <button className="btn" disabled={avatarUploading} onClick={handleRevertToGoogleAvatar}>
+              구글 사진으로 되돌리기
+            </button>
+          )}
+        </div>
+        {avatarError && (
+          <p className="text-muted" style={{ color: 'var(--danger, #d33)', marginTop: 4 }}>
+            {avatarError}
+          </p>
+        )}
         <InlineEditRow
           label="닉네임"
           value={profile?.displayName ?? ''}

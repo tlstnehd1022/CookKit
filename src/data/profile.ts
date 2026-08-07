@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useSession } from './session';
+import { resizeImageForUpload } from '../lib/imageResize';
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
 
 export interface Profile {
   id: string;
@@ -54,5 +62,32 @@ export function useProfile() {
     setProfile((p) => (p ? { ...p, displayName: trimmed } : p));
   }
 
-  return { profile, loading, updateDisplayName, refresh };
+  /** 갤러리에서 고른 사진을 프로필 사진으로 업로드한다 — avatars 버킷(공개, 0020 마이그레이션)에
+   * 사용자당 고정 경로({user_id}/avatar.jpg)로 upsert하고 profiles.avatar_url을 그 공개 URL로
+   * 갱신한다. 구글 로그인으로 자동 채워진 값을 덮어쓰게 되므로, 원래 구글 사진으로 되돌리고
+   * 싶으면 revertToGoogleAvatar()를 쓴다(useSession()의 googleAvatarUrl 참고). */
+  async function updateAvatarFromFile(file: File) {
+    if (!user) return;
+    const { base64, mimeType } = await resizeImageForUpload(file);
+    const path = `${user.id}/avatar.jpg`;
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(path, base64ToUint8Array(base64), { contentType: mimeType, upsert: true });
+    if (uploadError) throw uploadError;
+    // 같은 경로라 공개 URL 문자열 자체는 안 바뀌므로, 브라우저 캐시를 피하려고 타임스탬프를 붙인다.
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+    const avatarUrl = `${data.publicUrl}?t=${Date.now()}`;
+    const { error } = await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id);
+    if (error) throw error;
+    setProfile((p) => (p ? { ...p, avatarUrl } : p));
+  }
+
+  async function updateAvatarUrl(avatarUrl: string) {
+    if (!user) return;
+    const { error } = await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id);
+    if (error) throw error;
+    setProfile((p) => (p ? { ...p, avatarUrl } : p));
+  }
+
+  return { profile, loading, updateDisplayName, updateAvatarFromFile, updateAvatarUrl, refresh };
 }

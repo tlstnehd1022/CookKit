@@ -6,6 +6,9 @@ export interface SessionUser {
   id: string;
   name: string;
   email: string;
+  /** 구글 로그인 시 제공되는 프로필 사진 URL(user_metadata) — 이메일 로그인 사용자는 없음.
+   * 설정 화면의 "구글 사진으로 되돌리기"가 이 값을 참고한다. */
+  googleAvatarUrl?: string;
 }
 
 // 데이터 레이어(repos.ts)가 아직 이 고정 값을 네임스페이스로 쓰고 있음 — 재료/레시피 등을
@@ -16,11 +19,14 @@ export const CURRENT_USER_ID = 'user-manual';
 function toSessionUser(session: Session | null): SessionUser | null {
   const user = session?.user;
   if (!user) return null;
-  const metadata = user.user_metadata as { full_name?: string; name?: string } | undefined;
+  const metadata = user.user_metadata as
+    | { full_name?: string; name?: string; avatar_url?: string; picture?: string }
+    | undefined;
   return {
     id: user.id,
     name: metadata?.full_name ?? metadata?.name ?? user.email ?? '사용자',
     email: user.email ?? '',
+    googleAvatarUrl: metadata?.avatar_url ?? metadata?.picture ?? undefined,
   };
 }
 

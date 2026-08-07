@@ -311,6 +311,85 @@ h2 {
   color: var(--accent);
 }
 
+/* 요리 시작하기(핸즈프리 모드) — 폰을 세워두고 보는 용도라 기존 화면들보다 훨씬 크고 단순하게 */
+.cooking-mode-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+}
+
+.cooking-mode-progress {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.cooking-mode-title {
+  font-size: 28px;
+  text-align: center;
+  margin: 12px 0;
+}
+
+.cooking-mode-content {
+  font-size: 20px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.cooking-mode-image {
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--radius);
+  margin: 0 auto 16px;
+  display: block;
+}
+
+.cooking-mode-timer {
+  font-size: 48px;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 12px 0;
+}
+
+.cooking-mode-timer-btn {
+  font-size: 18px;
+  padding: 14px 20px;
+}
+
+.cooking-mode-mic {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  font-size: 28px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  cursor: pointer;
+}
+
+.cooking-mode-mic.listening {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.cooking-mode-nav {
+  display: flex;
+  gap: 10px;
+  padding-top: 16px;
+}
+
+.cooking-mode-nav .btn {
+  flex: 1;
+  font-size: 18px;
+  padding: 16px;
+}
+
 .recipe-list {
   display: flex;
   flex-direction: column;

@@ -8,6 +8,7 @@ import { fetchLikeInfo } from '../../data/recipeLikes';
 import { fetchCookingStats, logCooking, type CookingStats } from '../../data/cookingLog';
 import { useSession } from '../../data/session';
 import { CookingLogModal } from './CookingLogModal';
+import { CookingModePage } from './CookingModePage';
 
 export function RecipeDetailPage({
   recipeId,
@@ -31,6 +32,7 @@ export function RecipeDetailPage({
   const [likeCount, setLikeCount] = useState<number | null>(null);
   const [cookingStats, setCookingStats] = useState<CookingStats | null>(null);
   const [showCookingLogModal, setShowCookingLogModal] = useState(false);
+  const [showCookingMode, setShowCookingMode] = useState(false);
   // 대표 이미지 우선순위: 완성 사진 > 첫 조리 단계 이미지. recipe가 사라지는 경우(삭제 등)에도
   // 훅 호출 순서가 매 렌더 동일해야 해서 이 useStoredImage는 아래 조기 return보다 위에 둔다.
   const coverImageId = recipe?.finalImageId ?? recipe?.steps.find((step) => step.imageId)?.imageId;
@@ -166,6 +168,15 @@ export function RecipeDetailPage({
       >
         {isSelected(recipe.id) ? '🛒 장보기에 담김 (빼기)' : '🛒 장보기에 담기'}
       </button>
+      <button
+        className="btn primary"
+        style={{ width: '100%', marginBottom: 8 }}
+        onClick={() => {
+          if (confirm('요리를 시작할까요?')) setShowCookingMode(true);
+        }}
+      >
+        🍳 요리 시작하기
+      </button>
       <button className="btn" style={{ width: '100%', marginBottom: 8 }} onClick={() => setShowCookingLogModal(true)}>
         🍳 오늘 만들었어요
       </button>
@@ -244,6 +255,7 @@ export function RecipeDetailPage({
           onConfirm={handleConfirmCooking}
         />
       )}
+      {showCookingMode && <CookingModePage recipe={recipe} onExit={() => setShowCookingMode(false)} />}
     </div>
   );
 }

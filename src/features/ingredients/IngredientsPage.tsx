@@ -44,12 +44,24 @@ export function IngredientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlightIds]);
 
-  const groups = categories.map((category) => ({
+  // "유통기한 임박 / 있어요 / 없어요" 3구간으로 시각 분리(임박이 최상단) — 각 구간 안에서는
+  // 기존처럼 카테고리별 접기/펼치기 그루핑을 그대로 유지한다.
+  function isOwned(ingredient: Ingredient) {
+    return pantryStatus[ingredient.id] ?? false;
+  }
+  const ownedGroups = categories.map((category) => ({
     category,
-    items: ingredients.filter((ingredient) => ingredient.categoryId === category.id),
+    items: ingredients.filter((i) => i.categoryId === category.id && isOwned(i)),
   }));
-  const uncategorized = ingredients.filter(
-    (ingredient) => !categories.some((c) => c.id === ingredient.categoryId),
+  const notOwnedGroups = categories.map((category) => ({
+    category,
+    items: ingredients.filter((i) => i.categoryId === category.id && !isOwned(i)),
+  }));
+  const uncategorizedOwned = ingredients.filter(
+    (i) => !categories.some((c) => c.id === i.categoryId) && isOwned(i),
+  );
+  const uncategorizedNotOwned = ingredients.filter(
+    (i) => !categories.some((c) => c.id === i.categoryId) && !isOwned(i),
   );
 
   // 유통기한 임박/경과 재료 요약 — 카테고리와 무관하게 전체 재료 중에서 뽑아 가장 급한 순으로 보여줌
@@ -61,6 +73,69 @@ export function IngredientsPage() {
       )
       .sort((a, b) => a.info.daysLeft - b.info.daysLeft);
   }, [ingredients]);
+
+  function renderCategoryGroups(groups: { category: { id: string; name: string }; items: Ingredient[] }[], uncategorized: Ingredient[]) {
+    return (
+      <>
+        {groups.map(({ category, items }) => {
+          const isCollapsed = collapsed.has(category.id);
+          return (
+            <div key={category.id} style={{ marginBottom: 8 }}>
+              <button
+                className="row"
+                style={{
+                  width: '100%',
+                  background: 'none',
+                  border: 'none',
+                  padding: '8px 0',
+                  cursor: 'pointer',
+                }}
+                onClick={() => toggleCollapsed(category.id)}
+              >
+                <span className="section-title" style={{ margin: 0 }}>
+                  {isCollapsed ? '▸' : '▾'} {category.name} ({items.length})
+                </span>
+              </button>
+              {!isCollapsed && items.length === 0 && (
+                <div className="empty-hint" style={{ padding: '4px 0' }}>
+                  등록된 재료가 없습니다.
+                </div>
+              )}
+              {!isCollapsed &&
+                items.map((ingredient) => (
+                  <IngredientRow
+                    key={ingredient.id}
+                    ingredient={ingredient}
+                    owned={isOwned(ingredient)}
+                    onToggleOwned={() => setOwned(ingredient.id, !isOwned(ingredient))}
+                    onEditDetails={() => setEditingDetailsId(ingredient.id)}
+                    onDelete={() => deleteIngredient(ingredient.id)}
+                    highlighted={highlightIds.includes(ingredient.id)}
+                  />
+                ))}
+            </div>
+          );
+        })}
+
+        {uncategorized.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <div className="section-title">미분류 ({uncategorized.length})</div>
+            {uncategorized.map((ingredient) => (
+              <IngredientRow
+                key={ingredient.id}
+                ingredient={ingredient}
+                owned={isOwned(ingredient)}
+                onToggleOwned={() => setOwned(ingredient.id, !isOwned(ingredient))}
+                onEditDetails={() => setEditingDetailsId(ingredient.id)}
+                onDelete={() => deleteIngredient(ingredient.id)}
+                highlighted={highlightIds.includes(ingredient.id)}
+              />
+            ))}
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
     <div>
@@ -95,62 +170,13 @@ export function IngredientsPage() {
         </>
       )}
 
-      {groups.map(({ category, items }) => {
-        const isCollapsed = collapsed.has(category.id);
-        return (
-          <div key={category.id} style={{ marginBottom: 8 }}>
-            <button
-              className="row"
-              style={{
-                width: '100%',
-                background: 'none',
-                border: 'none',
-                padding: '8px 0',
-                cursor: 'pointer',
-              }}
-              onClick={() => toggleCollapsed(category.id)}
-            >
-              <span className="section-title" style={{ margin: 0 }}>
-                {isCollapsed ? '▸' : '▾'} {category.name} ({items.length})
-              </span>
-            </button>
-            {!isCollapsed && items.length === 0 && (
-              <div className="empty-hint" style={{ padding: '4px 0' }}>
-                등록된 재료가 없습니다.
-              </div>
-            )}
-            {!isCollapsed &&
-              items.map((ingredient) => (
-                <IngredientRow
-                  key={ingredient.id}
-                  ingredient={ingredient}
-                  owned={pantryStatus[ingredient.id] ?? false}
-                  onToggleOwned={() => setOwned(ingredient.id, !pantryStatus[ingredient.id])}
-                  onEditDetails={() => setEditingDetailsId(ingredient.id)}
-                  onDelete={() => deleteIngredient(ingredient.id)}
-                  highlighted={highlightIds.includes(ingredient.id)}
-                />
-              ))}
-          </div>
-        );
-      })}
+      <div className="section-title">✅ 있어요 ({ownedGroups.reduce((sum, g) => sum + g.items.length, 0) + uncategorizedOwned.length})</div>
+      {renderCategoryGroups(ownedGroups, uncategorizedOwned)}
 
-      {uncategorized.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          <div className="section-title">미분류 ({uncategorized.length})</div>
-          {uncategorized.map((ingredient) => (
-            <IngredientRow
-              key={ingredient.id}
-              ingredient={ingredient}
-              owned={pantryStatus[ingredient.id] ?? false}
-              onToggleOwned={() => setOwned(ingredient.id, !pantryStatus[ingredient.id])}
-              onEditDetails={() => setEditingDetailsId(ingredient.id)}
-              onDelete={() => deleteIngredient(ingredient.id)}
-              highlighted={highlightIds.includes(ingredient.id)}
-            />
-          ))}
-        </div>
-      )}
+      <div className="section-title" style={{ marginTop: 8 }}>
+        🛒 없어요 ({notOwnedGroups.reduce((sum, g) => sum + g.items.length, 0) + uncategorizedNotOwned.length})
+      </div>
+      {renderCategoryGroups(notOwnedGroups, uncategorizedNotOwned)}
 
       {editingDetailsId && (
         <IngredientDetailModal

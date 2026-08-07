@@ -242,6 +242,26 @@ export function RecipesPage({
         />
       </div>
 
+      {/* 알러지 제외는 일반 태그/보유재료 필터 칩 사이에 묻히면 잘 안 보인다는 피드백이 있어서
+          (기능 자체는 이미 있었지만 발견성이 낮았음) 별도 섹션으로 분리해 더 눈에 띄게 함 —
+          설정된 알러지가 있는 household에서만 노출된다. */}
+      {allAllergens.length > 0 && (
+        <>
+          <div className="section-title">⚠️ 알러지 제외</div>
+          <div className="chip-row-scroll">
+            {allAllergens.map((allergen) => (
+              <button
+                key={allergen}
+                className={`chip allergen selectable ${excludedAllergens.includes(allergen) ? 'active' : ''}`}
+                onClick={() => toggleAllergen(allergen)}
+              >
+                {allergen} 제외
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
       {recipes.length > 0 && (
         <>
           <div className="section-title">필터</div>
@@ -259,15 +279,6 @@ export function RecipesPage({
                 onClick={() => toggleTag(tag.id)}
               >
                 {tag.name}
-              </button>
-            ))}
-            {allAllergens.map((allergen) => (
-              <button
-                key={allergen}
-                className={`chip selectable ${excludedAllergens.includes(allergen) ? 'active' : ''}`}
-                onClick={() => toggleAllergen(allergen)}
-              >
-                {allergen} 제외
               </button>
             ))}
           </div>

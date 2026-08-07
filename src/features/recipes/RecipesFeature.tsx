@@ -6,6 +6,8 @@ import { TagManager } from './TagManager';
 import { DiscoverRecipesPage } from './DiscoverRecipesPage';
 import { PublicRecipeDetailPage } from './PublicRecipeDetailPage';
 import { CookingHistoryPage } from './CookingHistoryPage';
+import { MultiCookSelectPage } from './MultiCookSelectPage';
+import { MultiCookPreviewPage } from './MultiCookPreviewPage';
 import type { PublicRecipeEntry } from '../../data/publicRecipes';
 import { useCategories, useIngredients, useRecipes, useTags, makeId, getCurrentHouseholdId } from '../../data/store';
 import { useSession } from '../../data/session';
@@ -18,7 +20,9 @@ type View =
   | { screen: 'detail'; recipeId: string }
   | { screen: 'edit'; recipeId?: string }
   | { screen: 'discover-detail'; entry: PublicRecipeEntry; ingredientNameById: Map<string, string> }
-  | { screen: 'cooking-history' };
+  | { screen: 'cooking-history' }
+  | { screen: 'multi-cook-select' }
+  | { screen: 'multi-cook-preview'; recipes: Recipe[] };
 
 type ListMode = 'mine' | 'discover';
 
@@ -152,6 +156,7 @@ export function RecipesFeature() {
           onAddRecipe={() => setView({ screen: 'edit' })}
           onManageTags={() => setShowTagManager(true)}
           onOpenCookingHistory={() => setView({ screen: 'cooking-history' })}
+          onOpenMultiCook={() => setView({ screen: 'multi-cook-select' })}
         />
       )}
       {view.screen === 'list' && listMode === 'discover' && (
@@ -187,6 +192,23 @@ export function RecipesFeature() {
       )}
       {view.screen === 'cooking-history' && householdId && (
         <CookingHistoryPage householdId={householdId} onBack={() => setView({ screen: 'list' })} />
+      )}
+      {view.screen === 'multi-cook-select' && (
+        <MultiCookSelectPage
+          onCancel={() => setView({ screen: 'list' })}
+          onConfirm={(selectedRecipes) => setView({ screen: 'multi-cook-preview', recipes: selectedRecipes })}
+        />
+      )}
+      {view.screen === 'multi-cook-preview' && (
+        <MultiCookPreviewPage
+          recipes={view.recipes}
+          onCancel={() => setView({ screen: 'list' })}
+          onReselect={() => setView({ screen: 'multi-cook-select' })}
+          onStart={() => {
+            // B-5(진행 화면)는 다음 단계에서 연결 — 지금은 순서 미리보기까지만.
+            alert('진행 화면(여러 타이머 동시 진행)은 다음 단계에서 연결할 예정이에요. 순서는 여기까지 확인할 수 있어요!');
+          }}
+        />
       )}
       {showTagManager && <TagManager onClose={() => setShowTagManager(false)} />}
     </div>

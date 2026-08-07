@@ -38,11 +38,13 @@ export function RecipesPage({
   onAddRecipe,
   onManageTags,
   onOpenCookingHistory,
+  onOpenMultiCook,
 }: {
   onSelectRecipe: (id: string) => void;
   onAddRecipe: () => void;
   onManageTags: () => void;
   onOpenCookingHistory: () => void;
+  onOpenMultiCook: () => void;
 }) {
   const { recipes } = useRecipes();
   const { tags } = useTags();
@@ -219,6 +221,9 @@ export function RecipesPage({
           )}
           <button className="btn small" onClick={onOpenCookingHistory}>
             📋 요리 기록
+          </button>
+          <button className="btn small" onClick={onOpenMultiCook}>
+            🍳 함께 요리하기
           </button>
           <button className="btn small" onClick={onManageTags}>
             태그 관리

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useCategories, useIngredients, useRecipes, useTags, makeId, getCurrentHouseholdId } from '../../data/store';
 import { useSettings } from '../../data/settings';
 import { setActiveTab } from '../../data/activeTab';
@@ -200,7 +200,9 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       setTagIds(newTagIds);
     }
     setAiWarning(result.warning ?? null);
-    offerBatchImageGenerationForNewSteps(result.steps, result.name);
+    // 이미지 생성 여부는 더 이상 여기서(AI 반영 직후) 매번 묻지 않고, "저장" 시점에 이미지가
+    // 하나도 없을 때만 한 번 물어본다(handleSave) — 반영할 때마다 + 저장할 때 또 물어보는 중복
+    // 질문과 불필요한 생성 비용을 줄이기 위함.
   }
 
   const isGemini = settings.aiProvider === 'gemini';
@@ -619,48 +621,67 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
     runBatchImageGeneration(targetIndexes, steps, name || '이름 없는 레시피', includeFinal);
   }
 
-  function offerBatchImageGenerationForNewSteps(
-    newSteps: { title: string; content: string }[],
-    recipeName: string,
-  ) {
-    if (settings.aiProvider !== 'gemini') return;
-    const totalCount = newSteps.length + 1; // +1은 완성 사진
-    const manyStepsNote =
-      totalCount >= BATCH_WARN_THRESHOLD ? ` 항목이 많아(${totalCount}개) 시간이 좀 더 걸릴 수 있어요.` : '';
-    const proceed = confirm(
-      `레시피가 반영됐어요. 조리 단계 이미지와 완성 사진도 자동으로 생성할까요? 시간이 조금 걸릴 수 있어요.${manyStepsNote}`,
-    );
-    if (!proceed) return;
-    runBatchImageGeneration(
-      newSteps.map((_, i) => i),
-      newSteps,
-      recipeName || '이름 없는 레시피',
-      true,
-    );
+  /** 이미지 생성 여부는 AI 반영/유튜브 반영 때마다 묻지 않고 "저장" 시점에 딱 한 번만 묻는다
+   * (비용 절감) — 이미 이미지가 하나라도 있는 레시피(조리 단계든 완성 사진이든)를 다시 저장할
+   * 때는 중복 생성을 막기 위해 아예 묻지 않는다. 생성을 진행하면 handleSave가 완료를 기다린
+   * 뒤(await) 그 결과를 recipe 객체에 반영해서 저장한다. */
+  function shouldOfferImageGenerationOnSave(): boolean {
+    if (settings.aiProvider !== 'gemini') return false;
+    if (steps.length === 0) return false;
+    const hasAnyImage = Boolean(finalImageId) || steps.some((s) => s.imageId);
+    return !hasAnyImage;
   }
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // handleSave는 이미지 생성을 기다린(await) 뒤 recipe 객체를 만드는데, 그 시점에 steps/
+  // finalImageId를 그냥 읽으면 handleSave가 시작될 때의 오래된 클로저 값이라 방금 생성된
+  // 이미지가 빠질 수 있다 — ref로 항상 최신 값을 읽는다.
+  const stepsRef = useRef(steps);
+  useEffect(() => {
+    stepsRef.current = steps;
+  }, [steps]);
+  const finalImageIdRef = useRef(finalImageId);
+  useEffect(() => {
+    finalImageIdRef.current = finalImageId;
+  }, [finalImageId]);
   const [visibility, setVisibility] = useState<RecipeVisibility>(existing?.visibility ?? 'household');
 
   async function handleSave() {
-    const recipe: Recipe = {
-      id: stableRecipeId,
-      name: name.trim() || '이름 없는 레시피',
-      servingsBase: servingsBase || 1,
-      tagIds,
-      ingredients: recipeIngredients,
-      steps,
-      difficulty,
-      difficultyReason,
-      estimatedMinutes,
-      finalImageId,
-      sourceRecipeId: existing?.sourceRecipeId,
-      visibility,
-    };
     setSaving(true);
     setSaveError(null);
     try {
+      if (shouldOfferImageGenerationOnSave()) {
+        const totalCount = steps.length + 1; // +1은 완성 사진
+        const manyStepsNote =
+          totalCount >= BATCH_WARN_THRESHOLD ? ` 항목이 많아(${totalCount}개) 시간이 좀 더 걸릴 수 있어요.` : '';
+        const proceed = confirm(
+          `AI로 조리 단계 이미지와 완성 사진을 생성할까요? 시간이 조금 걸릴 수 있어요.${manyStepsNote}`,
+        );
+        if (proceed) {
+          await runBatchImageGeneration(
+            steps.map((_, i) => i),
+            steps,
+            name || '이름 없는 레시피',
+            true,
+          );
+        }
+      }
+      const recipe: Recipe = {
+        id: stableRecipeId,
+        name: name.trim() || '이름 없는 레시피',
+        servingsBase: servingsBase || 1,
+        tagIds,
+        ingredients: recipeIngredients,
+        // 방금 이미지 생성을 기다렸다면 그 결과가 반영된 최신 값을 ref로 읽는다(위 주석 참고).
+        steps: stepsRef.current,
+        difficulty,
+        difficultyReason,
+        estimatedMinutes,
+        finalImageId: finalImageIdRef.current,
+        sourceRecipeId: existing?.sourceRecipeId,
+        visibility,
+      };
       await saveRecipe(recipe);
       onDone();
     } catch (err) {
@@ -1131,7 +1152,20 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       </div>
 
       {saveError && <p style={{ color: 'var(--danger)' }}>{saveError}</p>}
-      <div className="row" style={{ marginTop: 20 }}>
+      {/* 처음 쓰는 사람이 저장 버튼을 못 찾는다는 피드백 — 스크롤 위치와 무관하게 항상 보이도록
+          화면 하단에 고정(position: sticky). 일반 문서 흐름에서 자기 자리를 그대로 차지하다가
+          화면 아래로 나가려 할 때만 붙기 때문에 다른 내용을 가리지 않는다. */}
+      <div
+        className="row"
+        style={{
+          marginTop: 20,
+          position: 'sticky',
+          bottom: 0,
+          background: 'var(--bg-page)',
+          padding: '10px 0',
+          borderTop: '1px solid var(--border)',
+        }}
+      >
         <button className="btn" onClick={onDone}>
           취소
         </button>

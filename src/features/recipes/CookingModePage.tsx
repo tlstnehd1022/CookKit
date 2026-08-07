@@ -44,14 +44,6 @@ function formatSpokenDuration(totalSeconds: number): string {
   return `${minutes}분 ${seconds}초`;
 }
 
-function speak(text: string) {
-  if (!('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'ko-KR';
-  window.speechSynthesis.speak(utterance);
-}
-
 function buildStepAnnouncement(step: RecipeStep, index: number, total: number): string {
   const parts = [`${index + 1}단계.`, step.title, step.content];
   if (step.timerSeconds) parts.push(`이 단계는 ${formatSpokenDuration(step.timerSeconds)} 타이머가 있어요.`);
@@ -75,7 +67,9 @@ function matchCommand(text: string): Command | null {
  * "🍳 요리 시작하기"로 들어오는 전체화면 핸즈프리 요리 안내 모드. 폰을 세워두고 보는 용도라
  * 큰 글씨/버튼 위주로 단순하게 디자인함(기존 디자인 시스템 색상/톤은 그대로, 레이아웃만 이 화면
  * 전용 `.cooking-mode-*` 클래스 사용). TTS는 항상 켜져 있고, STT는 지원 여부에 따라 선택적으로
- * 노출되며 화면 탭 버튼은 항상 함께 제공된다(음성이 유일한 조작 수단이 되지 않도록).
+ * 노출된다. 마이크는 처음 켤 때만 탭이 필요하고(브라우저 정책상 사용자 제스처 필요) 이후에는
+ * 명령마다 다시 누를 필요 없이 계속 듣는다(요리 중 손을 안 대는 게 컨셉). 화면 탭 버튼은 항상
+ * 함께 제공된다(음성이 유일한 조작 수단이 되지 않도록).
  */
 export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: () => void }) {
   const [stepIndex, setStepIndex] = useState(0);
@@ -83,6 +77,11 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
   const [timerRunning, setTimerRunning] = useState(false);
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<MinimalSpeechRecognition | null>(null);
+  // 손을 아예 안 대는 게 컨셉이라 마이크는 한 번 켜면 명령마다 다시 누를 필요 없이 계속 듣는다
+  // (keepListeningRef). 음성 안내가 나오는 동안은 마이크를 잠깐 꺼서(pausedForSpeechRef) 스피커
+  // 소리를 자기 마이크가 듣고 "타이머 시작"/"다음" 같은 명령으로 착각해 스스로 재실행하는 걸 막는다.
+  const keepListeningRef = useRef(false);
+  const pausedForSpeechRef = useRef(false);
 
   const steps = recipe.steps;
   const currentStep = steps[stepIndex] as RecipeStep | undefined;
@@ -120,7 +119,7 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
   // 단계가 바뀔 때마다 TTS로 안내하고, 이전 단계의 타이머 상태는 초기화한다.
   useEffect(() => {
     if (!currentStep) return;
-    speak(buildStepAnnouncement(currentStep, stepIndex, steps.length));
+    announce(buildStepAnnouncement(currentStep, stepIndex, steps.length));
     setTimerRemaining(null);
     setTimerRunning(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -131,7 +130,7 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
     if (!timerRunning || timerRemaining === null) return;
     if (timerRemaining <= 0) {
       setTimerRunning(false);
-      speak('타이머가 끝났어요.');
+      announce('타이머가 끝났어요.');
       return;
     }
     const timeout = setTimeout(() => setTimerRemaining((r) => (r ?? 0) - 1), 1000);
@@ -140,10 +139,29 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
 
   useEffect(() => {
     return () => {
+      keepListeningRef.current = false;
       window.speechSynthesis?.cancel();
       recognitionRef.current?.stop();
     };
   }, []);
+
+  /** TTS 안내 — 마이크가 계속 듣는 중이면(keepListeningRef) 말하는 동안만 잠깐 멈췄다가
+   * 말이 끝나면 자동으로 다시 듣기 시작한다(자기 목소리를 스스로 명령으로 착각하는 것 방지). */
+  function announce(text: string) {
+    if (!('speechSynthesis' in window)) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'ko-KR';
+    if (keepListeningRef.current) {
+      pausedForSpeechRef.current = true;
+      recognitionRef.current?.stop();
+      utterance.onend = () => {
+        pausedForSpeechRef.current = false;
+        if (keepListeningRef.current) recognitionRef.current?.start();
+      };
+    }
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }
 
   function goNext() {
     setStepIndex((i) => Math.min(i + 1, steps.length - 1));
@@ -157,14 +175,14 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
     if (!currentStep?.timerSeconds) return;
     setTimerRemaining(currentStep.timerSeconds);
     setTimerRunning(true);
-    speak('타이머를 시작할게요.');
+    announce('타이머를 시작할게요.');
   }
 
   function announceRemaining() {
     if (timerRunning && timerRemaining !== null) {
-      speak(`${formatSpokenDuration(timerRemaining)} 남았어요.`);
+      announce(`${formatSpokenDuration(timerRemaining)} 남았어요.`);
     } else {
-      speak('지금 실행 중인 타이머가 없어요.');
+      announce('지금 실행 중인 타이머가 없어요.');
     }
   }
 
@@ -180,12 +198,11 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
     else if (command === 'stop') confirmExit();
   }
 
-  function toggleListening() {
+  /** 한 번 켜면(첫 실행은 브라우저 정책상 사용자 탭이 필요) 계속 듣는다 — 명령을 말할 때마다
+   * 다시 누를 필요 없음. 인식이 한 번 끝나면(onend) keepListeningRef가 true인 한 자동으로
+   * 다시 시작해서 계속 대기 상태를 유지한다. */
+  function startRecognition() {
     if (!micCtor) return;
-    if (listening) {
-      recognitionRef.current?.stop();
-      return;
-    }
     const recognition = new micCtor();
     recognition.lang = 'ko-KR';
     recognition.continuous = false;
@@ -194,13 +211,36 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
       const transcript = event.results[0]?.[0]?.transcript ?? '';
       const command = matchCommand(transcript);
       if (command) handleCommand(command);
-      else speak('다시 말씀해주시겠어요?');
+      else announce('다시 말씀해주시겠어요?');
     };
-    recognition.onerror = () => setListening(false);
-    recognition.onend = () => setListening(false);
+    recognition.onerror = () => {
+      // 권한 거부 등은 onend가 뒤이어 호출되므로 재시작 여부는 onend에서 최종 판단한다.
+    };
+    recognition.onend = () => {
+      if (pausedForSpeechRef.current) return; // TTS가 재시작을 담당(announce의 utterance.onend)
+      if (keepListeningRef.current) {
+        setTimeout(() => {
+          if (keepListeningRef.current && !pausedForSpeechRef.current) recognitionRef.current?.start();
+        }, 250);
+      } else {
+        setListening(false);
+      }
+    };
     recognitionRef.current = recognition;
-    setListening(true);
     recognition.start();
+  }
+
+  function toggleListening() {
+    if (!micCtor) return;
+    if (keepListeningRef.current) {
+      keepListeningRef.current = false;
+      recognitionRef.current?.stop();
+      setListening(false);
+      return;
+    }
+    keepListeningRef.current = true;
+    setListening(true);
+    startRecognition();
   }
 
   if (!currentStep) {
@@ -257,7 +297,7 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
               🎤
             </button>
             <p className="text-muted" style={{ marginTop: 6 }}>
-              {listening ? '듣고 있어요...' : '눌러서 말하기'}
+              {listening ? '계속 듣고 있어요 · 눌러서 끄기' : '눌러서 음성 명령 켜기'}
             </p>
           </div>
         )}

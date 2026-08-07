@@ -7,6 +7,7 @@ import { useProfile } from '../../data/profile';
 import { useTheme } from '../../data/theme';
 import { useApiKeyStatus } from '../../data/apiKeys';
 import { useNotificationSettings, isIosNotInstalled } from '../../data/pushNotifications';
+import { setAutoStartTimer, useAutoStartTimer } from '../../data/cookingModeSettings';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { getErrorMessage } from '../../lib/errorMessage';
 
@@ -26,6 +27,7 @@ export function SettingsPage() {
   const geminiKeyStatus = useApiKeyStatus('gemini');
   const youtubeKeyStatus = useApiKeyStatus('youtube');
   const notificationSettings = useNotificationSettings();
+  const autoStartTimer = useAutoStartTimer();
 
   const [migrating, setMigrating] = useState(false);
   const [migrationError, setMigrationError] = useState<string | null>(null);
@@ -119,6 +121,24 @@ export function SettingsPage() {
         {notificationSettings.error && (
           <p style={{ marginTop: 4, color: 'var(--danger)' }}>⚠️ {notificationSettings.error}</p>
         )}
+      </div>
+
+      <div className="section-title">요리 모드</div>
+      <div className="card">
+        <div className="row">
+          <span>타이머 자동 시작</span>
+          <button
+            className={`toggle ${autoStartTimer ? 'on' : ''}`}
+            onClick={() => setAutoStartTimer(!autoStartTimer)}
+            aria-label="타이머 자동 시작 전환"
+          >
+            <span className="knob" />
+          </button>
+        </div>
+        <p className="text-muted" style={{ marginTop: 8 }}>
+          켜두면 요리 모드에서 타이머가 있는 단계에 들어갈 때 말하거나 누르지 않아도 자동으로
+          타이머가 시작돼요.
+        </p>
       </div>
 
       {showMigrationBanner && (

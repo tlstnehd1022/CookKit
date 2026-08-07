@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStoredImage } from '../../data/imageStore';
-import { setAutoStartTimer, useAutoStartTimer } from '../../data/cookingModeSettings';
+import { useAutoStartTimer } from '../../data/cookingModeSettings';
 import type { Recipe, RecipeStep } from '../../data/types';
 
 // SpeechRecognition은 표준 lib.dom.d.ts에 타입이 없는 비표준 API(Chrome/Safari가
@@ -59,7 +59,7 @@ function buildStepAnnouncement(step: RecipeStep, index: number, total: number, a
   return parts.join(' ');
 }
 
-type Command = 'next' | 'prev' | 'startTimer' | 'stopTimer' | 'remaining' | 'stop';
+type Command = 'next' | 'prev' | 'startTimer' | 'stopTimer' | 'resetTimer' | 'remaining' | 'stop';
 
 // 요리 중엔 주변이 시끄럽거나 가족과 대화하다가 "다음"/"완료"/"시작" 같은 흔한 단어가 우연히
 // 섞여 들어갈 수 있어서, 짧은 한 단어가 아니라 2어절 이상의 조합으로만 명령을 인식한다(오작동
@@ -69,12 +69,16 @@ type Command = 'next' | 'prev' | 'startTimer' | 'stopTimer' | 'remaining' | 'sto
 const COMMAND_PHRASES: Record<Command, string[]> = {
   stop: ['요리 끝', '그만할래', '요리 종료'],
   remaining: ['얼마나 남았', '몇 분 남았', '시간 얼마나'],
+  resetTimer: ['타이머 초기화', '타이머 리셋'],
   stopTimer: ['타이머 멈춰', '타이머 정지', '잠깐 멈춰'],
   startTimer: ['타이머 시작', '타이머 켜', '시간 재'],
   next: ['다음 단계', '다음으로', '넘어가', '다음 거'],
   prev: ['이전 단계', '뒤로 가', '앞으로 돌아가'],
 };
-const COMMAND_ORDER: Command[] = ['stop', 'remaining', 'stopTimer', 'startTimer', 'next', 'prev'];
+const COMMAND_ORDER: Command[] = ['stop', 'remaining', 'resetTimer', 'stopTimer', 'startTimer', 'next', 'prev'];
+
+/** 요리 모드 화면에 참고용으로 보여주는 명령어 예시 — COMMAND_PHRASES의 대표 문구 하나씩. */
+const COMMAND_EXAMPLES = ['다음 단계', '이전 단계', '타이머 시작', '타이머 멈춰', '타이머 초기화', '얼마나 남았어', '요리 종료'];
 
 function stripSpaces(text: string): string {
   return text.replace(/\s+/g, '');
@@ -240,6 +244,15 @@ export function CookingModePage({ recipe, onExit, onFinish }: { recipe: Recipe; 
     }
   }
 
+  /** 진행 중이던 시간을 버리고 처음(시작 전) 상태로 되돌린다 — 다음 "타이머 시작"은 이어서
+   * 재개하지 않고 전체 시간부터 새로 센다(startTimer의 isResume 분기 참고). */
+  function resetTimer() {
+    if (!currentStep?.timerSeconds) return;
+    setTimerRunning(false);
+    setTimerRemaining(null);
+    announce('타이머를 초기화했어요.');
+  }
+
   function announceRemaining() {
     if (timerRunning && timerRemaining !== null) {
       announce(`${formatSpokenDuration(timerRemaining)} 남았어요.`);
@@ -257,6 +270,7 @@ export function CookingModePage({ recipe, onExit, onFinish }: { recipe: Recipe; 
     else if (command === 'prev') goPrev();
     else if (command === 'startTimer') startTimer();
     else if (command === 'stopTimer') pauseTimer();
+    else if (command === 'resetTimer') resetTimer();
     else if (command === 'remaining') announceRemaining();
     else if (command === 'stop') confirmExit();
   }
@@ -352,9 +366,14 @@ export function CookingModePage({ recipe, onExit, onFinish }: { recipe: Recipe; 
                 {timerRemaining !== null ? (
                   <>
                     <div className="cooking-mode-timer">{formatCountdown(timerRemaining)}</div>
-                    <button className="btn small" onClick={timerRunning ? pauseTimer : startTimer}>
-                      {timerRunning ? '⏸ 멈춤' : '▶ 다시 시작'}
-                    </button>
+                    <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
+                      <button className="btn small" onClick={timerRunning ? pauseTimer : startTimer}>
+                        {timerRunning ? '⏸ 멈춤' : '▶ 다시 시작'}
+                      </button>
+                      <button className="btn small" onClick={resetTimer}>
+                        ↺ 초기화
+                      </button>
+                    </div>
                   </>
                 ) : (
                   <button className="btn cooking-mode-timer-btn" onClick={startTimer}>
@@ -364,18 +383,16 @@ export function CookingModePage({ recipe, onExit, onFinish }: { recipe: Recipe; 
               </div>
             )}
 
-            <div className="row" style={{ marginTop: 16, gap: 8 }}>
-              <span className="text-muted" style={{ fontSize: 13 }}>
-                🔁 타이머 자동 시작
-              </span>
-              <button
-                className={`toggle ${autoStartTimer ? 'on' : ''}`}
-                onClick={() => setAutoStartTimer(!autoStartTimer)}
-                aria-label="타이머 자동 시작"
-              >
-                <span className="knob" />
-              </button>
-            </div>
+            {micSupported && (
+              <div className="card" style={{ marginTop: 16 }}>
+                <p className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>
+                  🎙️ 음성 명령어 예시 (설정 → 요리 모드에서 타이머 자동 시작도 켤 수 있어요)
+                </p>
+                <p className="text-muted" style={{ fontSize: 12 }}>
+                  {COMMAND_EXAMPLES.map((phrase) => `"${phrase}"`).join(' · ')}
+                </p>
+              </div>
+            )}
 
             {micBlockedByIos && (
               <p className="text-muted" style={{ textAlign: 'center', marginTop: 16 }}>

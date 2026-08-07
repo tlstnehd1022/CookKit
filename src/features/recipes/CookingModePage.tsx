@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStoredImage } from '../../data/imageStore';
+import { setAutoStartTimer, useAutoStartTimer } from '../../data/cookingModeSettings';
 import type { Recipe, RecipeStep } from '../../data/types';
 
 // SpeechRecognition은 표준 lib.dom.d.ts에 타입이 없는 비표준 API(Chrome/Safari가
@@ -22,7 +23,8 @@ function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
 }
 
 /** iOS Safari는 PWA로 설치된(standalone) 상태에서 SpeechRecognition이 동작하지 않는 알려진
- * 문제가 있음 — pushNotifications.ts의 iOS 감지와 같은 방식(UA + standalone 여부). */
+ * 문제가 있음 — pushNotifications.ts의 iOS 감지와 같은 방식(UA + standalone 여부). 이 경우
+ * 화면 탭 버튼(◀이전/다음▶/타이머/종료)이 유일한 조작 수단이 되므로 항상 노출돼야 한다. */
 function isIosStandalonePwa(): boolean {
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
   if (!isIos) return false;
@@ -44,38 +46,68 @@ function formatSpokenDuration(totalSeconds: number): string {
   return `${minutes}분 ${seconds}초`;
 }
 
-function buildStepAnnouncement(step: RecipeStep, index: number, total: number): string {
+function buildStepAnnouncement(step: RecipeStep, index: number, total: number, autoStarting: boolean): string {
   const parts = [`${index + 1}단계.`, step.title, step.content];
-  if (step.timerSeconds) parts.push(`이 단계는 ${formatSpokenDuration(step.timerSeconds)} 타이머가 있어요.`);
+  if (step.timerSeconds) {
+    parts.push(
+      autoStarting
+        ? `이 단계는 ${formatSpokenDuration(step.timerSeconds)} 타이머가 자동으로 시작돼요.`
+        : `이 단계는 ${formatSpokenDuration(step.timerSeconds)} 타이머가 있어요.`,
+    );
+  }
   if (index === total - 1) parts.push('마지막 단계예요.');
   return parts.join(' ');
 }
 
-type Command = 'next' | 'prev' | 'startTimer' | 'remaining' | 'stop';
+type Command = 'next' | 'prev' | 'startTimer' | 'stopTimer' | 'remaining' | 'stop';
+
+// 요리 중엔 주변이 시끄럽거나 가족과 대화하다가 "다음"/"완료"/"시작" 같은 흔한 단어가 우연히
+// 섞여 들어갈 수 있어서, 짧은 한 단어가 아니라 2어절 이상의 조합으로만 명령을 인식한다(오작동
+// 방지). 같은 의도의 다양한 표현은 넓게 받아준다. 매칭은 완전 일치가 아니라 포함 여부이고,
+// 공백 유무 차이(STT가 "다음단계"/"다음 단계"를 다르게 뱉을 수 있음)를 흡수하기 위해 공백을
+// 지운 뒤 비교한다.
+const COMMAND_PHRASES: Record<Command, string[]> = {
+  stop: ['요리 끝', '그만할래', '요리 종료'],
+  remaining: ['얼마나 남았', '몇 분 남았', '시간 얼마나'],
+  stopTimer: ['타이머 멈춰', '타이머 정지', '잠깐 멈춰'],
+  startTimer: ['타이머 시작', '타이머 켜', '시간 재'],
+  next: ['다음 단계', '다음으로', '넘어가', '다음 거'],
+  prev: ['이전 단계', '뒤로 가', '앞으로 돌아가'],
+};
+const COMMAND_ORDER: Command[] = ['stop', 'remaining', 'stopTimer', 'startTimer', 'next', 'prev'];
+
+function stripSpaces(text: string): string {
+  return text.replace(/\s+/g, '');
+}
 
 function matchCommand(text: string): Command | null {
-  if (text.includes('그만') || text.includes('종료')) return 'stop';
-  if (text.includes('몇 분') || text.includes('얼마나')) return 'remaining';
-  if (text.includes('타이머') && text.includes('시작')) return 'startTimer';
-  if (text.includes('완료') || text.includes('끝났')) return 'next';
-  if (text.includes('다음')) return 'next';
-  if (text.includes('이전')) return 'prev';
+  const normalized = stripSpaces(text);
+  for (const command of COMMAND_ORDER) {
+    if (COMMAND_PHRASES[command].some((phrase) => normalized.includes(stripSpaces(phrase)))) return command;
+  }
   return null;
 }
 
 /**
  * "🍳 요리 시작하기"로 들어오는 전체화면 핸즈프리 요리 안내 모드. 폰을 세워두고 보는 용도라
  * 큰 글씨/버튼 위주로 단순하게 디자인함(기존 디자인 시스템 색상/톤은 그대로, 레이아웃만 이 화면
- * 전용 `.cooking-mode-*` 클래스 사용). TTS는 항상 켜져 있고, STT는 지원 여부에 따라 선택적으로
- * 노출된다. 마이크는 처음 켤 때만 탭이 필요하고(브라우저 정책상 사용자 제스처 필요) 이후에는
- * 명령마다 다시 누를 필요 없이 계속 듣는다(요리 중 손을 안 대는 게 컨셉). 화면 탭 버튼은 항상
- * 함께 제공된다(음성이 유일한 조작 수단이 되지 않도록).
+ * 전용 `.cooking-mode-*` 클래스 사용).
+ *
+ * 음성은 "가능한 환경에서 더 편하게" 쓰는 보조 수단이고, 화면 탭(◀이전/다음▶/타이머/종료)은
+ * "모든 환경에서 항상 가능한" 기본 수단이다 — iOS Safari는 PWA로 설치된 상태에서 음성 인식
+ * 자체가 애플 제약으로 동작하지 않는 알려진 문제가 있어서, 그 경우 화면 탭만 유일한 수단이
+ * 된다. 그래서 탭 버튼은 음성 지원 여부와 무관하게 항상 노출된다.
+ *
+ * 마이크는 처음 켤 때만 탭이 필요하고(브라우저 정책상 사용자 제스처 필요) 이후에는 명령마다
+ * 다시 누를 필요 없이 계속 듣는다(요리 중 손을 안 대는 게 컨셉).
  */
-export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: () => void }) {
+export function CookingModePage({ recipe, onExit, onFinish }: { recipe: Recipe; onExit: () => void; onFinish: () => void }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [timerRemaining, setTimerRemaining] = useState<number | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
   const [listening, setListening] = useState(false);
+  const [lastHeard, setLastHeard] = useState<string | null>(null);
+  const [finished, setFinished] = useState(false);
   const recognitionRef = useRef<MinimalSpeechRecognition | null>(null);
   // 손을 아예 안 대는 게 컨셉이라 마이크는 한 번 켜면 명령마다 다시 누를 필요 없이 계속 듣는다
   // (keepListeningRef). 음성 안내가 나오는 동안은 마이크를 잠깐 꺼서(pausedForSpeechRef) 스피커
@@ -83,6 +115,7 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
   const keepListeningRef = useRef(false);
   const pausedForSpeechRef = useRef(false);
 
+  const autoStartTimer = useAutoStartTimer();
   const steps = recipe.steps;
   const currentStep = steps[stepIndex] as RecipeStep | undefined;
   const isLastStep = stepIndex === steps.length - 1;
@@ -116,12 +149,21 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
     };
   }, []);
 
-  // 단계가 바뀔 때마다 TTS로 안내하고, 이전 단계의 타이머 상태는 초기화한다.
+  // 단계가 바뀔 때마다 TTS로 안내하고, 이전 단계의 타이머 상태는 초기화한다. "타이머 자동 시작"이
+  // 켜져 있고 이 단계에 타이머가 있으면 안내 문구에 자동 시작을 언급하고 바로 시작한다(별도
+  // announce 호출을 또 하면 speechSynthesis.cancel()이 앞선 안내를 끊어버리므로 한 번에 합침).
+  // 토글은 다음 단계부터 적용되며, 지금 보고 있는 단계에는 소급 적용하지 않는다(deps에 stepIndex만).
   useEffect(() => {
     if (!currentStep) return;
-    announce(buildStepAnnouncement(currentStep, stepIndex, steps.length));
-    setTimerRemaining(null);
-    setTimerRunning(false);
+    const shouldAutoStart = autoStartTimer && Boolean(currentStep.timerSeconds);
+    announce(buildStepAnnouncement(currentStep, stepIndex, steps.length, shouldAutoStart));
+    if (shouldAutoStart) {
+      setTimerRemaining(currentStep.timerSeconds!);
+      setTimerRunning(true);
+    } else {
+      setTimerRemaining(null);
+      setTimerRunning(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepIndex]);
 
@@ -130,12 +172,18 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
     if (!timerRunning || timerRemaining === null) return;
     if (timerRemaining <= 0) {
       setTimerRunning(false);
+      setTimerRemaining(null);
       announce('타이머가 끝났어요.');
       return;
     }
     const timeout = setTimeout(() => setTimerRemaining((r) => (r ?? 0) - 1), 1000);
     return () => clearTimeout(timeout);
   }, [timerRunning, timerRemaining]);
+
+  useEffect(() => {
+    if (finished) announce('요리를 완성했어요! 수고하셨어요.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finished]);
 
   useEffect(() => {
     return () => {
@@ -164,6 +212,10 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
   }
 
   function goNext() {
+    if (isLastStep) {
+      setFinished(true);
+      return;
+    }
     setStepIndex((i) => Math.min(i + 1, steps.length - 1));
   }
 
@@ -173,9 +225,19 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
 
   function startTimer() {
     if (!currentStep?.timerSeconds) return;
-    setTimerRemaining(currentStep.timerSeconds);
+    const isResume = timerRemaining !== null;
+    if (!isResume) setTimerRemaining(currentStep.timerSeconds);
     setTimerRunning(true);
-    announce('타이머를 시작할게요.');
+    announce(isResume ? '타이머를 다시 시작할게요.' : '타이머를 시작할게요.');
+  }
+
+  function pauseTimer() {
+    if (timerRunning) {
+      setTimerRunning(false);
+      announce('타이머를 멈췄어요.');
+    } else {
+      announce('지금 실행 중인 타이머가 없어요.');
+    }
   }
 
   function announceRemaining() {
@@ -194,6 +256,7 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
     if (command === 'next') goNext();
     else if (command === 'prev') goPrev();
     else if (command === 'startTimer') startTimer();
+    else if (command === 'stopTimer') pauseTimer();
     else if (command === 'remaining') announceRemaining();
     else if (command === 'stop') confirmExit();
   }
@@ -209,6 +272,7 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
     recognition.interimResults = false;
     recognition.onresult = (event) => {
       const transcript = event.results[0]?.[0]?.transcript ?? '';
+      setLastHeard(transcript);
       const command = matchCommand(transcript);
       if (command) handleCommand(command);
       else announce('다시 말씀해주시겠어요?');
@@ -258,7 +322,7 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
     <div className="cooking-mode-overlay">
       <div className="row">
         <span className="cooking-mode-progress">
-          {stepIndex + 1}/{steps.length}단계
+          {finished ? '완료' : `${stepIndex + 1}/${steps.length}단계`}
         </span>
         <button className="btn small" onClick={confirmExit}>
           ✕ 종료
@@ -266,53 +330,96 @@ export function CookingModePage({ recipe, onExit }: { recipe: Recipe; onExit: ()
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        {imageUrl && <img src={imageUrl} alt={currentStep.title} className="cooking-mode-image" />}
-        <h1 className="cooking-mode-title">{currentStep.title}</h1>
-        <p className="cooking-mode-content">{currentStep.content}</p>
-
-        {currentStep.timerSeconds != null && (
-          <div style={{ textAlign: 'center' }}>
-            {timerRemaining !== null ? (
-              <div className="cooking-mode-timer">{formatCountdown(timerRemaining)}</div>
-            ) : (
-              <button className="btn cooking-mode-timer-btn" onClick={startTimer}>
-                ⏱ 타이머 시작 ({formatCountdown(currentStep.timerSeconds)})
-              </button>
-            )}
-          </div>
-        )}
-
-        {micBlockedByIos && (
-          <p className="text-muted" style={{ textAlign: 'center', marginTop: 16 }}>
-            이 화면은 Safari 브라우저에서 직접 열면 음성 명령을 쓸 수 있어요.
-          </p>
-        )}
-        {micSupported && (
-          <div style={{ textAlign: 'center', marginTop: 16 }}>
-            <button
-              className={`cooking-mode-mic ${listening ? 'listening' : ''}`}
-              onClick={toggleListening}
-              aria-label="음성 명령"
-            >
-              🎤
+        {finished ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, marginTop: 24 }}>
+            <h1 className="cooking-mode-title">🎉 요리 완료!</h1>
+            <p className="cooking-mode-content">수고하셨어요!</p>
+            <button className="btn primary cooking-mode-timer-btn" onClick={onFinish}>
+              🍳 오늘 만들었어요
             </button>
-            <p className="text-muted" style={{ marginTop: 6 }}>
-              {listening ? '계속 듣고 있어요 · 눌러서 끄기' : '눌러서 음성 명령 켜기'}
-            </p>
+            <button className="btn" onClick={confirmExit}>
+              나중에 기록할게요
+            </button>
           </div>
+        ) : (
+          <>
+            {imageUrl && <img src={imageUrl} alt={currentStep.title} className="cooking-mode-image" />}
+            <h1 className="cooking-mode-title">{currentStep.title}</h1>
+            <p className="cooking-mode-content">{currentStep.content}</p>
+
+            {currentStep.timerSeconds != null && (
+              <div style={{ textAlign: 'center' }}>
+                {timerRemaining !== null ? (
+                  <>
+                    <div className="cooking-mode-timer">{formatCountdown(timerRemaining)}</div>
+                    <button className="btn small" onClick={timerRunning ? pauseTimer : startTimer}>
+                      {timerRunning ? '⏸ 멈춤' : '▶ 다시 시작'}
+                    </button>
+                  </>
+                ) : (
+                  <button className="btn cooking-mode-timer-btn" onClick={startTimer}>
+                    ⏱ 타이머 시작 ({formatCountdown(currentStep.timerSeconds)})
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="row" style={{ marginTop: 16, gap: 8 }}>
+              <span className="text-muted" style={{ fontSize: 13 }}>
+                🔁 타이머 자동 시작
+              </span>
+              <button
+                className={`toggle ${autoStartTimer ? 'on' : ''}`}
+                onClick={() => setAutoStartTimer(!autoStartTimer)}
+                aria-label="타이머 자동 시작"
+              >
+                <span className="knob" />
+              </button>
+            </div>
+
+            {micBlockedByIos && (
+              <p className="text-muted" style={{ textAlign: 'center', marginTop: 16 }}>
+                이 화면은 Safari 브라우저에서 직접 열면 음성 명령을 쓸 수 있어요.
+              </p>
+            )}
+            {!micSupported && !micBlockedByIos && (
+              <p className="text-muted" style={{ textAlign: 'center', marginTop: 16 }}>
+                이 기기에서는 음성 명령이 지원되지 않아요. 화면을 탭해서 진행해주세요.
+              </p>
+            )}
+            {micSupported && (
+              <div style={{ textAlign: 'center', marginTop: 16 }}>
+                <button
+                  className={`cooking-mode-mic ${listening ? 'listening' : ''}`}
+                  onClick={toggleListening}
+                  aria-label="음성 명령"
+                >
+                  🎤
+                </button>
+                <p className="text-muted" style={{ marginTop: 6 }}>
+                  {listening ? '계속 듣고 있어요 · 눌러서 끄기' : '눌러서 음성 명령 켜기'}
+                </p>
+                {lastHeard && (
+                  <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    들은 말: "{lastHeard}"
+                  </p>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      <div className="cooking-mode-nav">
-        <button className="btn" onClick={goPrev} disabled={stepIndex === 0}>
-          ◀ 이전
-        </button>
-        {!isLastStep && (
-          <button className="btn primary" onClick={goNext}>
-            다음 ▶
+      {!finished && (
+        <div className="cooking-mode-nav">
+          <button className="btn" onClick={goPrev} disabled={stepIndex === 0}>
+            ◀ 이전
           </button>
-        )}
-      </div>
+          <button className="btn primary" onClick={goNext}>
+            {isLastStep ? '완료 ▶' : '다음 ▶'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

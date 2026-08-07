@@ -255,7 +255,16 @@ export function RecipeDetailPage({
           onConfirm={handleConfirmCooking}
         />
       )}
-      {showCookingMode && <CookingModePage recipe={recipe} onExit={() => setShowCookingMode(false)} />}
+      {showCookingMode && (
+        <CookingModePage
+          recipe={recipe}
+          onExit={() => setShowCookingMode(false)}
+          onFinish={() => {
+            setShowCookingMode(false);
+            setShowCookingLogModal(true);
+          }}
+        />
+      )}
     </div>
   );
 }

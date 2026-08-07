@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
+import type { CookingLogStepTiming } from './types';
 
 // recipeLikes.ts/publicRecipes.ts와 같은 이유로 .in()에 넘기는 recipe id 배열을 청크로 나눈다
 // (URL 길이 제한 회피).
@@ -46,20 +47,100 @@ export async function fetchCookingStats(recipeIds: string[]): Promise<Map<string
 }
 
 /** "오늘 만들었어요" 확정 시 기록을 남긴다 — 재료 차감(owned=false)은 호출부(RecipeDetailPage)가
- * 사용자가 체크한 재료에 대해 별도로 처리한다(이 함수는 기록만 담당). */
+ * 사용자가 체크한 재료에 대해 별도로 처리한다(이 함수는 기록만 담당). stepTimings는 요리 모드를
+ * 거쳐 실제 소요시간을 측정한 경우에만 전달된다(직접 "오늘 만들었어요"를 누른 경우는 없음). */
 export async function logCooking(params: {
   recipeId: string;
   householdId: string;
   userId: string;
   memo?: string;
+  stepTimings?: CookingLogStepTiming[];
+  isMultiRecipe?: boolean;
 }): Promise<void> {
   const { error } = await supabase.from('cooking_log').insert({
     recipe_id: params.recipeId,
     household_id: params.householdId,
     user_id: params.userId,
     memo: params.memo?.trim() || null,
+    step_timings: params.stepTimings && params.stepTimings.length > 0 ? params.stepTimings : null,
+    is_multi_recipe: params.isMultiRecipe ?? false,
   });
   if (error) throw error;
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+export interface StepAdjustmentSuggestion {
+  stepIndex: number;
+  plannedSeconds: number;
+  suggestedSeconds: number;
+  sampleCount: number;
+}
+
+// 대표값(2회면 평균, 3회 이상이면 중앙값)이 설정값과 이만큼 이상 차이 나야 조정을 제안한다.
+const ADJUSTMENT_DIFF_THRESHOLD = 0.3;
+// 기록이 2회뿐일 때는 그 둘이 이 정도 이내로 일관돼야 신뢰할 수 있다고 보고 제안한다
+// (편차가 크면 아직 데이터가 부족한 것으로 보고 더 모은다).
+const TWO_SAMPLE_CONSISTENCY_THRESHOLD = 0.3;
+
+/**
+ * 레시피의 각 단계에 대해, 실제 측정된 조리 시간(cookSeconds)이 지금 설정된 타이머 값과 꾸준히
+ * 다르면 조정을 제안한다. 비교 기준은 각 기록에 박제된 plannedSeconds가 아니라 항상 "지금 이
+ * 레시피의 현재 timerSeconds"다 — 안 그러면 한 번 조정을 반영한 뒤에도 예전 기록의 plannedSeconds가
+ * 여전히 옛날 값이라 똑같은 제안이 계속 다시 뜨는 문제가 생긴다. 복합 요리 기록(isMultiRecipe)과
+ * 타이머를 실제로 쓰지 않은 단계(hadTimer=false)는 계산에서 제외 — CLAUDE.md "요리 모드 실제
+ * 소요시간 기록" 항목의 기준을 그대로 구현한다.
+ */
+export async function fetchStepTimingAdjustments(recipe: {
+  id: string;
+  steps: { timerSeconds?: number }[];
+}): Promise<StepAdjustmentSuggestion[]> {
+  const { data, error } = await supabase
+    .from('cooking_log')
+    .select('step_timings')
+    .eq('recipe_id', recipe.id)
+    .eq('is_multi_recipe', false);
+  if (error) throw error;
+
+  const cookValuesByStep = new Map<number, number[]>();
+  for (const row of data ?? []) {
+    const timings = (row.step_timings as CookingLogStepTiming[] | null) ?? [];
+    for (const timing of timings) {
+      if (timing.recipeId !== recipe.id || !timing.hadTimer) continue;
+      const values = cookValuesByStep.get(timing.stepIndex) ?? [];
+      values.push(timing.cookSeconds);
+      cookValuesByStep.set(timing.stepIndex, values);
+    }
+  }
+
+  const suggestions: StepAdjustmentSuggestion[] = [];
+  for (const [stepIndex, cookValues] of cookValuesByStep) {
+    const planned = recipe.steps[stepIndex]?.timerSeconds;
+    if (!planned || planned <= 0 || cookValues.length < 2) continue;
+
+    let representative: number;
+    if (cookValues.length === 2) {
+      const [a, b] = cookValues;
+      const avg = (a + b) / 2;
+      if (avg === 0 || Math.abs(a - b) / avg > TWO_SAMPLE_CONSISTENCY_THRESHOLD) continue;
+      representative = avg;
+    } else {
+      representative = median(cookValues);
+    }
+
+    if (Math.abs(representative - planned) / planned < ADJUSTMENT_DIFF_THRESHOLD) continue;
+    suggestions.push({
+      stepIndex,
+      plannedSeconds: planned,
+      suggestedSeconds: Math.round(representative),
+      sampleCount: cookValues.length,
+    });
+  }
+  return suggestions.sort((a, b) => a.stepIndex - b.stepIndex);
 }
 
 const HISTORY_LIMIT = 50;

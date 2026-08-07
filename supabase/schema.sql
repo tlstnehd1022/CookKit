@@ -511,7 +511,12 @@ create table public.cooking_log (
   user_id uuid not null references public.profiles(id) on delete cascade,
   cooked_at timestamptz not null default now(),
   memo text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- 요리 모드에서 측정한 단계별 준비/조리 시간(CookingLogStepTiming[]) — 없으면 null(0019).
+  step_timings jsonb,
+  -- 복합 요리(여러 레시피 동시 진행) 세션에서 생성된 기록인지 — true면 조정 제안 계산에서
+  -- 제외한다(0019).
+  is_multi_recipe boolean not null default false
 );
 
 create index cooking_log_recipe_id_idx on public.cooking_log (recipe_id);

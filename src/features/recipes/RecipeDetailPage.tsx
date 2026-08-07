@@ -5,10 +5,18 @@ import { computeRecipeAllergens, scaleAmount } from '../../data/computed';
 import { useStoredImage } from '../../data/imageStore';
 import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
 import { fetchLikeInfo } from '../../data/recipeLikes';
-import { fetchCookingStats, logCooking, type CookingStats } from '../../data/cookingLog';
+import {
+  fetchCookingStats,
+  fetchStepTimingAdjustments,
+  logCooking,
+  type CookingStats,
+  type StepAdjustmentSuggestion,
+} from '../../data/cookingLog';
 import { useSession } from '../../data/session';
 import { CookingLogModal } from './CookingLogModal';
 import { CookingModePage } from './CookingModePage';
+import { TimingAdjustmentModal } from './TimingAdjustmentModal';
+import type { CookingLogStepTiming } from '../../data/types';
 
 export function RecipeDetailPage({
   recipeId,
@@ -19,7 +27,7 @@ export function RecipeDetailPage({
   onBack: () => void;
   onEdit: () => void;
 }) {
-  const { recipes, deleteRecipe } = useRecipes();
+  const { recipes, deleteRecipe, saveRecipe } = useRecipes();
   const { tags } = useTags();
   const ingredientsById = useIngredientsById();
   const { saveIngredient } = useIngredients();
@@ -33,6 +41,11 @@ export function RecipeDetailPage({
   const [cookingStats, setCookingStats] = useState<CookingStats | null>(null);
   const [showCookingLogModal, setShowCookingLogModal] = useState(false);
   const [showCookingMode, setShowCookingMode] = useState(false);
+  // 요리 모드를 거쳐 왔을 때만 채워짐(직접 "오늘 만들었어요"를 누르면 undefined) — 로그를 남길 때
+  // 같이 저장해서 나중에 조정 제안(fetchStepTimingAdjustments) 계산에 쓰인다.
+  const [pendingStepTimings, setPendingStepTimings] = useState<CookingLogStepTiming[] | undefined>(undefined);
+  const [timingSuggestions, setTimingSuggestions] = useState<StepAdjustmentSuggestion[]>([]);
+  const [showTimingAdjustment, setShowTimingAdjustment] = useState(false);
   // 대표 이미지 우선순위: 완성 사진 > 첫 조리 단계 이미지. recipe가 사라지는 경우(삭제 등)에도
   // 훅 호출 순서가 매 렌더 동일해야 해서 이 useStoredImage는 아래 조기 return보다 위에 둔다.
   const coverImageId = recipe?.finalImageId ?? recipe?.steps.find((step) => step.imageId)?.imageId;
@@ -77,11 +90,36 @@ export function RecipeDetailPage({
     };
   }, [recipe?.id]);
 
+  // "⏱ 조정 제안" 배지용 — 완료 화면에서 놓쳤거나 예전 기록으로 뒤늦게 조건을 만족한 경우를 위한
+  // 보조 진입점. 완료 화면에서 이미 다뤘어도(적용/건너뛰기) 다시 불러오면 자연스럽게 없어지거나
+  // (적용한 경우) 그대로 남아있을 수 있음(건너뛴 경우) — 둘 다 의도된 동작.
+  useEffect(() => {
+    if (!recipe) {
+      setTimingSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    fetchStepTimingAdjustments(recipe)
+      .then((result) => {
+        if (!cancelled) setTimingSuggestions(result);
+      })
+      .catch((err) => console.error('시간 조정 제안 조회 실패:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [recipe?.id]);
+
   async function handleConfirmCooking(selectedIngredientIds: string[], memo: string) {
     if (!recipe || !user || !householdId) {
       throw new Error('로그인이 필요합니다.');
     }
-    await logCooking({ recipeId: recipe.id, householdId, userId: user.id, memo });
+    await logCooking({
+      recipeId: recipe.id,
+      householdId,
+      userId: user.id,
+      memo,
+      stepTimings: pendingStepTimings,
+    });
     // 체크된 재료만 보유 해제 — 이미 owned=false인 재료는 건드리지 않음
     for (const ingredientId of selectedIngredientIds) {
       const ingredient = ingredientsById.get(ingredientId);
@@ -92,6 +130,32 @@ export function RecipeDetailPage({
     const stats = await fetchCookingStats([recipe.id]);
     setCookingStats(stats.get(recipe.id) ?? null);
     setShowCookingLogModal(false);
+
+    // 요리 모드를 거쳐 실제 시간을 측정한 경우에만 조정 제안을 바로 이어서 보여준다("오늘
+    // 만들었어요" 완료 화면이 주 진입점).
+    if (pendingStepTimings && pendingStepTimings.length > 0) {
+      const suggestions = await fetchStepTimingAdjustments(recipe);
+      setTimingSuggestions(suggestions);
+      if (suggestions.length > 0) setShowTimingAdjustment(true);
+    }
+    setPendingStepTimings(undefined);
+  }
+
+  async function handleApplyTimingAdjustments(accepted: StepAdjustmentSuggestion[]) {
+    if (!recipe || accepted.length === 0) {
+      setShowTimingAdjustment(false);
+      return;
+    }
+    const byStepIndex = new Map(accepted.map((s) => [s.stepIndex, s.suggestedSeconds]));
+    await saveRecipe({
+      ...recipe,
+      steps: recipe.steps.map((step, index) =>
+        byStepIndex.has(index) ? { ...step, timerSeconds: byStepIndex.get(index) } : step,
+      ),
+    });
+    setShowTimingAdjustment(false);
+    const remaining = await fetchStepTimingAdjustments(recipe);
+    setTimingSuggestions(remaining);
   }
 
   if (!recipe) {
@@ -177,7 +241,14 @@ export function RecipeDetailPage({
       >
         🍳 요리 시작하기
       </button>
-      <button className="btn" style={{ width: '100%', marginBottom: 8 }} onClick={() => setShowCookingLogModal(true)}>
+      <button
+        className="btn"
+        style={{ width: '100%', marginBottom: 8 }}
+        onClick={() => {
+          setPendingStepTimings(undefined);
+          setShowCookingLogModal(true);
+        }}
+      >
         🍳 오늘 만들었어요
       </button>
       {cookingStats && cookingStats.count > 0 && (
@@ -186,6 +257,15 @@ export function RecipeDetailPage({
           {cookingStats.lastCookedAt &&
             ` · 마지막으로 만든 날짜: ${new Date(cookingStats.lastCookedAt).toLocaleDateString('ko-KR')}`}
         </p>
+      )}
+      {timingSuggestions.length > 0 && (
+        <button
+          className="chip selectable"
+          style={{ marginBottom: 8 }}
+          onClick={() => setShowTimingAdjustment(true)}
+        >
+          ⏱ 조정 제안 있음
+        </button>
       )}
       <div className="chip-row">
         {likeCount != null && <span className="chip">❤️ {likeCount}</span>}
@@ -259,10 +339,19 @@ export function RecipeDetailPage({
         <CookingModePage
           recipe={recipe}
           onExit={() => setShowCookingMode(false)}
-          onFinish={() => {
+          onFinish={(stepTimings) => {
+            setPendingStepTimings(stepTimings);
             setShowCookingMode(false);
             setShowCookingLogModal(true);
           }}
+        />
+      )}
+      {showTimingAdjustment && (
+        <TimingAdjustmentModal
+          recipe={recipe}
+          suggestions={timingSuggestions}
+          onClose={() => setShowTimingAdjustment(false)}
+          onApply={handleApplyTimingAdjustments}
         />
       )}
     </div>

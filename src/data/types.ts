@@ -82,6 +82,22 @@ export interface Tag {
 
 export type PantryStatus = Record<string, boolean>;
 
+/** 요리 모드(CookingModePage)에서 측정한 한 단계의 준비/조리 시간 — 레시피 타이머 조정 제안의
+ * 원본 데이터(src/data/cookingLog.ts의 fetchStepTimingAdjustments). recipeId는 복합 요리(여러
+ * 레시피 동시 진행) 세션에서 이 타이밍이 어느 레시피 단계인지 구분하기 위함. */
+export interface CookingLogStepTiming {
+  recipeId: string;
+  stepIndex: number;
+  /** 레시피에 설정된 타이머 값(초) — 타이머가 없는 단계는 0 */
+  plannedSeconds: number;
+  /** 단계 진입 → 타이머 시작(초). hadTimer=false면 의미 없음(0) */
+  prepSeconds: number;
+  /** 타이머가 실제로 돌아간(일시정지 제외) 시간(초), 또는 타이머가 없는 단계의 전체 체류 시간 */
+  cookSeconds: number;
+  /** 이 단계에서 타이머를 실제로 시작했는지 — false면 준비/조리 구분이 불가능해 조정 제안 대상에서 제외 */
+  hadTimer: boolean;
+}
+
 /** 요리 완료 기록 — household 공유(supabase/migrations/0018_cooking_log.sql, cooking_log 테이블).
  * src/data/cookingLog.ts에서 조회/생성한다. */
 export interface CookingLog {
@@ -92,6 +108,10 @@ export interface CookingLog {
   /** ISO 타임스탬프 */
   cookedAt: string;
   memo?: string;
+  /** 요리 모드를 거쳐 기록된 경우에만 존재(0019) */
+  stepTimings?: CookingLogStepTiming[];
+  /** 복합 요리(여러 레시피 동시 진행) 세션에서 생성된 기록인지(0019) — 조정 제안 계산에서 제외 */
+  isMultiRecipe?: boolean;
 }
 
 // 향후 확장 대비 스텁 — 아직 UI/저장 로직 미구현

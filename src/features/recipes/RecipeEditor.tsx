@@ -912,7 +912,10 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         </div>
       </div>
 
-      <div className="section-title">스타일 태그</div>
+      <div className="section-title">요리 스타일</div>
+      <p className="text-muted" style={{ marginTop: -4, marginBottom: 6 }}>
+        크림류, 국물요리처럼 맛이나 조리 방식의 특징을 나타내는 태그예요.
+      </p>
       <div className="chip-row">
         {tags
           .filter((tag) => tag.type === 'style')
@@ -930,6 +933,9 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       {tags.some((tag) => tag.type === 'category') && (
         <>
           <div className="section-title">카테고리 태그</div>
+          <p className="text-muted" style={{ marginTop: -4, marginBottom: 6 }}>
+            레시피를 더 세부적으로 분류하는 태그예요.
+          </p>
           <div className="chip-row">
             {tags
               .filter((tag) => tag.type === 'category')
@@ -946,7 +952,10 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         </>
       )}
 
-      <div className="section-title">국가/스타일 (선택)</div>
+      <div className="section-title">국가/장르 (선택)</div>
+      <p className="text-muted" style={{ marginTop: -4, marginBottom: 6 }}>
+        한식, 양식처럼 요리의 국가나 장르를 나타내는 태그예요.
+      </p>
       <div className="chip-row">
         {tags
           .filter((tag) => tag.type === 'cuisine')
@@ -961,7 +970,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           ))}
       </div>
       {tags.filter((tag) => tag.type === 'cuisine').length === 0 && (
-        <p className="text-muted">태그 관리에서 국가/스타일 태그를 추가할 수 있어요(예: 한식, 양식).</p>
+        <p className="text-muted">태그 관리에서 국가/장르 태그를 추가할 수 있어요(예: 한식, 양식).</p>
       )}
 
       <div className="section-title">재료</div>

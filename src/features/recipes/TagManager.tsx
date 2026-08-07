@@ -21,7 +21,10 @@ export function TagManager({ onClose }: { onClose: () => void }) {
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <h2>태그 관리</h2>
 
-        <div className="section-title">스타일 태그</div>
+        <div className="section-title">요리 스타일</div>
+        <p className="text-muted" style={{ marginTop: -4 }}>
+          크림류, 국물요리처럼 맛이나 조리 방식의 특징을 나타내는 태그예요.
+        </p>
         {tags
           .filter((tag) => tag.type === 'style')
           .map((tag) => (
@@ -44,6 +47,7 @@ export function TagManager({ onClose }: { onClose: () => void }) {
           ))}
 
         <div className="section-title">카테고리 태그</div>
+        <p className="text-muted" style={{ marginTop: -4 }}>레시피를 더 세부적으로 분류하는 태그예요.</p>
         {tags
           .filter((tag) => tag.type === 'category')
           .map((tag) => (
@@ -65,7 +69,10 @@ export function TagManager({ onClose }: { onClose: () => void }) {
             />
           ))}
 
-        <div className="section-title">국가/스타일 태그 (한식·양식 등)</div>
+        <div className="section-title">국가/장르 태그 (한식·양식 등)</div>
+        <p className="text-muted" style={{ marginTop: -4 }}>
+          한식, 양식처럼 요리의 국가나 장르를 나타내는 태그예요.
+        </p>
         {tags
           .filter((tag) => tag.type === 'cuisine')
           .map((tag) => (
@@ -94,7 +101,7 @@ export function TagManager({ onClose }: { onClose: () => void }) {
             <select value={type} onChange={(e) => setType(e.target.value as TagType)}>
               <option value="style">스타일</option>
               <option value="category">카테고리</option>
-              <option value="cuisine">국가/스타일</option>
+              <option value="cuisine">국가/장르</option>
             </select>
             <button className="btn small" onClick={addTag}>
               추가

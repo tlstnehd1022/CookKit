@@ -306,7 +306,7 @@ export function RecipeDetailPage({
         <button onClick={() => setServings((s) => s + 1)}>+</button>
       </div>
 
-      <div className="section-title">재료 ({recipe.servingsBase}인분 기준 재계산됨)</div>
+      <div className="section-title">재료 ({servings}인분 기준 재계산됨)</div>
       <div className="card">
         {recipe.ingredients.map((item, index) => {
           const ingredient = ingredientsById.get(item.ingredientId);

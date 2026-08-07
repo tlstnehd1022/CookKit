@@ -62,8 +62,24 @@ export function summarizeRecipeDiff(before: RecipeSnapshot, after: ExtractedReci
     });
   }
 
-  if (before.steps.length !== after.steps.length) {
+  // 재료 구성이 그대로라도 조리 순서만 바뀌는 요청("A 다음에 B, 마지막에 C로 바꿔줘")이 흔한데,
+  // 예전엔 steps.length만 비교해서 단계 개수가 같으면 순서/내용이 바뀌어도 "변화 없음"으로
+  // 잘못 표시됐음(버그) — 각 단계를 위치별로 제목/본문/타이머까지 비교해서 실제 변경을 잡는다.
+  const stepCountChanged = before.steps.length !== after.steps.length;
+  const stepContentChanged =
+    !stepCountChanged &&
+    before.steps.some((step, i) => {
+      const other = after.steps[i];
+      return (
+        step.title !== other.title ||
+        step.content !== other.content ||
+        (step.timerSeconds ?? null) !== (other.timerSeconds ?? null)
+      );
+    });
+  if (stepCountChanged) {
     lines.push({ kind: 'change', text: `조리순서: ${before.steps.length}단계 → ${after.steps.length}단계` });
+  } else if (stepContentChanged) {
+    lines.push({ kind: 'change', text: '조리순서: 단계 내용 또는 순서가 바뀜' });
   }
 
   const beforeTags = new Set(before.tagNames);

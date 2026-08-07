@@ -304,15 +304,17 @@ export function RecipeDetailPage({
         </p>
       )}
 
-      <div className="section-title">인분 조절</div>
-      <div className="stepper">
-        <button onClick={() => setServings((s) => Math.max(1, s - 1))}>−</button>
-        <strong>{servings}인분</strong>
-        <button onClick={() => setServings((s) => s + 1)}>+</button>
+      <div className="row" style={{ alignItems: 'flex-end' }}>
+        <div className="section-title" style={{ margin: 0 }}>
+          재료 ({servings}인분 기준 재계산됨)
+        </div>
+        <div className="stepper">
+          <button onClick={() => setServings((s) => Math.max(1, s - 1))}>−</button>
+          <strong>{servings}인분</strong>
+          <button onClick={() => setServings((s) => s + 1)}>+</button>
+        </div>
       </div>
-
-      <div className="section-title">재료 ({servings}인분 기준 재계산됨)</div>
-      <div className="card">
+      <div className="card" style={{ marginTop: 10 }}>
         {recipe.ingredients.map((item, index) => {
           const ingredient = ingredientsById.get(item.ingredientId);
           const scaled = scaleAmount(item.amount, recipe.servingsBase, servings);

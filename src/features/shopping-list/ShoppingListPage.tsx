@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
-import { useIngredientsById, usePantryStatus, useRecipes } from '../../data/store';
+import { useEffect, useMemo, useState } from 'react';
+import { useIngredients, useIngredientsById, usePantryStatus, useRecipes, getCurrentHouseholdId } from '../../data/store';
 import { useShoppingSelection } from '../../data/shoppingSelection';
 import { ReceiptScanModal } from '../ingredients/ReceiptScanModal';
+import { fetchFillFrequencies, type FillFrequencyInfo } from '../../data/ingredientFillLog';
+import { computeRefillSuggestions } from '../../lib/refillSuggestions';
 
 type FilterMode = 'all' | 'need' | 'owned';
 
@@ -13,11 +15,34 @@ interface AggregatedRow {
 
 export function ShoppingListPage() {
   const { recipes } = useRecipes();
+  const { ingredients } = useIngredients();
   const ingredientsById = useIngredientsById();
   const { pantryStatus, setOwned } = usePantryStatus();
   const { selectedRecipeIds, toggle: toggleRecipe } = useShoppingSelection();
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [showReceiptScan, setShowReceiptScan] = useState(false);
+  const [fillFrequencies, setFillFrequencies] = useState<Map<string, FillFrequencyInfo> | null>(null);
+
+  // "자주 채우는데 지금 없어요" 선제 제안 근거 데이터 — 계산이 무거울 수 있어 화면 진입 시 1회만
+  // 조회하고 재사용한다(usePantryStatus처럼 계속 구독하는 캐시가 아님).
+  useEffect(() => {
+    const householdId = getCurrentHouseholdId();
+    if (!householdId) return;
+    let cancelled = false;
+    fetchFillFrequencies(householdId)
+      .then((result) => {
+        if (!cancelled) setFillFrequencies(result);
+      })
+      .catch((err) => console.error('채움 빈도 조회 실패:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refillSuggestions = useMemo(
+    () => (fillFrequencies ? computeRefillSuggestions(ingredients, fillFrequencies) : []),
+    [ingredients, fillFrequencies],
+  );
 
   const aggregated: AggregatedRow[] = useMemo(() => {
     const map = new Map<string, AggregatedRow>();
@@ -51,6 +76,22 @@ export function ShoppingListPage() {
           📷 영수증으로 재료 업데이트
         </button>
       </div>
+
+      {refillSuggestions.length > 0 && (
+        <>
+          <div className="section-title">💡 이런 재료는 어떠세요?</div>
+          <div className="card" style={{ marginBottom: 12 }}>
+            {refillSuggestions.map((ingredient) => (
+              <div className="row" key={ingredient.id} style={{ padding: '4px 0' }}>
+                <span>{ingredient.name}, 자주 채우시는데 지금 없어요</span>
+                <button className="btn small" onClick={() => setOwned(ingredient.id, true)}>
+                  ✅ 채웠어요
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="section-title">만들 레시피 선택</div>
       {recipes.length === 0 && <div className="empty-hint">등록된 레시피가 없습니다.</div>}

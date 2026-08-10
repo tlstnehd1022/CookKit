@@ -93,7 +93,8 @@
       "Bash(git mv *)",
       "Bash(git ls-files *)",
       "Bash(wc -l /tmp_filelist.txt)",
-      "Bash(grep -n \"generativelanguage.googleapis.com\\\\|\\\\${model}\\\\|model}\\\\`\" /c/projects/CookKit/src/lib/geminiClient.ts)"
+      "Bash(grep -n \"generativelanguage.googleapis.com\\\\|\\\\${model}\\\\|model}\\\\`\" /c/projects/CookKit/src/lib/geminiClient.ts)",
+      "Bash(npx oxlint *)"
     ],
     "deny": [
       "Bash(rm -rf *)",

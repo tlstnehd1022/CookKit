@@ -50,7 +50,7 @@ function buildReviewRow(item: ReceiptItem, categories: Category[]): ReviewRow {
  * 일어난다(자동 저장 금지 — CookKit 전체 원칙).
  */
 export function ReceiptScanModal({ onClose }: { onClose: () => void }) {
-  const { ingredients, saveIngredient } = useIngredients();
+  const { ingredients, markIngredientFilled } = useIngredients();
   const { categories, saveCategory } = useCategories();
   const { settings } = useSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -137,7 +137,8 @@ export function ReceiptScanModal({ onClose }: { onClose: () => void }) {
         const name = row.guessedName.trim();
         const existing = findExistingIngredient(name);
         if (existing) {
-          if (!existing.owned) await saveIngredient({ ...existing, owned: true });
+          // 이미 owned=true였어도 영수증에 다시 찍혔다는 건 실제로 다시 산 것이므로 채움으로 취급
+          await markIngredientFilled(existing);
           markedOwnedCount += 1;
           continue;
         }
@@ -164,7 +165,7 @@ export function ReceiptScanModal({ onClose }: { onClose: () => void }) {
         const quantity = Number(row.quantity);
         const unit = row.unit.trim();
         const buyAmount = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
-        await saveIngredient({
+        await markIngredientFilled({
           id: makeId(),
           name,
           categoryId,

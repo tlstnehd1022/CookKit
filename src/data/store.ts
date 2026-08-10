@@ -5,6 +5,7 @@ import {
   createRecipesRepository,
   createTagsRepository,
 } from './supabaseAdapter';
+import { logIngredientFillEvent } from './ingredientFillLog';
 import type { CrudRepository } from './repository';
 import type { Category, Ingredient, PantryStatus, Recipe, Tag } from './types';
 
@@ -110,9 +111,23 @@ export const replaceAllCategories = categoriesStore.replaceAll;
 
 export function useIngredients() {
   const ingredients = useSyncExternalStore(ingredientsStore.subscribe, ingredientsStore.getSnapshot);
+
+  // 재료를 "지금 채웠다"는 의도가 분명한 호출(보유 토글 켜기/영수증 반영/직접 추가)에서만 쓴다 —
+  // 이미 owned=true였어도 다시 채운 것으로 취급해 lastFilledAt을 갱신하고 이력을 한 줄 남긴다
+  // (아직 남아있는데 미리 사둔 경우도 유효한 구매 이력). 알러지/선호 설정 같은 무관한 편집은
+  // 이 함수를 거치지 않는 일반 saveIngredient를 쓰므로 영향받지 않는다.
+  async function markIngredientFilled(item: Ingredient) {
+    await ingredientsStore.save({ ...item, owned: true, lastFilledAt: new Date().toISOString() });
+    const householdId = getCurrentHouseholdId();
+    if (householdId) {
+      logIngredientFillEvent(item.id, householdId).catch((err) => console.error('재료 채움 이력 기록 실패:', err));
+    }
+  }
+
   return {
     ingredients,
     saveIngredient: ingredientsStore.save,
+    markIngredientFilled,
     deleteIngredient: ingredientsStore.remove,
   };
 }
@@ -157,7 +172,7 @@ export function useCategoriesById(): Map<string, Category> {
 // 보유 여부(pantry status)는 이제 별도 저장소가 아니라 Ingredient.owned 필드에서 파생된다
 // (household 공유 테이블이라 재료 자체에 두는 게 더 단순함 — supabase/schema.sql 참고).
 export function usePantryStatus() {
-  const { ingredients, saveIngredient } = useIngredients();
+  const { ingredients, saveIngredient, markIngredientFilled } = useIngredients();
   const pantryStatus: PantryStatus = useMemo(
     () => Object.fromEntries(ingredients.map((ingredient) => [ingredient.id, ingredient.owned])),
     [ingredients],
@@ -166,7 +181,11 @@ export function usePantryStatus() {
   async function setOwned(ingredientId: string, owned: boolean) {
     const ingredient = ingredients.find((i) => i.id === ingredientId);
     if (!ingredient) return;
-    await saveIngredient({ ...ingredient, owned });
+    if (owned) {
+      await markIngredientFilled(ingredient);
+    } else {
+      await saveIngredient({ ...ingredient, owned });
+    }
   }
 
   return { pantryStatus, setOwned };

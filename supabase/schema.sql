@@ -148,6 +148,8 @@ create table public.ingredients (
   preferred_method text,
   -- 0016: 유통기한(선택) — 화면 임박 배지 + 예정된 웹 푸시 알림(Vercel Cron)이 참조
   expiration_date date,
+  -- 0021: 가장 최근에 채워진(owned:true로 설정된) 시각 — 냉장고 화면 "n일 전 채움" 배지용
+  last_filled_at timestamptz,
   created_at timestamptz not null default now()
 );
 -- 참고: quantity/unit은 요청하신 스키마 그대로 넣었습니다. 기존 앱(localStorage 버전)은
@@ -157,6 +159,19 @@ create table public.ingredients (
 
 create index ingredients_household_id_idx on public.ingredients (household_id);
 create index ingredients_category_id_idx on public.ingredients (category_id);
+
+-- 0021: 재료가 채워질(owned:true로 설정될) 때마다 한 줄씩 남기는 이력 — 장보기 화면의 "자주
+-- 채우시는데 지금 없어요" 선제 제안이 최근 90일 채움 횟수/평균 재구매 주기 계산에 쓴다. 이미
+-- owned=true인 상태에서 다시 채워도(중복) 유효한 구매 이력으로 보고 매번 기록한다.
+create table public.ingredient_fill_log (
+  id uuid primary key default gen_random_uuid(),
+  ingredient_id uuid not null references public.ingredients(id) on delete cascade,
+  household_id uuid not null references public.households(id) on delete cascade,
+  filled_at timestamptz not null default now()
+);
+
+create index ingredient_fill_log_household_id_idx on public.ingredient_fill_log (household_id);
+create index ingredient_fill_log_ingredient_id_idx on public.ingredient_fill_log (ingredient_id);
 
 
 -- ============================================================================
@@ -242,6 +257,7 @@ alter table public.households enable row level security;
 alter table public.household_members enable row level security;
 alter table public.categories enable row level security;
 alter table public.ingredients enable row level security;
+alter table public.ingredient_fill_log enable row level security;
 alter table public.tags enable row level security;
 alter table public.recipes enable row level security;
 alter table public.recipe_tags enable row level security;
@@ -313,6 +329,10 @@ create policy "categories_all_household_member" on public.categories
   with check (public.is_household_member(household_id));
 
 create policy "ingredients_all_household_member" on public.ingredients
+  for all using (public.is_household_member(household_id))
+  with check (public.is_household_member(household_id));
+
+create policy "ingredient_fill_log_all_household_member" on public.ingredient_fill_log
   for all using (public.is_household_member(household_id))
   with check (public.is_household_member(household_id));
 

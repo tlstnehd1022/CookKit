@@ -8,7 +8,7 @@ import { useHighlightIngredientIds, clearHighlightIngredientIds } from '../../da
 import type { Ingredient } from '../../data/types';
 
 export function IngredientsPage() {
-  const { ingredients, saveIngredient, deleteIngredient } = useIngredients();
+  const { ingredients, saveIngredient, markIngredientFilled, deleteIngredient } = useIngredients();
   const { categories } = useCategories();
   const { pantryStatus, setOwned } = usePantryStatus();
   const [editingDetailsId, setEditingDetailsId] = useState<string | null>(null);
@@ -200,7 +200,7 @@ export function IngredientsPage() {
         <AddIngredientModal
           onClose={() => setShowAddForm(false)}
           onSave={(ingredient) => {
-            saveIngredient(ingredient);
+            markIngredientFilled(ingredient);
             setShowAddForm(false);
           }}
         />
@@ -211,6 +211,14 @@ export function IngredientsPage() {
       {showCategoryManager && <CategoryManager onClose={() => setShowCategoryManager(false)} />}
     </div>
   );
+}
+
+/** 아직 한 번도 채워진 적 없으면(예전부터 있던 재료) null — "오늘 채움"/"n일 전 채움" 표시용. */
+function formatFilledBadge(lastFilledAt?: string): string | null {
+  if (!lastFilledAt) return null;
+  const days = Math.floor((Date.now() - new Date(lastFilledAt).getTime()) / (24 * 60 * 60 * 1000));
+  if (days <= 0) return '오늘 채움';
+  return `${days}일 전 채움`;
 }
 
 function IngredientRow({
@@ -231,6 +239,7 @@ function IngredientRow({
 }) {
   const hasPreference = Boolean(ingredient.preferredUnit || ingredient.preferredMethod);
   const expirationInfo = getExpirationInfo(ingredient.expirationDate);
+  const filledBadge = formatFilledBadge(ingredient.lastFilledAt);
   const rowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -249,6 +258,11 @@ function IngredientRow({
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {ingredient.name}
         </span>
+        {filledBadge && (
+          <span className="text-muted" style={{ fontSize: 11, flexShrink: 0 }}>
+            {filledBadge}
+          </span>
+        )}
         {expirationInfo && (
           <button
             className={`chip expiration-${expirationInfo.level}`}

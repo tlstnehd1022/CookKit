@@ -17,6 +17,10 @@ export interface Ingredient {
   owned: boolean;
   /** 유통기한(YYYY-MM-DD, 선택) — 없으면 배지/알림 대상에서 제외 */
   expirationDate?: string;
+  /** 마지막으로 owned가 false→true로 바뀐 시각(ISO) — 냉장고 화면의 "n일 전 채움" 표시와
+   * 장보기의 "자주 채우는 재료" 선제 제안 판단 근거로 쓰인다. false→false/true→true 전환에는
+   * 안 바뀜(supabaseAdapter.ts의 ingredients repository save()가 자동으로 갱신). */
+  lastFilledAt?: string;
 }
 
 export interface RecipeIngredient {

@@ -15,7 +15,7 @@ import { setActiveTab, useActiveTab, type Tab } from './data/activeTab';
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'recipes', label: '레시피', icon: '📖' },
   { id: 'shopping', label: '장보기', icon: '🛒' },
-  { id: 'ingredients', label: '재료', icon: '🧺' },
+  { id: 'ingredients', label: '냉장고', icon: '🧊' },
   { id: 'settings', label: '설정', icon: '⚙️' },
 ];
 

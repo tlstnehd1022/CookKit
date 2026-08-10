@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useIngredientsById, usePantryStatus, useRecipes } from '../../data/store';
 import { useShoppingSelection } from '../../data/shoppingSelection';
-import { ReceiptScanModal } from './ReceiptScanModal';
+import { ReceiptScanModal } from '../ingredients/ReceiptScanModal';
 
 type FilterMode = 'all' | 'need' | 'owned';
 

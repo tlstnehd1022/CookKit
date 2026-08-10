@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCategories, useIngredients, usePantryStatus, makeId } from '../../data/store';
 import { CategoryManager } from './CategoryManager';
+import { ReceiptScanModal } from './ReceiptScanModal';
 import { COMMON_UNITS } from '../../data/units';
 import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
 import { useHighlightIngredientIds, clearHighlightIngredientIds } from '../../data/highlightIngredients';
@@ -12,6 +13,7 @@ export function IngredientsPage() {
   const { pantryStatus, setOwned } = usePantryStatus();
   const [editingDetailsId, setEditingDetailsId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showReceiptScan, setShowReceiptScan] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const highlightIds = useHighlightIngredientIds();
@@ -140,15 +142,19 @@ export function IngredientsPage() {
   return (
     <div>
       <div className="row">
-        <h1>재료 관리</h1>
-        <div className="chip-row" style={{ marginTop: 0 }}>
-          <button className="btn small" onClick={() => setShowCategoryManager(true)}>
-            카테고리 관리
-          </button>
-          <button className="btn primary small" onClick={() => setShowAddForm(true)}>
-            + 재료 추가
-          </button>
-        </div>
+        <h1>냉장고</h1>
+        <button className="btn small" onClick={() => setShowCategoryManager(true)}>
+          카테고리 관리
+        </button>
+      </div>
+
+      <div className="row" style={{ gap: 8 }}>
+        <button className="btn primary" style={{ flex: 1 }} onClick={() => setShowReceiptScan(true)}>
+          📷 영수증으로 채우기
+        </button>
+        <button className="btn primary" style={{ flex: 1 }} onClick={() => setShowAddForm(true)}>
+          ➕ 직접 추가
+        </button>
       </div>
 
       {expiringSoon.length > 0 && (
@@ -199,6 +205,8 @@ export function IngredientsPage() {
           }}
         />
       )}
+
+      {showReceiptScan && <ReceiptScanModal onClose={() => setShowReceiptScan(false)} />}
 
       {showCategoryManager && <CategoryManager onClose={() => setShowCategoryManager(false)} />}
     </div>
@@ -487,7 +495,9 @@ function AddIngredientModal({
                 categoryId,
                 defaultBuyUnit: defaultBuyUnit.trim() || '1개',
                 allergens: [],
-                owned: false,
+                // "냉장고 채우기" 흐름의 두 액션 중 하나라 지금 보유 중인 것으로 바로 등록한다
+                // (예전엔 "재료 관리" 화면의 일반 등록 기능이라 owned:false가 기본이었음).
+                owned: true,
               })
             }
           >

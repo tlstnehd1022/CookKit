@@ -99,7 +99,7 @@ textarea {
 
 .app-main {
   flex: 1;
-  padding: 20px 20px 88px;
+  padding: 20px 20px 112px; /* 탭바가 96px로 커져서 하단 여유를 늘림 */
   overflow-y: auto;
 }
 
@@ -123,7 +123,7 @@ textarea {
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 76px;
+  bottom: 116px; /* 96px 탭바 위로 여유(핸드오프: 탭바 위 120px) */
   transform: translateX(-50%);
   background: var(--accent);
   color: var(--accent-contrast);
@@ -140,6 +140,7 @@ textarea {
 .app-nav {
   position: sticky;
   bottom: 0;
+  height: 96px;
   display: flex;
   border-top: 1px solid var(--border);
   background: var(--bg-card);
@@ -149,8 +150,9 @@ textarea {
   flex: 1;
   background: none;
   border: none;
-  padding: 10px 4px 12px;
-  font-size: 12px;
+  padding: 12px 4px 34px; /* 핸드오프: 하단 34px는 홈 인디케이터 여유 공간 */
+  font-size: 10.5px;
+  font-family: var(--font-body);
   color: var(--text-secondary);
   display: flex;
   flex-direction: column;
@@ -160,12 +162,29 @@ textarea {
 }
 
 .app-nav button .icon {
-  font-size: 20px;
+  position: relative;
+  display: flex;
 }
 
 .app-nav button.active {
   color: var(--accent);
   font-weight: 600;
+}
+
+.app-nav-badge {
+  position: absolute;
+  top: -6px;
+  right: -10px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
 }
 
 h1,
@@ -778,4 +797,359 @@ select:focus {
 .text-muted {
   color: var(--text-secondary);
   font-size: 13px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   홈 화면 (디자인 시스템 전면 교체) — src/features/home/HomePage.tsx
+   ══════════════════════════════════════════════════════════════════════ */
+
+.home-page {
+  padding-top: 12px; /* .app-main 기본 패딩 위에 약간의 여유(핸드오프 "상 64"에 맞춘 근사치) */
+}
+
+.home-greeting {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.home-greeting-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.home-greeting-title {
+  font-size: 28px;
+  margin: 4px 0 0;
+}
+
+.home-avatar-btn {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  overflow: hidden;
+  background: var(--chip-bg);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.home-avatar-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.home-search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 46px;
+  padding: 12px 18px;
+  margin-bottom: 22px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-soft);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.home-section {
+  margin-bottom: 26px;
+}
+
+.home-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.home-section-title {
+  font-size: 19px;
+  font-family: var(--font-heading);
+}
+
+.home-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.home-link-disabled {
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.home-chip-more {
+  background: none;
+  border: 1px dashed var(--border);
+}
+
+.home-recommend-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-card);
+  border: none;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft-hover);
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0;
+}
+
+.home-recommend-image {
+  position: relative;
+  height: 186px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--chip-bg));
+}
+
+.home-recommend-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.home-recommend-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+}
+
+.home-recommend-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-soft);
+}
+
+.home-recommend-body {
+  padding: 16px 18px 20px;
+}
+
+.home-recommend-kicker {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.home-recommend-title {
+  font-family: var(--font-heading);
+  font-size: 23px;
+  margin-bottom: 6px;
+}
+
+.home-recommend-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.home-recommend-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.home-week-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.home-week-cell {
+  flex: 0 0 auto;
+  width: 76px;
+  padding: 12px 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  text-align: center;
+}
+
+.home-week-cell.today {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-card));
+}
+
+.home-week-day {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.home-week-cell.today .home-week-day {
+  color: var(--accent);
+}
+
+.home-week-date {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  margin: 2px 0 6px;
+}
+
+.home-week-menu {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-height: 14px;
+}
+
+.home-expiring-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 13px 16px;
+  margin-bottom: 8px;
+}
+
+.home-expiring-thumb {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--chip-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.home-expiring-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.home-expiring-name {
+  font-size: 15px;
+}
+
+.home-expiring-days {
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+.home-expiring-pill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: color-mix(in srgb, var(--success) 20%, var(--chip-bg));
+  color: var(--success);
+  border-color: transparent;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   프로필 바텀시트 — src/features/settings/ProfileSheet.tsx
+   ══════════════════════════════════════════════════════════════════════ */
+
+.profile-sheet {
+  padding-bottom: 28px;
+}
+
+.profile-sheet-header {
+  margin-bottom: 14px;
+}
+
+.profile-sheet-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-heading);
+  font-size: 18px;
+}
+
+.profile-sheet-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profile-sheet-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-heading);
+  font-size: 17px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.btn-icon-plain {
+  background: none;
+  border: none;
+  padding: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+}
+
+.profile-sheet-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.profile-sheet-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 15px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.profile-sheet-menu-item span:first-of-type {
+  flex: 1;
+}
+
+.profile-sheet-menu-chevron {
+  color: var(--text-secondary);
+}
+
+.profile-sheet-menu-item.danger {
+  color: var(--danger);
+  border-bottom: none;
 }

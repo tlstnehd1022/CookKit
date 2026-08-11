@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useCategories, useIngredients, useRecipes, useTags, makeId, getCurrentHouseholdId } from '../../data/store';
 import { useSettings } from '../../data/settings';
-import { setActiveTab } from '../../data/activeTab';
+import { requestProfileSheet } from '../../data/profileSheet';
 // geminiClient는 이제 API 키가 필요 없는 순수 함수(프롬프트 생성)와 youtubeApiKey(범위 밖, 계속
 // 클라이언트에서 직접 씀)를 쓰는 fetchYoutubeVideoMeta만 남음 — 실제 AI 호출(대화/추출/이미지
 // 생성)은 aiProxy를 거쳐 서버로 감(Phase 4, API 키 Vault 전환).
@@ -791,7 +791,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           <div style={{ marginTop: 8 }}>
             <p style={{ color: 'var(--danger)', marginBottom: aiMissingApiKey ? 6 : 0 }}>{aiError}</p>
             {aiMissingApiKey && (
-              <button className="btn small" onClick={() => setActiveTab('settings')}>
+              <button className="btn small" onClick={() => requestProfileSheet()}>
                 설정으로 이동
               </button>
             )}
@@ -1135,7 +1135,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
             {imageError}
           </p>
           {imageMissingApiKey && (
-            <button className="btn small" onClick={() => setActiveTab('settings')}>
+            <button className="btn small" onClick={() => requestProfileSheet()}>
               설정으로 이동
             </button>
           )}

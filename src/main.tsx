@@ -10,7 +10,7 @@ const root = createRoot(document.getElementById('root')!)
 // 새로 연 창은 ?tab=/?highlight= 쿼리스트링으로 어떤 탭을 열고 어떤 재료를 강조할지 알려준다 —
 // 이 앱은 라우터가 없는 탭 기반 SPA라 URL 자체로 화면을 구분하지 않으므로, 시작 시 한 번
 // 읽어서 전역 store에 반영한다(activeTab.ts/highlightIngredients.ts).
-const VALID_TABS: Tab[] = ['recipes', 'shopping', 'ingredients', 'settings']
+const VALID_TABS: Tab[] = ['home', 'recipes', 'shopping', 'ingredients']
 function isTab(value: string | null): value is Tab {
   return Boolean(value) && VALID_TABS.includes(value as Tab)
 }

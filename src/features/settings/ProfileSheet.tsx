@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent } from 'react';
+import { ChevronLeft, X, User, Home, Settings, Tags, LogOut, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSettings } from '../../data/settings';
 import { useSession } from '../../data/session';
@@ -10,58 +11,95 @@ import { useNotificationSettings, isIosNotInstalled } from '../../data/pushNotif
 import { setAutoStartTimer, useAutoStartTimer } from '../../data/cookingModeSettings';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { getErrorMessage } from '../../lib/errorMessage';
+import { TagManager } from '../recipes/TagManager';
+import { CategoryManager } from '../ingredients/CategoryManager';
 
-// 예전엔 localStorage에 평문으로 저장하던 API 키를 Supabase Vault로 옮긴 뒤로 다시 안 보여주기
-// 위한 1회성 플래그 — settings.anthropicApiKey/geminiApiKey/youtubeApiKey에 값이 남아있는데 이
-// 플래그가 없으면 "옮길까요?" 배너를 보여준다(마이그레이션 완료/건너뛰기 둘 다 이 플래그를 세워서
-// 다시 안 뜨게 함).
 const API_KEY_MIGRATION_FLAG = 'cookkit:apiKeyMigrated';
 
-export function SettingsPage() {
-  const { settings, updateSettings } = useSettings();
-  const { user, logout } = useSession();
-  const { household, refresh: refreshHousehold } = useHousehold();
-  const { profile, updateDisplayName, updateAvatarFromFile, updateAvatarUrl } = useProfile();
-  const { theme, toggleTheme } = useTheme();
-  const anthropicKeyStatus = useApiKeyStatus('anthropic');
-  const geminiKeyStatus = useApiKeyStatus('gemini');
-  const youtubeKeyStatus = useApiKeyStatus('youtube');
-  const notificationSettings = useNotificationSettings();
-  const autoStartTimer = useAutoStartTimer();
+type Section = 'menu' | 'profile' | 'household' | 'app' | 'tags';
 
-  const [migrating, setMigrating] = useState(false);
-  const [migrationError, setMigrationError] = useState<string | null>(null);
-  const [migrationDone, setMigrationDone] = useState(
-    () => localStorage.getItem(API_KEY_MIGRATION_FLAG) === 'true',
+const MENU_ITEMS: { section: Section; icon: typeof User; label: string }[] = [
+  { section: 'profile', icon: User, label: '내 프로필' },
+  { section: 'household', icon: Home, label: '가구 설정' },
+  { section: 'app', icon: Settings, label: '앱 설정' },
+  { section: 'tags', icon: Tags, label: '태그·카테고리 관리' },
+];
+
+const SECTION_TITLE: Record<Exclude<Section, 'menu'>, string> = {
+  profile: '내 프로필',
+  household: '가구 설정',
+  app: '앱 설정',
+  tags: '태그·카테고리 관리',
+};
+
+/**
+ * 홈 화면 우상단 프로필 아이콘 → 바텀시트. 예전 SettingsPage.tsx의 내용을 4개 메뉴로 재분류했다
+ * (내 프로필 / 가구 설정 / 앱 설정 / 태그·카테고리 관리) — 로그아웃은 메뉴 목록에 바로 노출.
+ * 각 섹션은 기존 SettingsPage.tsx 로직/컴포넌트(InlineEditRow, TagManager, CategoryManager)를
+ * 최대한 그대로 재사용한다.
+ */
+export function ProfileSheet({ onClose }: { onClose: () => void }) {
+  const [section, setSection] = useState<Section>('menu');
+  const { user, logout } = useSession();
+  const { profile } = useProfile();
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-sheet profile-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="row profile-sheet-header">
+          {section === 'menu' ? (
+            <span className="profile-sheet-title">
+              {profile?.avatarUrl && <img src={profile.avatarUrl} alt="" className="profile-sheet-avatar" />}
+              {profile?.displayName || user?.email || '내 계정'}
+            </span>
+          ) : (
+            <button type="button" className="profile-sheet-back" onClick={() => setSection('menu')}>
+              <ChevronLeft size={20} strokeWidth={2.75} />
+              {SECTION_TITLE[section]}
+            </button>
+          )}
+          <button type="button" className="btn-icon-plain" onClick={onClose} aria-label="닫기">
+            <X size={20} strokeWidth={2.75} />
+          </button>
+        </div>
+
+        {section === 'menu' && (
+          <div className="profile-sheet-menu">
+            {MENU_ITEMS.map(({ section: s, icon: Icon, label }) => (
+              <button type="button" key={s} className="profile-sheet-menu-item" onClick={() => setSection(s)}>
+                <Icon size={19} strokeWidth={2.75} />
+                <span>{label}</span>
+                <ChevronRight size={16} strokeWidth={2.75} className="profile-sheet-menu-chevron" />
+              </button>
+            ))}
+            <button
+              type="button"
+              className="profile-sheet-menu-item danger"
+              onClick={() => {
+                if (confirm('로그아웃할까요?')) logout();
+              }}
+            >
+              <LogOut size={19} strokeWidth={2.75} />
+              <span>로그아웃</span>
+            </button>
+          </div>
+        )}
+
+        {section === 'profile' && <ProfileSection />}
+        {section === 'household' && <HouseholdSection />}
+        {section === 'app' && <AppSettingsSection />}
+        {section === 'tags' && <TagsCategoriesSection />}
+      </div>
+    </div>
   );
+}
+
+function ProfileSection() {
+  const { user } = useSession();
+  const { profile, updateDisplayName, updateAvatarFromFile, updateAvatarUrl } = useProfile();
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const showMigrationBanner = Boolean(
-    (settings.anthropicApiKey || settings.geminiApiKey || settings.youtubeApiKey) && !migrationDone,
-  );
-
-  async function runKeyMigration() {
-    setMigrating(true);
-    setMigrationError(null);
-    try {
-      if (settings.anthropicApiKey) await anthropicKeyStatus.saveKey(settings.anthropicApiKey);
-      if (settings.geminiApiKey) await geminiKeyStatus.saveKey(settings.geminiApiKey);
-      if (settings.youtubeApiKey) await youtubeKeyStatus.saveKey(settings.youtubeApiKey);
-      updateSettings({ anthropicApiKey: '', geminiApiKey: '', youtubeApiKey: '' });
-      localStorage.setItem(API_KEY_MIGRATION_FLAG, 'true');
-      setMigrationDone(true);
-    } catch (err) {
-      setMigrationError(getErrorMessage(err, '마이그레이션 중 오류가 발생했습니다.'));
-    } finally {
-      setMigrating(false);
-    }
-  }
-
-  function dismissKeyMigration() {
-    localStorage.setItem(API_KEY_MIGRATION_FLAG, 'true');
-    setMigrationDone(true);
-  }
 
   async function saveNickname(next: string) {
     await updateDisplayName(next);
@@ -97,6 +135,56 @@ export function SettingsPage() {
     }
   }
 
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: 'flex-start', gap: 10 }}>
+        {profile?.avatarUrl && (
+          <img
+            src={profile.avatarUrl}
+            alt=""
+            style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }}
+          />
+        )}
+        <p className="text-muted" style={{ margin: 0 }}>
+          {user?.email}로 로그인되어 있습니다.
+        </p>
+      </div>
+      <div className="row" style={{ justifyContent: 'flex-start', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+        <input
+          ref={avatarInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleAvatarFileChange}
+        />
+        <button className="btn" disabled={avatarUploading} onClick={() => avatarInputRef.current?.click()}>
+          {avatarUploading ? '업로드 중...' : '프로필 사진 변경'}
+        </button>
+        {user?.googleAvatarUrl && user.googleAvatarUrl !== profile?.avatarUrl && (
+          <button className="btn" disabled={avatarUploading} onClick={handleRevertToGoogleAvatar}>
+            구글 사진으로 되돌리기
+          </button>
+        )}
+      </div>
+      {avatarError && (
+        <p className="text-muted" style={{ color: 'var(--danger)', marginTop: 4 }}>
+          {avatarError}
+        </p>
+      )}
+      <InlineEditRow
+        label="닉네임"
+        value={profile?.displayName ?? ''}
+        placeholder="닉네임"
+        helperText="닉네임은 레시피 작성자 표시 등으로 같은 가구 구성원과 다른 가구 유저에게도 공개돼요."
+        onSave={saveNickname}
+      />
+    </div>
+  );
+}
+
+function HouseholdSection() {
+  const { household, refresh: refreshHousehold } = useHousehold();
+
   async function saveHouseholdName(next: string) {
     if (!household) return;
     const trimmed = next.trim();
@@ -107,9 +195,72 @@ export function SettingsPage() {
   }
 
   return (
-    <div>
-      <h1>설정</h1>
+    <div className="card">
+      {household ? (
+        <>
+          <InlineEditRow
+            label="가구 이름"
+            value={household.name}
+            placeholder="예: 김영희네"
+            helperText={
+              '가구 이름은 모든 구성원과 다른 가구 유저에게 동일하게 보여요. "우리집"이나 "장모님댁"처럼 ' +
+              '특정 사람 기준의 호칭보다는, "김영희네"처럼 누가 봐도 자연스러운 이름을 추천해요.'
+            }
+            onSave={saveHouseholdName}
+          />
+          <p className="text-muted" style={{ marginTop: 12 }}>
+            초대 코드: <strong>{household.inviteCode}</strong> (가족에게 공유해서 같이 쓰세요)
+          </p>
+        </>
+      ) : (
+        <p className="text-muted">가구 정보를 불러오는 중...</p>
+      )}
+    </div>
+  );
+}
 
+function AppSettingsSection() {
+  const { settings, updateSettings } = useSettings();
+  const { theme, toggleTheme } = useTheme();
+  const anthropicKeyStatus = useApiKeyStatus('anthropic');
+  const geminiKeyStatus = useApiKeyStatus('gemini');
+  const youtubeKeyStatus = useApiKeyStatus('youtube');
+  const notificationSettings = useNotificationSettings();
+  const autoStartTimer = useAutoStartTimer();
+
+  const [migrating, setMigrating] = useState(false);
+  const [migrationError, setMigrationError] = useState<string | null>(null);
+  const [migrationDone, setMigrationDone] = useState(
+    () => localStorage.getItem(API_KEY_MIGRATION_FLAG) === 'true',
+  );
+  const showMigrationBanner = Boolean(
+    (settings.anthropicApiKey || settings.geminiApiKey || settings.youtubeApiKey) && !migrationDone,
+  );
+
+  async function runKeyMigration() {
+    setMigrating(true);
+    setMigrationError(null);
+    try {
+      if (settings.anthropicApiKey) await anthropicKeyStatus.saveKey(settings.anthropicApiKey);
+      if (settings.geminiApiKey) await geminiKeyStatus.saveKey(settings.geminiApiKey);
+      if (settings.youtubeApiKey) await youtubeKeyStatus.saveKey(settings.youtubeApiKey);
+      updateSettings({ anthropicApiKey: '', geminiApiKey: '', youtubeApiKey: '' });
+      localStorage.setItem(API_KEY_MIGRATION_FLAG, 'true');
+      setMigrationDone(true);
+    } catch (err) {
+      setMigrationError(getErrorMessage(err, '마이그레이션 중 오류가 발생했습니다.'));
+    } finally {
+      setMigrating(false);
+    }
+  }
+
+  function dismissKeyMigration() {
+    localStorage.setItem(API_KEY_MIGRATION_FLAG, 'true');
+    setMigrationDone(true);
+  }
+
+  return (
+    <>
       <div className="section-title">화면 테마</div>
       <div className="card">
         <div className="row">
@@ -147,8 +298,8 @@ export function SettingsPage() {
         )}
         {isIosNotInstalled() && (
           <p className="text-muted" style={{ marginTop: 4 }}>
-            📱 iOS(아이폰/아이패드)에서는 Safari 공유 버튼 → "홈 화면에 추가"로 앱을 설치한
-            상태에서만 알림을 받을 수 있어요. 브라우저 탭 상태로는 알림이 오지 않아요.
+            📱 iOS(아이폰/아이패드)에서는 Safari 공유 버튼 → "홈 화면에 추가"로 앱을 설치한 상태에서만
+            알림을 받을 수 있어요. 브라우저 탭 상태로는 알림이 오지 않아요.
           </p>
         )}
         {notificationSettings.error && (
@@ -169,8 +320,8 @@ export function SettingsPage() {
           </button>
         </div>
         <p className="text-muted" style={{ marginTop: 8 }}>
-          켜두면 요리 모드에서 타이머가 있는 단계에 들어갈 때 말하거나 누르지 않아도 자동으로
-          타이머가 시작돼요.
+          켜두면 요리 모드에서 타이머가 있는 단계에 들어갈 때 말하거나 누르지 않아도 자동으로 타이머가
+          시작돼요.
         </p>
       </div>
 
@@ -191,9 +342,7 @@ export function SettingsPage() {
                 {migrating ? '옮기는 중...' : '안전하게 옮기기'}
               </button>
             </div>
-            {migrationError && (
-              <p style={{ marginTop: 8, color: 'var(--danger)' }}>⚠️ {migrationError}</p>
-            )}
+            {migrationError && <p style={{ marginTop: 8, color: 'var(--danger)' }}>⚠️ {migrationError}</p>}
           </div>
         </>
       )}
@@ -293,81 +442,29 @@ export function SettingsPage() {
           </div>
         </>
       )}
+    </>
+  );
+}
 
-      <div className="section-title">가구</div>
-      <div className="card">
-        {household ? (
-          <>
-            <InlineEditRow
-              label="가구 이름"
-              value={household.name}
-              placeholder="예: 김영희네"
-              helperText={
-                '가구 이름은 모든 구성원과 다른 가구 유저에게 동일하게 보여요. "우리집"이나 "장모님댁"처럼 ' +
-                '특정 사람 기준의 호칭보다는, "김영희네"처럼 누가 봐도 자연스러운 이름을 추천해요.'
-              }
-              onSave={saveHouseholdName}
-            />
-            <p className="text-muted" style={{ marginTop: 12 }}>
-              초대 코드: <strong>{household.inviteCode}</strong> (가족에게 공유해서 같이 쓰세요)
-            </p>
-          </>
-        ) : (
-          <p className="text-muted">가구 정보를 불러오는 중...</p>
-        )}
-      </div>
+function TagsCategoriesSection() {
+  const [showTagManager, setShowTagManager] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
 
-      <div className="section-title">계정</div>
-      <div className="card">
-        <div className="row" style={{ justifyContent: 'flex-start', gap: 10 }}>
-          {profile?.avatarUrl && (
-            <img
-              src={profile.avatarUrl}
-              alt=""
-              style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }}
-            />
-          )}
-          <p className="text-muted" style={{ margin: 0 }}>
-            {user?.email}로 로그인되어 있습니다.
-          </p>
-        </div>
-        <div className="row" style={{ justifyContent: 'flex-start', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-          <input
-            ref={avatarInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={handleAvatarFileChange}
-          />
-          <button
-            className="btn"
-            disabled={avatarUploading}
-            onClick={() => avatarInputRef.current?.click()}
-          >
-            {avatarUploading ? '업로드 중...' : '프로필 사진 변경'}
-          </button>
-          {user?.googleAvatarUrl && user.googleAvatarUrl !== profile?.avatarUrl && (
-            <button className="btn" disabled={avatarUploading} onClick={handleRevertToGoogleAvatar}>
-              구글 사진으로 되돌리기
-            </button>
-          )}
-        </div>
-        {avatarError && (
-          <p className="text-muted" style={{ color: 'var(--danger)', marginTop: 4 }}>
-            {avatarError}
-          </p>
-        )}
-        <InlineEditRow
-          label="닉네임"
-          value={profile?.displayName ?? ''}
-          placeholder="닉네임"
-          helperText="닉네임은 레시피 작성자 표시 등으로 같은 가구 구성원과 다른 가구 유저에게도 공개돼요."
-          onSave={saveNickname}
-        />
-        <button className="btn danger" style={{ marginTop: 12 }} onClick={logout}>
-          로그아웃
+  return (
+    <div className="card">
+      <p className="text-muted" style={{ marginTop: 0 }}>
+        레시피 태그(요리 스타일/국가·장르)와 재료 카테고리를 관리해요.
+      </p>
+      <div className="row" style={{ justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+        <button className="btn" onClick={() => setShowTagManager(true)}>
+          태그 관리
+        </button>
+        <button className="btn" onClick={() => setShowCategoryManager(true)}>
+          카테고리 관리
         </button>
       </div>
+      {showTagManager && <TagManager onClose={() => setShowTagManager(false)} />}
+      {showCategoryManager && <CategoryManager onClose={() => setShowCategoryManager(false)} />}
     </div>
   );
 }
@@ -375,8 +472,8 @@ export function SettingsPage() {
 /**
  * "라벨: 값  [변경]" 형태로 보여주다가, [변경]을 누르면 그 자리가 입력창 + [취소]/[저장]으로
  * 바뀌는 인라인 편집 행. API 키 입력 폼처럼 입력창+저장 버튼+상태 문구를 항상 늘어놓는 대신,
- * 평소엔 값만 조용히 보여주고 편집이 필요할 때만 입력 UI가 나타나게 해서 설정 화면이 덜
- * 번잡해 보이게 한다.
+ * 평소엔 값만 조용히 보여주고 편집이 필요할 때만 입력 UI가 나타나게 해서 화면이 덜 번잡해 보이게
+ * 한다.
  */
 function InlineEditRow({
   label,
@@ -455,11 +552,7 @@ function InlineEditRow({
           {helperText}
         </p>
       )}
-      {error && (
-        <p style={{ marginTop: 4, color: 'var(--danger)' }}>
-          ⚠️ {error}
-        </p>
-      )}
+      {error && <p style={{ marginTop: 4, color: 'var(--danger)' }}>⚠️ {error}</p>}
     </div>
   );
 }

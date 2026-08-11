@@ -1,5 +1,6 @@
-import { useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { useIngredientsById, useRecipes } from './store';
 
 // "장보기에 담은 레시피" 목록. household 공유 테이블(shopping_selection)이라 가족 중
 // 누가 담아도 서로에게 바로 보인다. App.tsx가 로그인+household 확정 후
@@ -67,4 +68,25 @@ export function useShoppingSelection() {
   }
 
   return { selectedRecipeIds, toggle, isSelected };
+}
+
+/** 탭바의 장보기 배지용 — 담긴 레시피들의 재료를 집계해서(ShoppingListPage.tsx와 같은 방식)
+ * 아직 안 산(owned=false) 항목 개수를 센다. */
+export function useShoppingNeededCount(): number {
+  const { selectedRecipeIds } = useShoppingSelection();
+  const { recipes } = useRecipes();
+  const ingredientsById = useIngredientsById();
+
+  return useMemo(() => {
+    const needed = new Set<string>();
+    const selected = recipes.filter((recipe) => selectedRecipeIds.includes(recipe.id));
+    for (const recipe of selected) {
+      for (const item of recipe.ingredients) {
+        if (!ingredientsById.get(item.ingredientId)?.owned) {
+          needed.add(`${item.ingredientId}__${item.unit}`);
+        }
+      }
+    }
+    return needed.size;
+  }, [recipes, selectedRecipeIds, ingredientsById]);
 }

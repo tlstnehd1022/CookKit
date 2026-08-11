@@ -5,7 +5,7 @@ import { extractReceiptItems, ApiProxyError } from '../../lib/aiProxy';
 import type { ReceiptItem } from '../../lib/geminiClient';
 import { resizeImageForUpload } from '../../lib/imageResize';
 import { getErrorMessage } from '../../lib/errorMessage';
-import { setActiveTab } from '../../data/activeTab';
+import { requestProfileSheet } from '../../data/profileSheet';
 import type { Category } from '../../data/types';
 
 const NEW_CATEGORY_PREFIX = '__new__:';
@@ -232,7 +232,7 @@ export function ReceiptScanModal({ onClose }: { onClose: () => void }) {
               <div style={{ marginTop: 10 }}>
                 <p style={{ color: 'var(--danger)' }}>{error}</p>
                 {missingApiKey && (
-                  <button className="btn small" onClick={() => setActiveTab('settings')}>
+                  <button className="btn small" onClick={() => requestProfileSheet()}>
                     설정으로 이동
                   </button>
                 )}

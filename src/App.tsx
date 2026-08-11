@@ -1,22 +1,27 @@
 import { useEffect, useState } from 'react';
+import { House, BookOpen, Refrigerator, ShoppingCart } from 'lucide-react';
 import { ShoppingListPage } from './features/shopping-list/ShoppingListPage';
 import { RecipesFeature } from './features/recipes/RecipesFeature';
 import { IngredientsPage } from './features/ingredients/IngredientsPage';
-import { SettingsPage } from './features/settings/SettingsPage';
+import { HomePage } from './features/home/HomePage';
 import { LoginPage } from './features/auth/LoginPage';
 import { HouseholdOnboarding } from './features/auth/HouseholdOnboarding';
 import { useSession } from './data/session';
 import { useHousehold } from './data/household';
 import { initializeDataLayer, resetDataLayer, useDataLayerLoading } from './data/store';
-import { initializeShoppingSelection, resetShoppingSelection } from './data/shoppingSelection';
+import {
+  initializeShoppingSelection,
+  resetShoppingSelection,
+  useShoppingNeededCount,
+} from './data/shoppingSelection';
 import { useImageGenerationCompletionMessage, useImageGenerationStatus } from './data/imageGenerationStatus';
 import { setActiveTab, useActiveTab, type Tab } from './data/activeTab';
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'recipes', label: '레시피', icon: '📖' },
-  { id: 'shopping', label: '장보기', icon: '🛒' },
-  { id: 'ingredients', label: '냉장고', icon: '🧊' },
-  { id: 'settings', label: '설정', icon: '⚙️' },
+const TABS: { id: Tab; label: string; icon: typeof House }[] = [
+  { id: 'home', label: '홈', icon: House },
+  { id: 'recipes', label: '레시피', icon: BookOpen },
+  { id: 'ingredients', label: '냉장고', icon: Refrigerator },
+  { id: 'shopping', label: '장보기', icon: ShoppingCart },
 ];
 
 function App() {
@@ -27,6 +32,7 @@ function App() {
   const imageGenStatus = useImageGenerationStatus();
   const imageGenCompletionMessage = useImageGenerationCompletionMessage();
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
+  const shoppingNeededCount = useShoppingNeededCount();
 
   useEffect(() => {
     if (!user) {
@@ -91,6 +97,9 @@ function App() {
             같이 마운트해두고 안 보이는 탭만 hidden으로 화면에서만 감춘다. 각 탭은 이미 로드된
             공유 store를 구독만 하므로(추가 네트워크 요청 없음) 동시에 마운트해둬도 비용이 거의
             없다. */}
+        <div hidden={tab !== 'home'}>
+          <HomePage />
+        </div>
         <div hidden={tab !== 'recipes'}>
           <RecipesFeature />
         </div>
@@ -100,17 +109,22 @@ function App() {
         <div hidden={tab !== 'ingredients'}>
           <IngredientsPage />
         </div>
-        <div hidden={tab !== 'settings'}>
-          <SettingsPage />
-        </div>
       </main>
       <nav className="app-nav">
-        {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setActiveTab(t.id)}>
-            <span className="icon">{t.icon}</span>
-            <span>{t.label}</span>
-          </button>
-        ))}
+        {TABS.map((t) => {
+          const Icon = t.icon;
+          return (
+            <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setActiveTab(t.id)}>
+              <span className="icon">
+                <Icon size={22} strokeWidth={2.75} />
+                {t.id === 'shopping' && shoppingNeededCount > 0 && (
+                  <span className="app-nav-badge">{shoppingNeededCount > 99 ? '99+' : shoppingNeededCount}</span>
+                )}
+              </span>
+              <span>{t.label}</span>
+            </button>
+          );
+        })}
       </nav>
       {imageGenCompletionMessage && <div className="toast">{imageGenCompletionMessage}</div>}
     </>

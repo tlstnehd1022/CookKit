@@ -555,3 +555,23 @@ create policy "cooking_log_update_own" on public.cooking_log
 
 create policy "cooking_log_delete_own" on public.cooking_log
   for delete using (user_id = auth.uid());
+
+-- ---- meal_plans (0022) — 주간 일정(저녁 메뉴 계획) -------------------------------------------
+-- household 공유. 지금은 저녁 한 끼만 관리(아침/점심 구분 없음) — 나중에 meal_type을 추가할 수
+-- 있게 (household_id, date) 유니크로 하루 한 행만 허용한다.
+create table public.meal_plans (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references public.households(id) on delete cascade,
+  date date not null,
+  recipe_id uuid not null references public.recipes(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (household_id, date)
+);
+
+create index meal_plans_household_id_idx on public.meal_plans (household_id);
+
+alter table public.meal_plans enable row level security;
+
+create policy "meal_plans_all_household_member" on public.meal_plans
+  for all using (public.is_household_member(household_id))
+  with check (public.is_household_member(household_id));

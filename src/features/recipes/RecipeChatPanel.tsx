@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSettings } from '../../data/settings';
-import { setActiveTab } from '../../data/activeTab';
+import { requestProfileSheet } from '../../data/profileSheet';
 import * as aiProxy from '../../lib/aiProxy';
 import { ApiProxyError } from '../../lib/aiProxy';
 import type { ChatTurn, ExistingContext } from '../../lib/aiChat';
@@ -211,7 +211,7 @@ export function RecipeChatPanel({
         <div style={{ marginBottom: 8 }}>
           <p style={{ color: 'var(--danger)', marginBottom: missingApiKey ? 6 : 0 }}>{error}</p>
           {missingApiKey && (
-            <button className="btn small" onClick={() => setActiveTab('settings')}>
+            <button className="btn small" onClick={() => requestProfileSheet()}>
               설정으로 이동
             </button>
           )}

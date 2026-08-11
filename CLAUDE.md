@@ -189,6 +189,68 @@
     (`markIngredientFilled`와 동일 경로)하는 쪽으로 판단해서 진행. 데이터가 쌓여야 의미 있는
     기능이라 실제 제안이 뜨는지는 이번 배치에서 확인하지 못함 — 몇 주간 실사용해서 재료별 채움
     이력이 쌓인 뒤에 확인 필요.
+- **22차 확장 진행 중 — 디자인 시스템 전면 교체(Claude Design 핸드오프)**: Claude Design으로
+  만든 새 디자인(`CookKit mobile app prototype/design_handoff_cookkit_home_plan/`, organic
+  디자인 시스템 — 크림 배경 + 테라코타/세이지 팔레트, 제목 Jua/본문 Gowun Dodum)을 홈 화면
+  추가 정도가 아니라 **앱 전체 디자인 시스템 교체**로 적용하는 작업. 1단계(토큰 교체)는 사용자
+  확인까지 마쳤고, 2~4단계(탭 구조/홈 화면/프로필 진입)까지 완료. 5단계(주간 일정 화면 자체)는
+  아직 미착수.
+  - **토큰**: `src/index.css`의 색상/폰트/radius/그림자/간격 값을 전부 교체(변수 이름은
+    `--bg-page`/`--accent`/`--border` 등 기존 이름 유지, 값만 교체 — 이름을 바꾸면 참조하는
+    곳을 전부 고쳐야 해서). `--danger`는 핸드오프 팔레트에 없는 역할이라 새로 설계(#a8382a
+    라이트 / #e2685a 다크), `--success`는 세이지(accent-2-600), `--warning`은 앰버색이 없어
+    테라코타 진한 톤(accent-700)을 재사용. 다크모드는 핸드오프에 값이 없어 직접 설계 — 단순
+    반전 대신 핸드오프 자체의 neutral-900(따뜻한 다크브라운)을 재사용하고, accent/accent-2는
+    라이트보다 밝은 램프 단계로, 테두리는 밝은색 저투명도 hairline으로 처리(기존 `.card` 등에
+    이미 `border: 1px solid var(--border)`가 있어서 구조 변경 없이 값만 바꿔도 적용됨), 본문
+    텍스트 대비는 전부 WCAG AA(4.5:1) 이상 확보. 버튼은 핸드오프의 "small controls go pill"
+    규칙대로 전부 pill(999px)로 바꿨지만, 여러 줄 textarea/좁은 숫자 입력칸까지 pill로 만들면
+    어색해서 `.field input`/`select`는 카드 radius(`--radius-sm`, 8px)로 남김(핸드오프와의
+    의도적 차이). 폰트는 이번 단계에서 패밀리 교체(Jua/Gowun Dodum) + 화면 제목(`h1`) 28px만
+    반영하고, 카드 제목/섹션 제목 등 세부 크기 재조정은 실제 그 컴포넌트를 만들 때(2~5단계)
+    화면별로 맞추기로 하고 미룸(한 번에 다 바꾸면 기존 그리드/칩 레이아웃이 깨질 위험).
+  - **탭 구조**: 레시피/장보기/냉장고/설정(4탭) → **홈/레시피/냉장고/장보기**(4탭)로 교체,
+    설정 탭은 삭제하고 홈 우상단 프로필 아이콘 → 바텀시트로 이동. 핸드오프는 일정 탭을 포함한
+    5탭을 제안했지만, 식단 계획은 사용 빈도가 낮다고 판단해 탭에 넣지 않고 홈 화면 안의
+    "이번 주 일정" 스트립 → push 방식으로 진입하는 구조로 축소(`src/data/activeTab.ts`의
+    `Tab` 타입, 기본값 `'home'`).
+  - **"설정으로 이동" 신호 체계**: 설정 탭이 없어지면서, 앱 곳곳의 "API 키가 없어요, 설정으로
+    이동" 버튼들(`ReceiptScanModal.tsx`/`RecipeChatPanel.tsx`/`RecipeEditor.tsx`)이 갈 곳이
+    없어짐 — `src/data/profileSheet.ts`(activeTab.ts와 같은 `useSyncExternalStore` 패턴)를
+    추가해서 `requestProfileSheet()`가 홈 탭으로 이동시키고 "바텀시트를 열어달라"는 신호를
+    `HomePage`에 전달, `HomePage`가 그 신호를 받아 `ProfileSheet`를 연다. 홈 검색 필드도 같은
+    패턴(`src/data/recipeSearchFocus.ts`)으로 레시피 탭으로 이동시킨다(단, 실제 검색창 자동
+    포커스까지는 아직 안 붙임 — 탭 이동만 확인됨).
+  - **프로필 바텀시트**(`src/features/settings/ProfileSheet.tsx`, 신규): 예전
+    `SettingsPage.tsx`(삭제됨)의 내용을 내 프로필/가구 설정/앱 설정/태그·카테고리 관리 4개
+    메뉴로 재분류 + 로그아웃은 메뉴 목록에 바로 노출. 각 섹션은 기존 로직을 거의 그대로
+    재사용(`InlineEditRow`도 이 파일로 이동), "태그·카테고리 관리"는 새로 만들지 않고 기존
+    `TagManager`/`CategoryManager` 모달을 그대로 여는 버튼 2개로 구성(레시피 탭/냉장고 탭의
+    기존 진입점은 그대로 남겨둠 — 두 곳 다 유효).
+  - **홈 화면**(`src/features/home/HomePage.tsx`, 신규): 인사 행 + 프로필 아바타(→ 바텀시트),
+    검색 필드(→ 레시피 탭), 냉장고 보유 재료 칩(→ 냉장고 탭), 오늘의 추천 카드(보유 재료
+    매칭률이 가장 높은 레시피 하나 — `src/lib/recipeRecommendation.ts`의 `pickTodayRecommendation`,
+    복잡한 알고리즘 없이 단순 비율 비교), 이번 주 일정 스트립, 유통기한 임박 재료 목록(각 행에
+    그 재료를 쓰는 레시피로 바로 가는 "레시피" 배지 —
+    `pickBestRecipeUsingIngredient`). 홈은 자체적으로 로컬 push 스택을 가지고 있어서
+    (`RecipesFeature.tsx`와 같은 패턴) 추천 카드나 유통기한 배지를 누르면 탭 전환 없이 홈 위에
+    `RecipeDetailPage`/`RecipeEditor`가 그대로 뜨고, 뒤로가기하면 다시 홈으로 돌아온다(핸드오프
+    "상세의 뒤로 버튼은 직전 탭으로 복귀" 요구사항 그대로).
+  - **주간 일정 데이터 모델만 선반영**(`0022_meal_plans.sql`): `meal_plans(id, household_id,
+    date, recipe_id)` — household 공유, 지금은 저녁 한 끼만 관리(`(household_id, date)`
+    유니크, 나중에 `meal_type`을 추가할 수 있게 여지만 남김). 홈 화면의 "이번 주 일정" 스트립이
+    이 데이터를 읽어야 해서(화면 자체는 5단계지만 데이터 없이는 홈을 완성할 수 없어서) 조회
+    함수(`src/data/mealPlans.ts`의 `fetchMealPlans`)와 쓰기 함수(`setMealPlan`/`clearMealPlan`)
+    를 먼저 만들어둠 — 실제 배치 UI(요일 선택, 이어쓰기 안내 등)는 아직 없어서 지금은 항상 빈
+    상태로 보임. 홈의 "전체 보기"/요일 칸 탭은 아직 아무 데도 연결 안 함(5단계에서 실제 화면
+    연결 예정, 코드에 `TODO` 주석으로 표시).
+  - **탭바**: lucide-react 아이콘 도입(이 프로젝트 첫 사용 — house/book-open/refrigerator/
+    shopping-cart, stroke-width 2.75), 높이 96px로 확대(핸드오프 규격), 장보기 탭에 "아직
+    안 산 재료 개수" 배지 추가(`useShoppingNeededCount`, `src/data/shoppingSelection.ts`).
+  - **실기기/수동 테스트 필요**: 로그인 화면(라이트/다크)만 Playwright로 직접 스크린샷
+    확인함(콘솔 에러 없음, 폰트/색상 정상 렌더링 확인) — Supabase 실제 계정 로그인이 필요한
+    홈/탭바/프로필 바텀시트/각 화면의 라이트·다크 대비는 사용자가 직접 확인 필요(프로덕션
+    DB에 테스트 계정을 만들지 않기 위해 로그인 이후 화면은 검증하지 못함).
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)

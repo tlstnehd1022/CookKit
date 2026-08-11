@@ -79,8 +79,9 @@ export async function saveImageFromUrl(
   householdId: string,
   recipeId: string,
   kind: ImageKind,
+  headers?: HeadersInit,
 ): Promise<string> {
-  const res = await fetch(sourceUrl);
+  const res = await fetch(sourceUrl, headers ? { headers } : undefined);
   if (!res.ok) throw new Error('이미지를 가져오지 못했습니다.');
   const blob = await res.blob();
   const newPath = buildImagePath(householdId, recipeId, kind);

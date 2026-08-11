@@ -37,11 +37,16 @@ export function useProfile() {
       return;
     }
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('id, display_name, email, avatar_url')
       .eq('id', user.id)
       .maybeSingle();
+    if (error) {
+      console.error('profiles 조회 실패:', error);
+      setLoading(false);
+      return; // profile을 null로 덮어쓰지 않는다
+    }
     setProfile(
       data
         ? { id: data.id, displayName: data.display_name ?? '', email: data.email, avatarUrl: data.avatar_url }

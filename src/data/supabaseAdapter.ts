@@ -166,15 +166,27 @@ export function createRecipesRepository(userId: string, householdId: string): Cr
     });
     if (upsertError) throw upsertError;
 
-    // recipe_tags 동기화(삭제 후 재삽입 — 이 규모에서는 diff 계산보다 단순하고 충분히 빠름)
-    const { error: deleteTagsError } = await supabase.from('recipe_tags').delete().eq('recipe_id', recipe.id);
-    if (deleteTagsError) throw deleteTagsError;
+    // recipe_tags 동기화 — 재삽입을 먼저 하고 삭제를 나중에 해서, 재삽입이 실패해도(네트워크
+    // 순단 등) 기존 태그가 그대로 남아있게 한다("삭제 먼저"였으면 삭제만 성공하고 재삽입이
+    // 실패할 경우 태그가 전부 사라진 채로 남을 수 있었음). recipe_tags는 (recipe_id, tag_id)
+    // 복합 PRIMARY KEY라 upsert의 onConflict가 그대로 동작한다.
     if (recipe.tagIds.length > 0) {
-      const { error: insertTagsError } = await supabase
+      const { error: upsertTagsError } = await supabase
         .from('recipe_tags')
-        .insert(recipe.tagIds.map((tagId) => ({ recipe_id: recipe.id, tag_id: tagId })));
-      if (insertTagsError) throw insertTagsError;
+        .upsert(
+          recipe.tagIds.map((tagId) => ({ recipe_id: recipe.id, tag_id: tagId })),
+          { onConflict: 'recipe_id,tag_id', ignoreDuplicates: true },
+        );
+      if (upsertTagsError) throw upsertTagsError;
     }
+    const { error: deleteTagsError } = recipe.tagIds.length > 0
+      ? await supabase
+          .from('recipe_tags')
+          .delete()
+          .eq('recipe_id', recipe.id)
+          .not('tag_id', 'in', `(${recipe.tagIds.join(',')})`)
+      : await supabase.from('recipe_tags').delete().eq('recipe_id', recipe.id);
+    if (deleteTagsError) throw deleteTagsError;
   }
 
   return {

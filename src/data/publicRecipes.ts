@@ -1,25 +1,14 @@
 import { supabase } from '../lib/supabaseClient';
 import { fetchHouseholdMemberIds } from './household';
 import { rowToRecipe } from './supabaseAdapter';
+import { chunk, IN_QUERY_CHUNK_SIZE } from '../lib/chunk';
 import type { Recipe } from './types';
-
-// PostgREST의 .in()은 값들을 GET 요청 쿼리스트링에 그대로 나열하는데, id 개수가 많아지면
-// (예: 공개 레시피가 수백 개로 늘어나 참조하는 재료 id가 수백~수천 개가 되면) URL이 너무 길어져
-// "Bad Request"로 거부된다(둘러보기 화면에서 실제로 겪은 문제). 한 번에 넘길 개수를 제한해
-// 여러 번 나눠 조회한 뒤 합친다.
-const IN_QUERY_CHUNK_SIZE = 150;
 
 // scripts/seed-recipes-from-public-data.ts가 공공데이터(식약처) 기반 레시피를 넣을 때 쓰는
 // 시스템 계정(0011 마이그레이션에서 SQL로 생성, 정상 가입 플로우를 거치지 않아 프로필 정보가
 // 없다) — 둘러보기 화면에서 이 계정의 레시피는 "진짜 사용자" 레시피와 섞지 않고 별도
 // "CookKit 추천 레시피" 섹션으로 분리해서 보여준다.
 export const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000001';
-
-function chunk<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  return chunks;
-}
 
 // "둘러보기" 화면 전용 — 다른 household의 전체공개(visibility='public') 레시피를 조회한다.
 // 우리 가구원의 public 레시피는 이미 "우리집 레시피" 목록에 나오므로 여기서는 제외한다.

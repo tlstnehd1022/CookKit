@@ -1,15 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
+import { chunk, IN_QUERY_CHUNK_SIZE } from '../lib/chunk';
 import type { CookingLogStepTiming } from './types';
-
-// recipeLikes.ts/publicRecipes.ts와 같은 이유로 .in()에 넘기는 recipe id 배열을 청크로 나눈다
-// (URL 길이 제한 회피).
-const IN_QUERY_CHUNK_SIZE = 150;
-
-function chunk<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  return chunks;
-}
 
 export interface CookingStats {
   count: number;

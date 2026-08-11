@@ -1,10 +1,13 @@
 import { getSupabaseAdmin } from './supabaseAdmin.js';
 
-// AI 호출(대화/이미지/추출)에 실제로 쓰이는 건 anthropic/gemini뿐이지만, 이 키 저장소 자체는
-// YouTube Data API 키(0015)도 같은 방식으로 보관한다 — provider 선택지 3개는 "저장 가능한
-// 키 종류"를 뜻할 뿐, "AI 제공자 선택"(settings.aiProvider)과는 다른 개념이다.
+// src/data/apiKeys.ts에도 이 타입이 동일하게 정의되어 있다(중복) — 하지만 그쪽을 import type으로
+// 가져오면 그 파일의 다른 import(react, supabaseClient 등)까지 타입체커가 같이 훑게 되어
+// api/ 서버리스 함수 번들링 경계를 넘게 된다(로컬에서 검증하기 어려운 위험 — api/는 tsc -b
+// 대상에 아예 포함되지 않아 이런 문제가 로컬 빌드로는 안 잡힌다). 그래서 통합하지 않고 각자
+// 독립적으로 정의된 상태를 유지한다 — 값 3개짜리 문자열 유니온이라 나중에 한쪽만 바뀌는 실수를
+// 하지 않도록 값을 바꿀 땐 두 파일 다 확인할 것.
 export type ApiKeyProvider = 'anthropic' | 'gemini' | 'youtube';
-export const VALID_API_KEY_PROVIDERS: ApiKeyProvider[] = ['anthropic', 'gemini', 'youtube'];
+const VALID_API_KEY_PROVIDERS: ApiKeyProvider[] = ['anthropic', 'gemini', 'youtube'];
 
 export function isValidApiKeyProvider(value: unknown): value is ApiKeyProvider {
   return typeof value === 'string' && VALID_API_KEY_PROVIDERS.includes(value as ApiKeyProvider);

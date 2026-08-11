@@ -94,7 +94,10 @@
       "Bash(git ls-files *)",
       "Bash(wc -l /tmp_filelist.txt)",
       "Bash(grep -n \"generativelanguage.googleapis.com\\\\|\\\\${model}\\\\|model}\\\\`\" /c/projects/CookKit/src/lib/geminiClient.ts)",
-      "Bash(npx oxlint *)"
+      "Bash(npx oxlint *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(grep -rn \"from '\\\\.\\\\./\\\\.\\\\./src\" api/_lib/*.ts api/*.ts)",
+      "Bash(git restore *)"
     ],
     "deny": [
       "Bash(rm -rf *)",

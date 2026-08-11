@@ -228,5 +228,9 @@ function parseRecipeResponse(response: Anthropic.Message): ExtractedRecipe {
   if (!lastTextBlock) {
     throw new Error('AI 응답에서 텍스트를 찾을 수 없습니다.');
   }
-  return JSON.parse(lastTextBlock.text) as ExtractedRecipe;
+  try {
+    return JSON.parse(lastTextBlock.text) as ExtractedRecipe;
+  } catch {
+    throw new Error('AI가 유효한 레시피 형식으로 응답하지 않았어요. 다시 시도해주세요.');
+  }
 }

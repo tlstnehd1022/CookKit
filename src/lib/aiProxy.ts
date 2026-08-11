@@ -18,6 +18,18 @@ export class ApiProxyError extends Error {
   }
 }
 
+/** 로그인 세션의 access token을 Authorization 헤더로 반환한다 — POST가 아닌 GET 프록시
+ * 호출(youtube-transcript, youtube-thumbnail)도 이 헤더를 그대로 fetch에 실어 보낸다. */
+export async function getAuthHeader(): Promise<Record<string, string>> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) {
+    throw new ApiProxyError('unauthorized', '로그인이 필요합니다.');
+  }
+  return { Authorization: `Bearer ${session.access_token}` };
+}
+
 async function callAiApi<T>(path: string, body: unknown): Promise<T> {
   const {
     data: { session },

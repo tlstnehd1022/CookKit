@@ -102,22 +102,6 @@ export interface CookingLogStepTiming {
   hadTimer: boolean;
 }
 
-/** 요리 완료 기록 — household 공유(supabase/migrations/0018_cooking_log.sql, cooking_log 테이블).
- * src/data/cookingLog.ts에서 조회/생성한다. */
-export interface CookingLog {
-  id: string;
-  recipeId: string;
-  householdId: string;
-  userId: string;
-  /** ISO 타임스탬프 */
-  cookedAt: string;
-  memo?: string;
-  /** 요리 모드를 거쳐 기록된 경우에만 존재(0019) */
-  stepTimings?: CookingLogStepTiming[];
-  /** 복합 요리(여러 레시피 동시 진행) 세션에서 생성된 기록인지(0019) — 조정 제안 계산에서 제외 */
-  isMultiRecipe?: boolean;
-}
-
 // 향후 확장 대비 스텁 — 아직 UI/저장 로직 미구현
 export interface MenuSet {
   id: string;
@@ -127,12 +111,3 @@ export interface MenuSet {
   plannedDate?: string;
 }
 
-export interface BackupSnapshot {
-  version: 1;
-  exportedAt: string;
-  recipes: Recipe[];
-  ingredients: Ingredient[];
-  tags: Tag[];
-  categories: Category[];
-  pantryStatus: PantryStatus;
-}

@@ -7,6 +7,7 @@ import {
   YoutubeTranscriptTooManyRequestError,
   YoutubeTranscriptVideoUnavailableError,
 } from 'youtube-transcript';
+import { requireUser, AuthError } from './_lib/auth.js';
 
 // Supadata 폴백이 긴 영상은 작업(job) 방식으로 처리하고 폴링이 필요할 수 있어 기본 실행시간보다 늘려둔다.
 // Vercel Hobby 플랜에서 60초를 넘기려면 프로젝트에서 Fluid Compute가 켜져 있어야 한다.
@@ -103,9 +104,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    await requireUser(req);
     const result = await fetchOwnCaptions(url);
     res.status(200).json(result);
   } catch (err) {
+    if (err instanceof AuthError) {
+      res.status(401).json({ error: 'unauthorized', message: err.message });
+      return;
+    }
     if (err instanceof YoutubeTranscriptVideoUnavailableError) {
       res
         .status(404)

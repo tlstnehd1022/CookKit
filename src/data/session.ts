@@ -11,11 +11,6 @@ export interface SessionUser {
   googleAvatarUrl?: string;
 }
 
-// 데이터 레이어(repos.ts)가 아직 이 고정 값을 네임스페이스로 쓰고 있음 — 재료/레시피 등을
-// 실제 로그인 사용자별로 나누는 작업(Phase 3, Supabase 데이터 레이어 전환)이 끝나기 전까지는
-// 어떤 구글 계정으로 로그인하든 예전과 같은 로컬 데이터를 그대로 보게 된다(의도된 과도기 상태).
-export const CURRENT_USER_ID = 'user-manual';
-
 function toSessionUser(session: Session | null): SessionUser | null {
   const user = session?.user;
   if (!user) return null;

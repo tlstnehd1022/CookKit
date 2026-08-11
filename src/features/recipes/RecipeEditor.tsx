@@ -283,7 +283,8 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       if (useYoutubeThumbnail && pendingYoutubeVideoId && householdId) {
         try {
           const proxyUrl = `/api/youtube-thumbnail?videoId=${encodeURIComponent(pendingYoutubeVideoId)}`;
-          const path = await saveImageFromUrl(proxyUrl, householdId, stableRecipeId, 'final');
+          const authHeaders = await aiProxy.getAuthHeader();
+          const path = await saveImageFromUrl(proxyUrl, householdId, stableRecipeId, 'final', authHeaders);
           setFinalImageId(path);
         } catch (err) {
           // 완성 사진 저장 실패는 레시피 반영 자체를 막을 정도는 아니라 경고만 표시하고 계속 진행
@@ -670,7 +671,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       const recipe: Recipe = {
         id: stableRecipeId,
         name: name.trim() || '이름 없는 레시피',
-        servingsBase: servingsBase || 1,
+        servingsBase: Math.max(1, servingsBase || 1),
         tagIds,
         ingredients: recipeIngredients,
         // 방금 이미지 생성을 기다렸다면 그 결과가 반영된 최신 값을 ref로 읽는다(위 주석 참고).
@@ -810,7 +811,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           type="number"
           min={1}
           value={servingsBase}
-          onChange={(e) => setServingsBase(Number(e.target.value) || 1)}
+          onChange={(e) => setServingsBase(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
         />
       </div>
 
@@ -990,7 +991,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
           <input
             type="number"
             value={row.amount}
-            onChange={(e) => updateIngredientRow(index, { amount: Number(e.target.value) || 0 })}
+            onChange={(e) => updateIngredientRow(index, { amount: Math.max(0, Number(e.target.value) || 0) })}
             style={{ flex: 1, width: 60 }}
           />
           <UnitPicker unit={row.unit} onChange={(unit) => updateIngredientRow(index, { unit })} />
@@ -1060,7 +1061,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
                 min={0}
                 value={Math.floor((step.timerSeconds ?? 0) / 60)}
                 onChange={(e) => {
-                  const minutes = Number(e.target.value) || 0;
+                  const minutes = Math.max(0, Math.floor(Number(e.target.value) || 0));
                   const seconds = (step.timerSeconds ?? 0) % 60;
                   const total = minutes * 60 + seconds;
                   updateStepRow(index, { timerSeconds: total > 0 ? total : undefined });
@@ -1074,7 +1075,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
                 max={59}
                 value={(step.timerSeconds ?? 0) % 60}
                 onChange={(e) => {
-                  const seconds = Number(e.target.value) || 0;
+                  const seconds = Math.min(59, Math.max(0, Math.floor(Number(e.target.value) || 0)));
                   const minutes = Math.floor((step.timerSeconds ?? 0) / 60);
                   const total = minutes * 60 + seconds;
                   updateStepRow(index, { timerSeconds: total > 0 ? total : undefined });

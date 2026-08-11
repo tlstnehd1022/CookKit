@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ShoppingListPage } from './features/shopping-list/ShoppingListPage';
 import { RecipesFeature } from './features/recipes/RecipesFeature';
 import { IngredientsPage } from './features/ingredients/IngredientsPage';
@@ -26,6 +26,7 @@ function App() {
   const tab = useActiveTab();
   const imageGenStatus = useImageGenerationStatus();
   const imageGenCompletionMessage = useImageGenerationCompletionMessage();
+  const [dataLoadError, setDataLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -34,7 +35,11 @@ function App() {
       return;
     }
     if (household) {
-      initializeDataLayer(household.id, user.id);
+      setDataLoadError(null);
+      initializeDataLayer(household.id, user.id).catch((err) => {
+        console.error('데이터 초기화 실패:', err);
+        setDataLoadError('데이터를 불러오지 못했어요. 새로고침해주세요.');
+      });
       initializeShoppingSelection(household.id);
     }
   }, [user, household]);
@@ -53,6 +58,14 @@ function App() {
 
   if (!household) {
     return <HouseholdOnboarding onDone={refreshHousehold} />;
+  }
+
+  if (dataLoadError) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p className="text-muted">{dataLoadError}</p>
+      </div>
+    );
   }
 
   if (dataLoading) {

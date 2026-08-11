@@ -124,7 +124,11 @@ async function generateStructuredRecipe(apiKey: string, model: string, prompt: s
   if (!text) {
     throw new Error('Gemini 응답에서 텍스트를 찾을 수 없습니다.');
   }
-  return JSON.parse(text) as ExtractedRecipe;
+  try {
+    return JSON.parse(text) as ExtractedRecipe;
+  } catch {
+    throw new Error('AI가 유효한 레시피 형식으로 응답하지 않았어요. 다시 시도해주세요.');
+  }
 }
 
 export interface YoutubeVideoMeta {
@@ -463,7 +467,12 @@ export async function extractReceiptItems(
   if (!text) {
     throw new Error('Gemini 응답에서 텍스트를 찾을 수 없습니다.');
   }
-  const parsed = JSON.parse(text);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('영수증 인식 결과를 읽지 못했어요. 다시 시도해주세요.');
+  }
   if (!Array.isArray(parsed)) {
     throw new Error('영수증 인식 결과 형식이 올바르지 않습니다.');
   }

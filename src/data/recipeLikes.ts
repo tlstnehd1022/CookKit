@@ -1,15 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-
-// .in()은 값들을 GET 요청 쿼리스트링에 그대로 나열해서, 레시피 수가 많아지면(둘러보기 화면에
-// 공개 레시피가 수백 개로 늘어난 경우 등) URL이 너무 길어져 "Bad Request"로 거부된다 —
-// src/data/publicRecipes.ts에서 같은 문제를 겪고 고친 것과 동일한 패턴.
-const IN_QUERY_CHUNK_SIZE = 150;
-
-function chunk<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  return chunks;
-}
+import { chunk, IN_QUERY_CHUNK_SIZE } from '../lib/chunk';
 
 // 공개 레시피 좋아요(하트). household 공유 store가 아니라 필요한 화면(둘러보기, 공개 레시피
 // 상세, 내 레시피 상세)에서 그때그때 조회한다 — 좋아요 수는 실시간 동기화까지는 필요 없는

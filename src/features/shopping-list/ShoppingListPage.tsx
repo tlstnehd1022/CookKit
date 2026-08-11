@@ -68,6 +68,24 @@ export function ShoppingListPage() {
     return true;
   });
 
+  async function handleToggleOwned(id: string, next: boolean) {
+    try {
+      await setOwned(id, next);
+    } catch (err) {
+      console.error('재료 보유 상태 저장 실패:', err);
+      alert('재료 상태를 저장하지 못했어요. 다시 시도해주세요.');
+    }
+  }
+
+  async function handleToggleRecipe(recipeId: string) {
+    try {
+      await toggleRecipe(recipeId);
+    } catch (err) {
+      console.error('장보기 담기 실패:', err);
+      alert('장보기에 담지 못했어요. 다시 시도해주세요.');
+    }
+  }
+
   return (
     <div>
       <div className="row">
@@ -84,7 +102,7 @@ export function ShoppingListPage() {
             {refillSuggestions.map((ingredient) => (
               <div className="row" key={ingredient.id} style={{ padding: '4px 0' }}>
                 <span>{ingredient.name}, 자주 채우시는데 지금 없어요</span>
-                <button className="btn small" onClick={() => setOwned(ingredient.id, true)}>
+                <button className="btn small" onClick={() => handleToggleOwned(ingredient.id, true)}>
                   ✅ 채웠어요
                 </button>
               </div>
@@ -100,7 +118,7 @@ export function ShoppingListPage() {
           <button
             key={recipe.id}
             className={`chip selectable ${selectedRecipeIds.includes(recipe.id) ? 'active' : ''}`}
-            onClick={() => toggleRecipe(recipe.id)}
+            onClick={() => handleToggleRecipe(recipe.id)}
           >
             {recipe.name}
           </button>
@@ -150,7 +168,7 @@ export function ShoppingListPage() {
               </div>
               <button
                 className={`toggle ${owned ? 'on' : ''}`}
-                onClick={() => setOwned(row.ingredientId, !owned)}
+                onClick={() => handleToggleOwned(row.ingredientId, !owned)}
                 aria-label="보유 여부"
               >
                 <span className="knob" />

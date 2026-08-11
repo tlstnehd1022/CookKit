@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { requireUser, AuthError } from './_lib/auth.js';
 
 // YouTube 썸네일(img.youtube.com)은 CORS를 허용하지 않아 브라우저에서 fetch로 바이트를 읽어올
 // 수 없다(<img> 태그로 화면에 "보여주기"는 되지만, Supabase Storage에 업로드하려면 fetch로 실제
@@ -21,6 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    await requireUser(req);
     const maxresUrl = `https://img.youtube.com/vi/${encodeURIComponent(videoId)}/maxresdefault.jpg`;
     const hqUrl = `https://img.youtube.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
 
@@ -38,6 +40,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Content-Type', response.headers.get('content-type') ?? 'image/jpeg');
     res.status(200).send(Buffer.from(arrayBuffer));
   } catch (err) {
+    if (err instanceof AuthError) {
+      res.status(401).json({ error: 'unauthorized', message: err.message });
+      return;
+    }
     res.status(500).json({
       error: 'unknown',
       message: err instanceof Error ? err.message : '썸네일을 가져오는 중 오류가 발생했습니다.',

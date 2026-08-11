@@ -34,23 +34,34 @@ export function useHousehold() {
     }
     setLoading(true);
 
-    const { data: membership } = await supabase
+    const { data: membership, error: membershipError } = await supabase
       .from('household_members')
       .select('household_id')
       .eq('user_id', user.id)
       .maybeSingle();
 
+    if (membershipError) {
+      console.error('household_members 조회 실패:', membershipError);
+      setLoading(false);
+      return; // household를 null로 덮어쓰지 않는다 — 온보딩 오판 방지
+    }
     if (!membership) {
       setHousehold(null);
       setLoading(false);
       return;
     }
 
-    const { data: row } = await supabase
+    const { data: row, error: householdError } = await supabase
       .from('households')
       .select('id, name, invite_code')
       .eq('id', membership.household_id)
       .maybeSingle();
+
+    if (householdError) {
+      console.error('households 조회 실패:', householdError);
+      setLoading(false);
+      return;
+    }
 
     setHousehold(row ? { id: row.id, name: row.name, inviteCode: row.invite_code } : null);
     setLoading(false);

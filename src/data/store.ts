@@ -73,13 +73,19 @@ let initializedForHouseholdId: string | null = null;
 /** 로그인 + household 확정 후 App.tsx에서 한 번 호출한다. 같은 household면 다시 로드하지 않는다. */
 export async function initializeDataLayer(householdId: string, userId: string): Promise<void> {
   if (initializedForHouseholdId === householdId) return;
-  initializedForHouseholdId = householdId;
-  await Promise.all([
-    ingredientsStore.setRepo(createIngredientsRepository(householdId)),
-    categoriesStore.setRepo(createCategoriesRepository(householdId)),
-    tagsStore.setRepo(createTagsRepository(householdId)),
-    recipesStore.setRepo(createRecipesRepository(userId, householdId)),
-  ]);
+  try {
+    await Promise.all([
+      ingredientsStore.setRepo(createIngredientsRepository(householdId)),
+      categoriesStore.setRepo(createCategoriesRepository(householdId)),
+      tagsStore.setRepo(createTagsRepository(householdId)),
+      recipesStore.setRepo(createRecipesRepository(userId, householdId)),
+    ]);
+    initializedForHouseholdId = householdId;
+  } catch (err) {
+    // 가드를 성공 이후로 미뤄서, 실패 시 재로그인 없이도 App.tsx가 다시 시도할 수 있게 한다.
+    initializedForHouseholdId = null;
+    throw err;
+  }
 }
 
 /** 로그아웃 시 호출 — 다음 로그인(다른 계정일 수도 있음)에서 다시 초기화되게 한다. */

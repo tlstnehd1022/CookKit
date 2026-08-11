@@ -19,9 +19,14 @@ import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
 import { RecipeDetailPage } from '../recipes/RecipeDetailPage';
 import { RecipeEditor } from '../recipes/RecipeEditor';
 import { ProfileSheet } from '../settings/ProfileSheet';
+import { WeeklyPlanPage } from './WeeklyPlanPage';
 import type { MealPlan, Recipe } from '../../data/types';
 
-type View = { screen: 'feed' } | { screen: 'detail'; recipeId: string } | { screen: 'edit'; recipeId: string };
+type View =
+  | { screen: 'feed' }
+  | { screen: 'detail'; recipeId: string }
+  | { screen: 'edit'; recipeId: string }
+  | { screen: 'weekly-plan' };
 
 const OWNED_CHIP_LIMIT = 6;
 const EXPIRING_LIMIT = 4;
@@ -100,6 +105,10 @@ export function HomePage() {
 
   if (view.screen === 'edit') {
     return <RecipeEditor recipeId={view.recipeId} onDone={() => setView({ screen: 'detail', recipeId: view.recipeId })} />;
+  }
+
+  if (view.screen === 'weekly-plan') {
+    return <WeeklyPlanPage onBack={() => setView({ screen: 'feed' })} />;
   }
 
   return (
@@ -190,8 +199,9 @@ export function HomePage() {
       <div className="home-section">
         <div className="home-section-head">
           <span className="home-section-title">이번 주 일정</span>
-          {/* 주간 일정 전체 화면은 다음 단계에서 연결 예정(디자인 시스템 전면 교체 5단계) */}
-          <span className="home-link home-link-disabled">전체 보기</span>
+          <button type="button" className="home-link" onClick={() => setView({ screen: 'weekly-plan' })}>
+            전체 보기
+          </button>
         </div>
         <div className="home-week-strip">
           {WEEK_DATES.map((date) => {
@@ -199,11 +209,16 @@ export function HomePage() {
             const planRecipe = plan ? recipes.find((r: Recipe) => r.id === plan.recipeId) : undefined;
             const isToday = date === today;
             return (
-              <div key={date} className={`home-week-cell ${isToday ? 'today' : ''}`}>
+              <button
+                type="button"
+                key={date}
+                className={`home-week-cell ${isToday ? 'today' : ''}`}
+                onClick={() => setView({ screen: 'weekly-plan' })}
+              >
                 <div className="home-week-day">{formatWeekdayShort(date)}</div>
                 <div className="home-week-date">{formatDayOfMonth(date)}</div>
                 <div className="home-week-menu">{planRecipe ? planRecipe.name : ''}</div>
-              </div>
+              </button>
             );
           })}
         </div>

@@ -440,6 +440,7 @@ export function RecipeCard({
           style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
         >
           {recipe.servingsBase}인분{totalMinutes > 0 ? ` · 약 ${totalMinutes}분` : ''}
+          {recipe.nutrition ? ` · ${Math.round(recipe.nutrition.calories)}kcal` : ''}
           {likeCount != null ? ` · ❤️ ${likeCount}` : ''}
         </span>
         {size !== 'row' && ownerLabel && (
@@ -476,6 +477,7 @@ export function RecipeListItem({ recipe, tagNames, onClick, ownerLabel, cornerBa
           {tagNames.slice(0, 2).join(', ')}
           {tagNames.length > 0 ? ' · ' : ''}
           {recipe.servingsBase}인분{totalMinutes > 0 ? ` · 약 ${totalMinutes}분` : ''}
+          {recipe.nutrition ? ` · ${Math.round(recipe.nutrition.calories)}kcal` : ''}
           {likeCount != null ? ` · ❤️ ${likeCount}` : ''}
           {ownerLabel ? ` · ${ownerLabel}` : ''}
         </span>

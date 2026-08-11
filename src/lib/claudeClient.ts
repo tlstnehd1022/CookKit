@@ -133,6 +133,62 @@ export async function extractRecipeFromTranscript(
   return parseRecipeResponse(response);
 }
 
+export interface EstimatedNutrition {
+  calories: number;
+  carbs: number;
+  protein: number;
+  fat: number;
+  sodium: number;
+}
+
+const NUTRITION_SCHEMA = {
+  type: 'object',
+  properties: {
+    calories: { type: 'number', description: '1인분 기준 열량(kcal)' },
+    carbs: { type: 'number', description: '1인분 기준 탄수화물(g)' },
+    protein: { type: 'number', description: '1인분 기준 단백질(g)' },
+    fat: { type: 'number', description: '1인분 기준 지방(g)' },
+    sodium: { type: 'number', description: '1인분 기준 나트륨(mg)' },
+  },
+  required: ['calories', 'carbs', 'protein', 'fat', 'sodium'],
+  additionalProperties: false,
+} as const;
+
+/** 재료/조리순서를 근거로 1인분 기준 영양 정보를 대략 추정한다(온디맨드 전용 — 자동 호출 금지,
+ * 사용자가 "영양 정보 계산하기"를 눌렀을 때만). 정확한 값이 아니라 추정치이므로 화면에는 항상
+ * "AI 추정" 표기와 함께 보여줘야 한다(호출부 책임). */
+export async function estimateRecipeNutrition(
+  apiKey: string,
+  model: string,
+  recipe: { name: string; servingsBase: number; ingredients: { name: string; amount: number; unit: string }[] },
+): Promise<EstimatedNutrition> {
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  const ingredientLines = recipe.ingredients.map((i) => `- ${i.name} ${i.amount}${i.unit}`).join('\n');
+
+  const response = await client.messages.create({
+    model,
+    max_tokens: 512,
+    output_config: { format: { type: 'json_schema', schema: NUTRITION_SCHEMA }, effort: 'low' },
+    messages: [
+      {
+        role: 'user',
+        content:
+          `다음 레시피(총 ${recipe.servingsBase}인분 분량)의 재료를 보고 1인분 기준 영양 정보를 대략 추정해줘.\n\n` +
+          `레시피: ${recipe.name}\n재료(${recipe.servingsBase}인분 전체 분량):\n${ingredientLines}`,
+      },
+    ],
+  });
+
+  const textBlocks = response.content.filter((block): block is Anthropic.TextBlock => block.type === 'text');
+  const lastTextBlock = textBlocks[textBlocks.length - 1];
+  if (!lastTextBlock) throw new Error('AI 응답에서 텍스트를 찾을 수 없습니다.');
+  try {
+    return JSON.parse(lastTextBlock.text) as EstimatedNutrition;
+  } catch {
+    throw new Error('AI가 유효한 영양 정보 형식으로 응답하지 않았어요. 다시 시도해주세요.');
+  }
+}
+
 const PROPOSE_RECIPE_TOOL: Anthropic.Tool = {
   name: 'propose_recipe',
   description:

@@ -131,6 +131,69 @@ async function generateStructuredRecipe(apiKey: string, model: string, prompt: s
   }
 }
 
+export interface EstimatedNutrition {
+  calories: number;
+  carbs: number;
+  protein: number;
+  fat: number;
+  sodium: number;
+}
+
+const GEMINI_NUTRITION_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    calories: { type: 'NUMBER', description: '1인분 기준 열량(kcal)' },
+    carbs: { type: 'NUMBER', description: '1인분 기준 탄수화물(g)' },
+    protein: { type: 'NUMBER', description: '1인분 기준 단백질(g)' },
+    fat: { type: 'NUMBER', description: '1인분 기준 지방(g)' },
+    sodium: { type: 'NUMBER', description: '1인분 기준 나트륨(mg)' },
+  },
+  required: ['calories', 'carbs', 'protein', 'fat', 'sodium'],
+} as const;
+
+/** 재료/조리순서를 근거로 1인분 기준 영양 정보를 대략 추정한다(온디맨드 전용 — 자동 호출 금지,
+ * 사용자가 "영양 정보 계산하기"를 눌렀을 때만). 정확한 값이 아니라 추정치이므로 화면에는 항상
+ * "AI 추정" 표기와 함께 보여줘야 한다(호출부 책임). */
+export async function estimateRecipeNutrition(
+  apiKey: string,
+  model: string,
+  recipe: { name: string; servingsBase: number; ingredients: { name: string; amount: number; unit: string }[] },
+): Promise<EstimatedNutrition> {
+  const ingredientLines = recipe.ingredients.map((i) => `- ${i.name} ${i.amount}${i.unit}`).join('\n');
+  const prompt =
+    `다음 레시피(총 ${recipe.servingsBase}인분 분량)의 재료를 보고 1인분 기준 영양 정보를 대략 추정해줘.\n\n` +
+    `레시피: ${recipe.name}\n재료(${recipe.servingsBase}인분 전체 분량):\n${ingredientLines}`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: GEMINI_NUTRITION_SCHEMA,
+        },
+      }),
+    },
+  );
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Gemini API 요청 실패 (${res.status}): ${body.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Gemini 응답에서 텍스트를 찾을 수 없습니다.');
+  try {
+    return JSON.parse(text) as EstimatedNutrition;
+  } catch {
+    throw new Error('AI가 유효한 영양 정보 형식으로 응답하지 않았어요. 다시 시도해주세요.');
+  }
+}
+
 export interface YoutubeVideoMeta {
   title: string;
   description: string;

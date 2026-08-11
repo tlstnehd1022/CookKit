@@ -189,7 +189,7 @@
     (`markIngredientFilled`와 동일 경로)하는 쪽으로 판단해서 진행. 데이터가 쌓여야 의미 있는
     기능이라 실제 제안이 뜨는지는 이번 배치에서 확인하지 못함 — 몇 주간 실사용해서 재료별 채움
     이력이 쌓인 뒤에 확인 필요.
-- **22차 확장 진행 중 — 디자인 시스템 전면 교체(Claude Design 핸드오프)**: Claude Design으로
+- **22차 확장 완료 — 디자인 시스템 전면 교체(Claude Design 핸드오프)**: Claude Design으로
   만든 새 디자인(`CookKit mobile app prototype/design_handoff_cookkit_home_plan/`, organic
   디자인 시스템 — 크림 배경 + 테라코타/세이지 팔레트, 제목 Jua/본문 Gowun Dodum)을 홈 화면
   추가 정도가 아니라 **앱 전체 디자인 시스템 교체**로 적용하는 작업. 1단계(토큰 교체)는 사용자
@@ -271,6 +271,88 @@
     레이아웃/다크모드 대비, 주간 일정 화면의 요일 스트립·이어 쓰기 문구·원탭 레시피 배치,
     프로필 바텀시트 각 섹션, 탭바 아이콘/배지, 홈 검색 필드(레시피 탭으로 이동은 하지만
     검색창 자동 포커스는 아직 안 붙어있음 — 필요하면 추가 요청할 것).
+- **23차 확장 완료 — 홈 동적 인사말 + 알림 기능 + 영양 정보**: A(인사말) → B(알림) → C(영양) 순서로
+  진행.
+  - **A. 동적 인사말**(`src/lib/homeGreeting.ts`): AI 호출 없이 전부 규칙 기반. 우선순위 —
+    (1) 오늘 이미 요리 기록이 있으면(household 공유, `fetchTodayCookingLog`) 그 문구 풀에서
+    선택 (2) 오늘 주간 일정에 레시피가 배치돼 있으면 "오늘은 OO예요" (3) 유통기한 임박(3일
+    이내)만 (soon 4~7일 제외) 재료가 있으면 (4) 장보기에 담긴 게 있으면 (5) 그 외엔 시간대
+    (아침~10시/점심~17시/저녁17시~)·주말 여부 기반 기본 문구 풀. 기본 문구는 "날짜+시간대"
+    문자열을 해시해서 안정적 인덱스를 뽑는 방식으로 "같은 날엔 유지, 시간대 바뀌면 전환"을
+    별도 저장 없이 구현. "의미 있는 행동 직후 즉시 반영"은 홈 탭으로 돌아올 때
+    (`useActiveTab()`)와 홈 안에서 화면을 오갔다 돌아올 때(`view.screen`) 둘 다를 트리거로
+    오늘 요리 여부를 다시 조회하는 방식으로 처리(다른 탭에서 요리를 완료한 경우까지 커버).
+    그 위 줄("수요일 저녁 · OO님")은 시간대에 따라 아침/점심/저녁만 바뀜.
+  - **B. 알림**(`notifications` 테이블, 0023 마이그레이션): `user_id`(받는 사람)가 실제
+    행위자(auth.uid())와 달라 일반 RLS insert 정책으로 표현이 안 되고 임의 개방은 스팸
+    벡터가 되므로, `create_recipe_liked_notification`/`delete_recipe_liked_notification`/
+    `create_household_recipe_added_notifications` 3개 SECURITY DEFINER RPC로만 생성/삭제하고
+    테이블 자체엔 INSERT/DELETE RLS 정책을 아예 두지 않음(SELECT/UPDATE만 본인 것 허용) — 각
+    RPC가 "레시피를 정말 그 사람이 소유하는지"/"정말 같은 household인지"/"본인 알림이
+    아닌지"를 서버에서 검증. 공개 레시피 좋아요 토글 시(`PublicRecipeDetailPage.tsx`) 알림
+    생성/삭제, 새 레시피 저장 시(`RecipeEditor.tsx`, **수정은 제외 — 신규 생성일 때만** +
+    `visibility!=='private'`일 때만, private면 다른 가구원이 애초에 못 여는 레시피라 알림이
+    의미 없음) household 구성원에게 알림 생성 — 둘 다 알림 처리 실패가 원래 동작(좋아요/저장)
+    자체를 막지 않도록 별도로 감쌈. 프로필 바텀시트 최상단에 "알림" 메뉴(안 읽은 개수 배지),
+    목록은 시간순 + 안 읽은 것 배경 강조, 탭하면 그 알림만 읽음 처리(전체 읽음 처리 안 함 —
+    한꺼번에 지워지면 뭐가 있었는지 확인 못 함) 후 관련 레시피 상세로 이동. 홈 화면 프로필
+    아바타에 안 읽은 알림 있으면 빨간 점. **범위에서 뺀 것**: 명세의 B-4(인사말 아래 알림
+    힌트 줄)는 "선택" 표시 항목이라 이번엔 건너뜀.
+  - **C. 영양 정보**: 데이터 모델은 `Recipe.nutrition`(1인분 기준 calories/carbs/protein/
+    fat/sodium) + `Recipe.nutritionSource`('public_data'|'api'|'ai_estimate'|'manual'),
+    다른 중첩 데이터처럼 `recipes.content` jsonb 안에 저장.
+    - **식약처 영양성분 API(C-2) 매칭 테스트 — 결론: 이번엔 보류**. 사용자가 data.go.kr에서
+      "식품의약품안전처_식품영양성분DB정보"(`FoodNtrCpntDbInfo02`,
+      `getFoodNtrCpntDbInq02`, 검색 파라미터 `FOOD_NM_KR`)를 신규로 활용신청해서 연동
+      테스트까지 진행함 — API 자체는 정상 응답(약 30만 건). 그런데 실제 재료명(양파/두부/
+      대파/스파게티/마늘/설탕/간장/계란/돼지고기/소고기/감자/당근, 12개)으로 검색해본 결과
+      **정확히 일치하는 항목이 0/12건**이었음 — 이 DB는 "양파볶음"/"된장찌개_두부"처럼
+      **완성된 요리·상용제품 위주**로 구성돼 있고 순수 재료(생 양파, 생 두부 등) 단독
+      항목이 없어서, "재료명 → 영양성분 조회 → 레시피 전체 합산" 용도로는 안 맞음(참고: 이건
+      식약처가 제공하는 여러 영양 DB 중 하나일 뿐이고, raw 재료 단위 성분표는 농촌진흥청
+      국가표준식품성분표(koreanfood.rda.go.kr)가 더 적합해 보이나 별도 기관/API라 이번
+      범위에서는 시도하지 않음). 사용자가 사전에 "성공률 낮으면 API는 건너뛰고 공공데이터+AI
+      추정만 쓰자"고 합의해둔 대로 C-2는 스킵하고 C-1+C-3만 구현.
+    - **C-1 백필**(`scripts/backfill-nutrition-from-public-data.ts`, 실행 완료): 15차 확장
+      때 COOKRCP01에서 시딩한 공공데이터 레시피 412건은 원래 시딩 스크립트가 API 응답의
+      `INFO_ENG`(열량)/`INFO_CAR`(탄수화물)/`INFO_PRO`(단백질)/`INFO_FAT`(지방)/`INFO_NA`
+      (나트륨) 필드를 받아오고도 저장하지 않고 버렸던 것을 뒤늦게 채워 넣는 1회성 스크립트 —
+      COOKRCP01은 RCP_SEQ 단건 조회를 지원하지 않아(테스트로 확인 — 파라미터를 붙여도
+      무시됨) 전체 데이터셋(당시 1,156건)을 페이지로 훑어 RCP_SEQ→영양정보 맵을 만든 뒤
+      매칭. **412/412건 전부 매칭 성공**(재실행해도 안전 — `content.nutrition` 있으면
+      건너뜀). `nutritionSource: 'public_data'`로 표시.
+    - **C-3 AI 온디맨드 추정**: `claudeClient.ts`/`geminiClient.ts`의
+      `estimateRecipeNutrition`(레시피 이름+재료 목록을 근거로 1인분 기준 추정, 구조화 JSON
+      출력) + `api/ai-nutrition.ts`(ai-chat.ts와 같은 두 제공자 분기 패턴) +
+      `aiProxy.ts`의 `estimateRecipeNutrition`. 레시피 상세 화면에 "영양 정보 계산하기"
+      버튼(자동 호출 없음, 사용자가 눌렀을 때만) — 계산되면 `nutritionSource: 'ai_estimate'`
+      로 저장되고 화면에 "AI 추정 · 실제와 다를 수 있어요" 문구가 항상 같이 표시됨(정확한
+      척하지 않기 위함).
+    - **표시 위치**: 레시피 상세(1인분 기준, 칼로리 강조+탄단지·나트륨 칩, 인분 조절
+      스테퍼와 같이 있어서 `servings` 바뀌면 즉시 재계산 — `nutrition` 필드 자체가 이미
+      "1인분 기준"으로 저장돼 있어 `scaleAmount`가 아니라 단순히 `값 × servings`로 계산,
+      재료 수량 스케일링(`scaleAmount(amount, servingsBase, servings)`)과는 다른 공식이라
+      혼동 주의) / 레시피 카드·리스트 항목(칼로리만, "2인분 · 20분 · 520kcal") / 주간 일정
+      선택된 날 카드("이 날 합계 약 Nkcal" = 1인분 값 × `servingsBase`, 그 레시피 전체 분량
+      기준). `RecipeEditor.tsx`는 영양 정보를 편집하는 UI가 없어서 저장 시 `existing?.
+      nutrition`/`nutritionSource`를 그대로 들고 다녀 재료/조리순서 수정 저장 때 지워지지
+      않게 함(sourceRecipeId와 같은 패스스루 패턴).
+  - **버그(수정 완료) — 서버리스 함수가 브라우저 전용 모듈을 물고 있던 문제**: 이번 작업
+    도중 발견 — 지난 보안 리뷰(SECURITY_REVIEW_FIXES.md, P0-1)에서 `youtube-transcript`
+    엔드포인트에 인증을 추가하면서 `src/lib/youtubeTranscript.ts`가 `aiProxy.ts`의
+    `getAuthHeader`를 정적 import하게 됐는데, `aiProxy.ts`는 브라우저의 Supabase 세션에
+    의존하고 `supabaseClient.ts`(`import.meta.env.VITE_*`, Vite 전용 문법)를 물고 있는
+    클라이언트 전용 모듈. `youtubeTranscript.ts`의 `extractYoutubeVideoId`는
+    `geminiClient.ts`를 거쳐 `api/ai-chat.ts` 등 여러 서버리스 함수에서도 쓰이는데, 정적
+    import는 모듈 로드 시점에 그 코드가 같이 평가되므로 — `fetchYoutubeTranscript`를 실제로
+    호출하지 않아도 — Vite의 `import.meta.env` 치환이 없는 서버 번들 환경에서 즉시 에러가
+    날 수 있었음(로컬 `npm run build`는 `tsc -b`가 `api/`를 대상에 안 둬서 못 잡음). 이번
+    세션에서 `api/*.ts`를 nodenext 설정으로 단독 타입체크하다가 발견 — `getAuthHeader`
+    import를 `fetchYoutubeTranscript` 함수 안의 동적 import(`await import('./aiProxy.js')`)
+    로 옮겨서 실제로 그 함수가 호출될 때(항상 브라우저에서만)만 평가되게 수정. 앞으로 `src/lib/`
+    아래 서버/클라이언트 공용 파일에서 다른 모듈을 새로 import할 때는 그 모듈이 브라우저 전용
+    상태(세션, localStorage 등)에 의존하지 않는지 확인할 것 — 의존한다면 정적 import 대신
+    실제 사용 시점의 동적 import로 분리.
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)

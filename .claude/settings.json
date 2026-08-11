@@ -126,7 +126,8 @@
       "Bash(export NUTRITION_API_KEY_RAW='fANhJ0TFwaH097WcfCrEA%2F%2FcK5ps5zjgl6QvV8PuZT8UELeJ%2B0l3ZhNSOGcvbXZxFrKgKPZYStN2XQu0evGFGA%3D%3D')",
       "Bash(node \"C:\\\\Users\\\\PEPPER\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--projects-CookKit\\\\08c0d2eb-fe5c-4734-af18-c5333f72ce15\\\\scratchpad\\\\test-nutrition-api-v2.mjs\")",
       "Bash(node \"C:\\\\Users\\\\PEPPER\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--projects-CookKit\\\\08c0d2eb-fe5c-4734-af18-c5333f72ce15\\\\scratchpad\\\\test-nutrition-api-v3.mjs\")",
-      "Bash(node \"C:\\\\Users\\\\PEPPER\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--projects-CookKit\\\\08c0d2eb-fe5c-4734-af18-c5333f72ce15\\\\scratchpad\\\\test-nutrition-api-v4.mjs\")"
+      "Bash(node \"C:\\\\Users\\\\PEPPER\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--projects-CookKit\\\\08c0d2eb-fe5c-4734-af18-c5333f72ce15\\\\scratchpad\\\\test-nutrition-api-v4.mjs\")",
+      "Bash(node --env-file=.env scripts/backfill-nutrition-from-public-data.ts)"
     ],
     "deny": [
       "Bash(rm -rf *)",

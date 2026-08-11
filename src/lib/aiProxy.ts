@@ -1,8 +1,8 @@
-import { supabase } from './supabaseClient';
-import type { ChatResult, ChatTurn, ExistingContext } from './aiChat';
-import type { ExtractedRecipe } from './claudeClient';
-import type { ReceiptItem, YoutubeVideoMeta } from './geminiClient';
-import type { RecipeSnapshot } from './recipeDiff';
+import { supabase } from './supabaseClient.js';
+import type { ChatResult, ChatTurn, ExistingContext } from './aiChat.js';
+import type { ExtractedRecipe, EstimatedNutrition } from './claudeClient.js';
+import type { ReceiptItem, YoutubeVideoMeta } from './geminiClient.js';
+import type { RecipeSnapshot } from './recipeDiff.js';
 
 /**
  * AI 호출(대화/유튜브 변환/이미지 생성)이 이제 브라우저에서 Anthropic/Gemini를 직접 부르지 않고
@@ -95,6 +95,16 @@ export async function generateImage(model: string, prompt: string): Promise<stri
 export async function fetchYoutubeVideoMeta(url: string): Promise<YoutubeVideoMeta | null> {
   const result = await callAiApi<{ meta: YoutubeVideoMeta | null }>('/api/youtube-meta', { url });
   return result.meta;
+}
+
+/** 온디맨드 전용 — 호출부(RecipeDetailPage의 "영양 정보 계산하기" 버튼)에서만 부른다. */
+export async function estimateRecipeNutrition(
+  provider: 'anthropic' | 'gemini',
+  model: string,
+  recipe: { name: string; servingsBase: number; ingredients: { name: string; amount: number; unit: string }[] },
+): Promise<EstimatedNutrition> {
+  const result = await callAiApi<{ nutrition: EstimatedNutrition }>('/api/ai-nutrition', { provider, model, recipe });
+  return result.nutrition;
 }
 
 /** 영수증 이미지(base64, data: 접두사 없이)에서 식료품 품목을 인식한다. 결과는 항상 확인 화면

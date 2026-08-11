@@ -71,10 +71,32 @@ export interface Recipe {
   authorName?: string;
   /** 작성자 프로필 사진 URL(profiles.avatar_url) — authorName과 같은 조회 전용 필드 */
   authorAvatarUrl?: string;
+  /** servingsBase(기준 인분) 1인분 기준 영양 정보 — 인분 조절 시 화면에서 비례 재계산한다 */
+  nutrition?: RecipeNutrition;
+  /** nutrition 값의 출처 — 화면에 항상 같이 표기해서 정확도를 오인하지 않게 한다 */
+  nutritionSource?: NutritionSource;
 }
 
 /** private=본인만, household=같은 가구원까지(기본값), public=전체 공개 */
 export type RecipeVisibility = 'private' | 'household' | 'public';
+
+export interface RecipeNutrition {
+  /** kcal */
+  calories: number;
+  /** g */
+  carbs: number;
+  /** g */
+  protein: number;
+  /** g */
+  fat: number;
+  /** mg */
+  sodium: number;
+}
+
+/** 'public_data' = 식약처 공공데이터(가장 정확) · 'api' = 재료 매칭 기반 계산(현재 미사용 —
+ * CLAUDE.md "영양/칼로리 정보" 항목 참고, 식약처 영양성분 API가 조리식품 위주라 재료명 매칭률이
+ * 낮아 보류) · 'ai_estimate' = AI 추정(온디맨드) · 'manual' = 사용자 직접 입력 */
+export type NutritionSource = 'public_data' | 'api' | 'ai_estimate' | 'manual';
 
 export type TagType = 'style' | 'category' | 'cuisine';
 

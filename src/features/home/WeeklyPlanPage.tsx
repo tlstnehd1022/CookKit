@@ -192,6 +192,8 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
               <>
                 {selectedRecipe.estimatedMinutes != null && `${selectedRecipe.estimatedMinutes}분 · `}
                 {selectedRecipe.servingsBase}인분{selectedDate === today ? ' · 오늘' : ''}
+                {selectedRecipe.nutrition &&
+                  ` · 이 날 합계 약 ${Math.round(selectedRecipe.nutrition.calories * selectedRecipe.servingsBase)}kcal`}
               </>
             ) : (
               '냉장고 재료로 만들 레시피를 골라보세요'

@@ -683,6 +683,10 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         finalImageId: finalImageIdRef.current,
         sourceRecipeId: existing?.sourceRecipeId,
         visibility,
+        // 이 화면엔 영양 정보 편집 UI가 없다 — 레시피 상세의 "영양 정보 계산하기"에서만 채워지므로
+        // 여기서는 기존 값을 그대로 들고 다녀 재료/조리순서 수정 저장 시 지워지지 않게 한다.
+        nutrition: existing?.nutrition,
+        nutritionSource: existing?.nutritionSource,
       };
       await saveRecipe(recipe);
       // 새 레시피(수정이 아님)이고 가구원이 볼 수 있는 공개범위일 때만 household에 알림 —

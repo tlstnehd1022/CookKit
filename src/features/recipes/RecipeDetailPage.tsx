@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useIngredients, useIngredientsById, useRecipes, useTags, getCurrentHouseholdId } from '../../data/store';
 import { useShoppingSelection } from '../../data/shoppingSelection';
+import { useSettings } from '../../data/settings';
 import { computeRecipeAllergens, scaleAmount } from '../../data/computed';
 import { useStoredImage } from '../../data/imageStore';
 import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
 import { fetchLikeInfo } from '../../data/recipeLikes';
+import * as aiProxy from '../../lib/aiProxy';
+import { ApiProxyError } from '../../lib/aiProxy';
+import { requestProfileSheet } from '../../data/profileSheet';
+import { getErrorMessage } from '../../lib/errorMessage';
 import {
   fetchCookingStats,
   fetchStepTimingAdjustments,
@@ -17,6 +22,13 @@ import { CookingLogModal } from './CookingLogModal';
 import { CookingModePage } from './CookingModePage';
 import { TimingAdjustmentModal } from './TimingAdjustmentModal';
 import type { CookingLogStepTiming } from '../../data/types';
+
+const NUTRITION_SOURCE_LABEL: Record<string, string> = {
+  public_data: '식약처 기준',
+  api: '재료 기반 계산',
+  ai_estimate: 'AI 추정',
+  manual: '직접 입력',
+};
 
 export function RecipeDetailPage({
   recipeId,
@@ -33,11 +45,15 @@ export function RecipeDetailPage({
   const { saveIngredient } = useIngredients();
   const { isSelected, toggle } = useShoppingSelection();
   const { user } = useSession();
+  const { settings } = useSettings();
   const householdId = getCurrentHouseholdId();
   const recipe = recipes.find((r) => r.id === recipeId);
   const [servings, setServings] = useState(recipe?.servingsBase ?? 1);
   const [showDifficultyReason, setShowDifficultyReason] = useState(false);
   const [likeCount, setLikeCount] = useState<number | null>(null);
+  const [estimatingNutrition, setEstimatingNutrition] = useState(false);
+  const [nutritionError, setNutritionError] = useState<string | null>(null);
+  const [nutritionMissingApiKey, setNutritionMissingApiKey] = useState(false);
   const [cookingStats, setCookingStats] = useState<CookingStats | null>(null);
   const [showCookingLogModal, setShowCookingLogModal] = useState(false);
   const [showCookingMode, setShowCookingMode] = useState(false);
@@ -144,6 +160,33 @@ export function RecipeDetailPage({
   async function handleSetFinalImageFromCookingLog(imageId: string) {
     if (!recipe) return;
     await saveRecipe({ ...recipe, finalImageId: imageId });
+  }
+
+  /** 온디맨드 전용 — 사용자가 "영양 정보 계산하기"를 눌렀을 때만 호출된다(자동 계산 없음). */
+  async function handleEstimateNutrition() {
+    if (!recipe) return;
+    setEstimatingNutrition(true);
+    setNutritionError(null);
+    setNutritionMissingApiKey(false);
+    try {
+      const model = settings.aiProvider === 'gemini' ? settings.geminiModel : settings.model;
+      const nutrition = await aiProxy.estimateRecipeNutrition(settings.aiProvider, model, {
+        name: recipe.name,
+        servingsBase: recipe.servingsBase,
+        ingredients: recipe.ingredients.map((item) => ({
+          name: ingredientsById.get(item.ingredientId)?.name ?? '재료',
+          amount: item.amount,
+          unit: item.unit,
+        })),
+      });
+      await saveRecipe({ ...recipe, nutrition, nutritionSource: 'ai_estimate' });
+    } catch (err) {
+      if (err instanceof ApiProxyError && err.code === 'no_api_key') setNutritionMissingApiKey(true);
+      console.error('영양 정보 추정 실패:', err);
+      setNutritionError(getErrorMessage(err, '영양 정보를 계산하지 못했어요.'));
+    } finally {
+      setEstimatingNutrition(false);
+    }
   }
 
   async function handleApplyTimingAdjustments(accepted: StepAdjustmentSuggestion[]) {
@@ -303,6 +346,44 @@ export function RecipeDetailPage({
           {recipe.difficultyReason}
         </p>
       )}
+
+      <div className="section-title">영양 정보 ({servings}인분 기준)</div>
+      <div className="card">
+        {recipe.nutrition ? (
+          <>
+            <div className="row" style={{ justifyContent: 'flex-start', gap: 10, alignItems: 'baseline' }}>
+              <strong style={{ fontSize: 22 }}>{Math.round(recipe.nutrition.calories * servings)} kcal</strong>
+              <span className="text-muted" style={{ fontSize: 12 }}>
+                {NUTRITION_SOURCE_LABEL[recipe.nutritionSource ?? 'manual']}
+                {recipe.nutritionSource === 'ai_estimate' ? ' · 실제와 다를 수 있어요' : ''}
+              </span>
+            </div>
+            <div className="chip-row">
+              <span className="chip">탄수화물 {Math.round(recipe.nutrition.carbs * servings)}g</span>
+              <span className="chip">단백질 {Math.round(recipe.nutrition.protein * servings)}g</span>
+              <span className="chip">지방 {Math.round(recipe.nutrition.fat * servings)}g</span>
+              <span className="chip">나트륨 {Math.round(recipe.nutrition.sodium * servings)}mg</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-muted" style={{ marginTop: 0 }}>아직 영양 정보가 없어요.</p>
+            <button className="btn small" onClick={handleEstimateNutrition} disabled={estimatingNutrition}>
+              {estimatingNutrition ? '계산 중...' : '영양 정보 계산하기'}
+            </button>
+            {nutritionError && (
+              <p style={{ color: 'var(--danger)', marginTop: 8, marginBottom: nutritionMissingApiKey ? 6 : 0 }}>
+                {nutritionError}
+              </p>
+            )}
+            {nutritionMissingApiKey && (
+              <button className="btn small" onClick={() => requestProfileSheet()}>
+                설정으로 이동
+              </button>
+            )}
+          </>
+        )}
+      </div>
 
       <div className="row" style={{ alignItems: 'flex-end' }}>
         <div className="section-title" style={{ margin: 0 }}>

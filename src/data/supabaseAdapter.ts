@@ -104,6 +104,8 @@ interface RecipeContent {
   sourceType?: Recipe['sourceType'];
   sourceNote?: string;
   seedBatchId?: string;
+  nutrition?: Recipe['nutrition'];
+  nutritionSource?: Recipe['nutritionSource'];
 }
 
 export function rowToRecipe(row: Record<string, unknown>): Recipe {
@@ -129,6 +131,8 @@ export function rowToRecipe(row: Record<string, unknown>): Recipe {
     sourceType: content.sourceType,
     sourceNote: content.sourceNote,
     seedBatchId: content.seedBatchId,
+    nutrition: content.nutrition,
+    nutritionSource: content.nutritionSource,
     authorName: profile?.display_name ?? undefined,
     authorAvatarUrl: profile?.avatar_url ?? undefined,
   };
@@ -157,6 +161,8 @@ export function createRecipesRepository(userId: string, householdId: string): Cr
         sourceType: recipe.sourceType,
         sourceNote: recipe.sourceNote,
         seedBatchId: recipe.seedBatchId,
+        nutrition: recipe.nutrition,
+        nutritionSource: recipe.nutritionSource,
       } satisfies RecipeContent,
       // visibility/source_recipe_id는 실제 컬럼이라 명시적으로 보냄 — RecipeEditor가
       // rowToRecipe로 읽어온 기존 값을 폼 상태에 들고 있다가 그대로 다시 보내므로

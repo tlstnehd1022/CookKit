@@ -134,6 +134,26 @@ export async function fetchStepTimingAdjustments(recipe: {
   return suggestions.sort((a, b) => a.stepIndex - b.stepIndex);
 }
 
+/** 오늘 household에서 이미 요리한 기록이 있으면 가장 최근 것의 레시피 이름을 반환한다(홈 화면
+ * 인사말 우선순위 1번 — 누가 만들었든 household 공유 기록이라 인정한다). */
+export async function fetchTodayCookingLog(householdId: string, dateStr: string): Promise<{ recipeName: string } | null> {
+  const { data, error } = await supabase
+    .from('cooking_log')
+    .select('recipes(title)')
+    .eq('household_id', householdId)
+    .gte('cooked_at', `${dateStr}T00:00:00`)
+    .lt('cooked_at', `${dateStr}T23:59:59.999`)
+    .order('cooked_at', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row) return null;
+  // recipes(title)는 to-one 임베드지만 supabase-js 타입 추론이 배열로 잡아서 캐스팅 필요
+  // (fetchCookingHistory와 같은 패턴).
+  const recipeName = (row.recipes as unknown as { title: string } | null)?.title;
+  return recipeName ? { recipeName } : null;
+}
+
 const HISTORY_LIMIT = 50;
 
 export interface CookingLogEntry {

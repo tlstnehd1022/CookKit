@@ -826,6 +826,7 @@ select:focus {
 }
 
 .home-avatar-btn {
+  position: relative;
   flex-shrink: 0;
   width: 44px;
   height: 44px;
@@ -839,6 +840,18 @@ select:focus {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+.home-avatar-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
+  border: 1.5px solid var(--bg-page);
 }
 
 .home-avatar-btn img {

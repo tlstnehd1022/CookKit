@@ -14,6 +14,7 @@ import {
   resetShoppingSelection,
   useShoppingNeededCount,
 } from './data/shoppingSelection';
+import { initializeNotifications, resetNotifications } from './data/notifications';
 import { useImageGenerationCompletionMessage, useImageGenerationStatus } from './data/imageGenerationStatus';
 import { setActiveTab, useActiveTab, type Tab } from './data/activeTab';
 
@@ -38,8 +39,10 @@ function App() {
     if (!user) {
       resetDataLayer();
       resetShoppingSelection();
+      resetNotifications();
       return;
     }
+    initializeNotifications(user.id);
     if (household) {
       setDataLoadError(null);
       initializeDataLayer(household.id, user.id).catch((err) => {

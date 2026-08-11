@@ -575,3 +575,117 @@ alter table public.meal_plans enable row level security;
 create policy "meal_plans_all_household_member" on public.meal_plans
   for all using (public.is_household_member(household_id))
   with check (public.is_household_member(household_id));
+
+-- ---- notifications (0023) — 알림함(좋아요/가구원 레시피 추가) ------------------------------------
+-- user_id는 "받는 사람"이라 실제 INSERT 행위자(auth.uid())와 다르다 — 일반 RLS insert 정책으로는
+-- 표현이 안 되고 임의 개방은 스팸 벡터가 되므로, 아래 3개 SECURITY DEFINER RPC로만 생성/삭제하고
+-- 테이블 자체엔 INSERT/DELETE 정책을 두지 않는다. 자세한 배경은 0023 마이그레이션 참고.
+create table public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  type text not null check (type in ('recipe_liked', 'household_recipe_added')),
+  payload jsonb not null default '{}',
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index notifications_user_id_idx on public.notifications (user_id, created_at desc);
+
+alter table public.notifications enable row level security;
+
+create policy "notifications_select_own" on public.notifications
+  for select using (user_id = auth.uid());
+
+create policy "notifications_update_own" on public.notifications
+  for update using (user_id = auth.uid());
+
+create or replace function public.create_recipe_liked_notification(p_recipe_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid;
+  v_liker_name text;
+begin
+  select user_id into v_owner_id from public.recipes where id = p_recipe_id;
+  if v_owner_id is null or v_owner_id = auth.uid() then
+    return;
+  end if;
+
+  select display_name into v_liker_name from public.profiles where id = auth.uid();
+
+  insert into public.notifications (user_id, type, payload)
+  values (
+    v_owner_id,
+    'recipe_liked',
+    jsonb_build_object(
+      'recipe_id', p_recipe_id,
+      'liker_user_id', auth.uid(),
+      'liker_name', coalesce(v_liker_name, '이름 없는 사용자')
+    )
+  );
+end;
+$$;
+
+revoke all on function public.create_recipe_liked_notification(uuid) from public;
+grant execute on function public.create_recipe_liked_notification(uuid) to authenticated;
+
+create or replace function public.delete_recipe_liked_notification(p_recipe_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.notifications
+  where type = 'recipe_liked'
+    and payload->>'recipe_id' = p_recipe_id::text
+    and payload->>'liker_user_id' = auth.uid()::text;
+end;
+$$;
+
+revoke all on function public.delete_recipe_liked_notification(uuid) from public;
+grant execute on function public.delete_recipe_liked_notification(uuid) to authenticated;
+
+create or replace function public.create_household_recipe_added_notifications(p_recipe_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owns boolean;
+  v_author_name text;
+  v_member record;
+begin
+  select exists(select 1 from public.recipes where id = p_recipe_id and user_id = auth.uid()) into v_owns;
+  if not v_owns then
+    return;
+  end if;
+
+  select display_name into v_author_name from public.profiles where id = auth.uid();
+
+  for v_member in
+    select hm2.user_id
+    from public.household_members hm1
+    join public.household_members hm2 on hm2.household_id = hm1.household_id
+    where hm1.user_id = auth.uid() and hm2.user_id <> auth.uid()
+  loop
+    insert into public.notifications (user_id, type, payload)
+    values (
+      v_member.user_id,
+      'household_recipe_added',
+      jsonb_build_object(
+        'recipe_id', p_recipe_id,
+        'author_user_id', auth.uid(),
+        'author_name', coalesce(v_author_name, '이름 없는 사용자')
+      )
+    );
+  end loop;
+end;
+$$;
+
+revoke all on function public.create_household_recipe_added_notifications(uuid) from public;
+grant execute on function public.create_household_recipe_added_notifications(uuid) to authenticated;

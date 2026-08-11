@@ -15,13 +15,15 @@ export interface HouseholdRecipeAddedPayload {
   author_name: string;
 }
 
-export interface AppNotification {
+interface BaseNotification {
   id: string;
-  type: NotificationType;
-  payload: RecipeLikedPayload | HouseholdRecipeAddedPayload;
   readAt: string | null;
   createdAt: string;
 }
+
+export type AppNotification =
+  | (BaseNotification & { type: 'recipe_liked'; payload: RecipeLikedPayload })
+  | (BaseNotification & { type: 'household_recipe_added'; payload: HouseholdRecipeAddedPayload });
 
 // activeTab.ts/shoppingSelection.ts와 같은 전역 store 패턴 — 홈 화면(우상단 점)과 프로필
 // 바텀시트(배지)가 같은 안 읽은 개수를 동시에 봐야 해서 fetch-on-demand 대신 가벼운 반응형
@@ -37,13 +39,15 @@ function notify() {
 }
 
 function rowToNotification(row: Record<string, unknown>): AppNotification {
+  // DB의 payload(jsonb)는 type 컬럼에 맞는 구조라고 신뢰하고 통째로 캐스팅한다 — RPC가 항상
+  // type과 짝이 맞는 payload만 넣으므로(0023 마이그레이션) 여기서 개별 필드를 검증하지 않는다.
   return {
     id: row.id as string,
-    type: row.type as NotificationType,
-    payload: row.payload as AppNotification['payload'],
+    type: row.type,
+    payload: row.payload,
     readAt: row.read_at as string | null,
     createdAt: row.created_at as string,
-  };
+  } as unknown as AppNotification;
 }
 
 async function refresh(): Promise<void> {

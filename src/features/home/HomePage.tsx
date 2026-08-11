@@ -287,7 +287,15 @@ export function HomePage() {
         </div>
       )}
 
-      {showProfileSheet && <ProfileSheet onClose={() => setShowProfileSheet(false)} />}
+      {showProfileSheet && (
+        <ProfileSheet
+          onClose={() => setShowProfileSheet(false)}
+          onNavigateToRecipe={(recipeId) => {
+            setShowProfileSheet(false);
+            openRecipe(recipeId);
+          }}
+        />
+      )}
     </div>
   );
 }

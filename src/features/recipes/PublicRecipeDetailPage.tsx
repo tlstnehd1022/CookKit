@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
 import { useStoredImage } from '../../data/imageStore';
 import { fetchLikeInfo, toggleLike, type LikeInfo } from '../../data/recipeLikes';
+import { createRecipeLikedNotification, deleteRecipeLikedNotification } from '../../data/notifications';
 import { useSession } from '../../data/session';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { formatPublicRecipeOwnerLabel, type PublicRecipeEntry } from '../../data/publicRecipes';
@@ -52,6 +53,13 @@ export function PublicRecipeDetailPage({
     }));
     try {
       await toggleLike(recipe.id, user.id, wasLiked);
+      // 알림 생성/삭제 실패는 좋아요 자체를 막을 정도는 아니라 별도로 감싸서 조용히 로그만 남김
+      try {
+        if (wasLiked) await deleteRecipeLikedNotification(recipe.id);
+        else await createRecipeLikedNotification(recipe.id);
+      } catch (notifyErr) {
+        console.error('좋아요 알림 처리 실패:', getErrorMessage(notifyErr));
+      }
     } catch (err) {
       console.error('좋아요 처리 실패:', getErrorMessage(err));
       setLikeInfo((prev) => ({ likeCount: prev.likeCount + (wasLiked ? 1 : -1), likedByMe: wasLiked }));

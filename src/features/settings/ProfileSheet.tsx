@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent } from 'react';
-import { ChevronLeft, X, User, Home, Settings, Tags, LogOut, ChevronRight } from 'lucide-react';
+import { ChevronLeft, X, User, Home, Settings, Tags, LogOut, ChevronRight, Bell } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSettings } from '../../data/settings';
 import { useSession } from '../../data/session';
@@ -9,6 +9,8 @@ import { useTheme } from '../../data/theme';
 import { useApiKeyStatus } from '../../data/apiKeys';
 import { useNotificationSettings, isIosNotInstalled } from '../../data/pushNotifications';
 import { setAutoStartTimer, useAutoStartTimer } from '../../data/cookingModeSettings';
+import { useNotifications, type AppNotification } from '../../data/notifications';
+import { useRecipes } from '../../data/store';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { TagManager } from '../recipes/TagManager';
@@ -16,16 +18,10 @@ import { CategoryManager } from '../ingredients/CategoryManager';
 
 const API_KEY_MIGRATION_FLAG = 'cookkit:apiKeyMigrated';
 
-type Section = 'menu' | 'profile' | 'household' | 'app' | 'tags';
-
-const MENU_ITEMS: { section: Section; icon: typeof User; label: string }[] = [
-  { section: 'profile', icon: User, label: '내 프로필' },
-  { section: 'household', icon: Home, label: '가구 설정' },
-  { section: 'app', icon: Settings, label: '앱 설정' },
-  { section: 'tags', icon: Tags, label: '태그·카테고리 관리' },
-];
+type Section = 'menu' | 'notifications' | 'profile' | 'household' | 'app' | 'tags';
 
 const SECTION_TITLE: Record<Exclude<Section, 'menu'>, string> = {
+  notifications: '알림',
   profile: '내 프로필',
   household: '가구 설정',
   app: '앱 설정',
@@ -34,14 +30,30 @@ const SECTION_TITLE: Record<Exclude<Section, 'menu'>, string> = {
 
 /**
  * 홈 화면 우상단 프로필 아이콘 → 바텀시트. 예전 SettingsPage.tsx의 내용을 4개 메뉴로 재분류했다
- * (내 프로필 / 가구 설정 / 앱 설정 / 태그·카테고리 관리) — 로그아웃은 메뉴 목록에 바로 노출.
- * 각 섹션은 기존 SettingsPage.tsx 로직/컴포넌트(InlineEditRow, TagManager, CategoryManager)를
- * 최대한 그대로 재사용한다.
+ * (내 프로필 / 가구 설정 / 앱 설정 / 태그·카테고리 관리) + 알림함을 최상단에 추가 — 로그아웃은
+ * 메뉴 목록에 바로 노출. 각 섹션은 기존 SettingsPage.tsx 로직/컴포넌트(InlineEditRow,
+ * TagManager, CategoryManager)를 최대한 그대로 재사용한다.
  */
-export function ProfileSheet({ onClose }: { onClose: () => void }) {
+export function ProfileSheet({
+  onClose,
+  onNavigateToRecipe,
+}: {
+  onClose: () => void;
+  /** 알림 탭 시 관련 레시피 상세로 이동시키기 위한 콜백 — 시트를 소유한 HomePage가 주입한다. */
+  onNavigateToRecipe: (recipeId: string) => void;
+}) {
   const [section, setSection] = useState<Section>('menu');
   const { user, logout } = useSession();
   const { profile } = useProfile();
+  const { unreadCount } = useNotifications();
+
+  const menuItems: { section: Section; icon: typeof User; label: string; badge?: number }[] = [
+    { section: 'notifications', icon: Bell, label: '알림', badge: unreadCount },
+    { section: 'profile', icon: User, label: '내 프로필' },
+    { section: 'household', icon: Home, label: '가구 설정' },
+    { section: 'app', icon: Settings, label: '앱 설정' },
+    { section: 'tags', icon: Tags, label: '태그·카테고리 관리' },
+  ];
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -65,10 +77,11 @@ export function ProfileSheet({ onClose }: { onClose: () => void }) {
 
         {section === 'menu' && (
           <div className="profile-sheet-menu">
-            {MENU_ITEMS.map(({ section: s, icon: Icon, label }) => (
+            {menuItems.map(({ section: s, icon: Icon, label, badge }) => (
               <button type="button" key={s} className="profile-sheet-menu-item" onClick={() => setSection(s)}>
                 <Icon size={19} strokeWidth={2.75} />
                 <span>{label}</span>
+                {Boolean(badge) && <span className="profile-sheet-menu-badge">{badge}</span>}
                 <ChevronRight size={16} strokeWidth={2.75} className="profile-sheet-menu-chevron" />
               </button>
             ))}
@@ -85,11 +98,61 @@ export function ProfileSheet({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
+        {section === 'notifications' && (
+          <NotificationsSection
+            onNavigateToRecipe={(recipeId) => {
+              onClose();
+              onNavigateToRecipe(recipeId);
+            }}
+          />
+        )}
         {section === 'profile' && <ProfileSection />}
         {section === 'household' && <HouseholdSection />}
         {section === 'app' && <AppSettingsSection />}
         {section === 'tags' && <TagsCategoriesSection />}
       </div>
+    </div>
+  );
+}
+
+function formatNotificationText(notification: AppNotification, recipeName: string): string {
+  if (notification.type === 'recipe_liked') {
+    return `${notification.payload.liker_name}님이 회원님의 레시피 "${recipeName}"를 좋아해요`;
+  }
+  return `${notification.payload.author_name}님이 새 레시피 "${recipeName}"를 추가했어요`;
+}
+
+function NotificationsSection({ onNavigateToRecipe }: { onNavigateToRecipe: (recipeId: string) => void }) {
+  const { notifications, markRead } = useNotifications();
+  const { recipes } = useRecipes();
+
+  async function handleTap(notification: AppNotification) {
+    if (!notification.readAt) {
+      markRead(notification.id).catch((err) => console.error('알림 읽음 처리 실패:', err));
+    }
+    onNavigateToRecipe(notification.payload.recipe_id);
+  }
+
+  if (notifications.length === 0) {
+    return <p className="empty-hint">아직 알림이 없어요.</p>;
+  }
+
+  return (
+    <div>
+      {notifications.map((notification) => {
+        const recipeName = recipes.find((r) => r.id === notification.payload.recipe_id)?.name ?? '레시피';
+        return (
+          <button
+            type="button"
+            key={notification.id}
+            className={`notification-row ${notification.readAt ? '' : 'unread'}`}
+            onClick={() => handleTap(notification)}
+          >
+            <span className="notification-text">{formatNotificationText(notification, recipeName)}</span>
+            <span className="notification-time">{new Date(notification.createdAt).toLocaleDateString('ko-KR')}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useCategories, useIngredients, useRecipes, useTags, makeId, getCurrentHouseholdId } from '../../data/store';
 import { useSettings } from '../../data/settings';
 import { requestProfileSheet } from '../../data/profileSheet';
+import { createHouseholdRecipeAddedNotifications } from '../../data/notifications';
 // geminiClient는 이제 API 키가 필요 없는 순수 함수(프롬프트 생성)와 youtubeApiKey(범위 밖, 계속
 // 클라이언트에서 직접 씀)를 쓰는 fetchYoutubeVideoMeta만 남음 — 실제 AI 호출(대화/추출/이미지
 // 생성)은 aiProxy를 거쳐 서버로 감(Phase 4, API 키 Vault 전환).
@@ -684,6 +685,14 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         visibility,
       };
       await saveRecipe(recipe);
+      // 새 레시피(수정이 아님)이고 가구원이 볼 수 있는 공개범위일 때만 household에 알림 —
+      // private면 다른 가구원이 애초에 열 수 없는 레시피라 알림을 보내는 게 의미가 없다.
+      // 알림 생성 실패는 저장 자체를 막을 정도는 아니라 별도로 감싸서 조용히 로그만 남긴다.
+      if (!existing && recipe.visibility !== 'private') {
+        createHouseholdRecipeAddedNotifications(recipe.id).catch((err) =>
+          console.error('가구원 알림 생성 실패:', err),
+        );
+      }
       onDone();
     } catch (err) {
       console.error('레시피 저장 실패:', err);

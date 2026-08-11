@@ -1365,3 +1365,51 @@ select:focus {
   color: var(--text-primary);
   cursor: pointer;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   알림함 — 프로필 바텀시트 "알림" 메뉴 (src/features/settings/ProfileSheet.tsx)
+   ══════════════════════════════════════════════════════════════════════ */
+
+.profile-sheet-menu-badge {
+  flex-shrink: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: var(--accent-contrast);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.notification-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.notification-row.unread {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.notification-text {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.notification-time {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}

@@ -353,7 +353,7 @@ export function SettingsPage() {
           )}
         </div>
         {avatarError && (
-          <p className="text-muted" style={{ color: 'var(--danger, #d33)', marginTop: 4 }}>
+          <p className="text-muted" style={{ color: 'var(--danger)', marginTop: 4 }}>
             {avatarError}
           </p>
         )}

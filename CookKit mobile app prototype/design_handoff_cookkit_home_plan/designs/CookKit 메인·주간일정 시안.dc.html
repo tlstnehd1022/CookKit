@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/organic-1dfbad43-51fa-418f-b963-f6ffc1b0e922/styles.css">
+<script src="_ds/organic-1dfbad43-51fa-418f-b963-f6ffc1b0e922/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Gowun+Dodum&display=swap">
+<style>
+:root{--font-heading:"Jua","Caprasimo",system-ui,sans-serif;--font-body:"Gowun Dodum","Figtree",system-ui,sans-serif}
+body{margin:0;background:var(--color-bg);font-family:var(--font-body)}
+a{color:var(--color-accent-700)}a:hover{color:var(--color-accent-800)}
+::-webkit-scrollbar{width:0;height:0}
+.dv-turn{padding:44px 48px 36px;border-bottom:1px solid var(--color-divider);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
+.dv-tid{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:var(--color-neutral-900);color:var(--color-neutral-100);border-radius:6px;text-decoration:none}
+.dv-tname{font-family:var(--font-heading);font-size:16px}
+.dv-opts{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start;margin-top:22px}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px;max-width:402px}
+.dv-oid{font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;border-radius:6px;background:var(--color-accent-200);color:var(--color-accent-800);text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:9px;font-size:13px;color:var(--color-neutral-700)}
+.dv-onote{font-size:12.5px;line-height:1.6;color:var(--color-neutral-700);margin:2px 0 0}
+.dv-opt:target .dv-oid{background:var(--color-accent);color:var(--color-bg)}
+.dv-next{margin:26px 0 0;font-size:12.5px;line-height:1.6;color:var(--color-neutral-700)}
+@keyframes ckIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+
+<section class="dv-turn" id="t1">
+  <div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">메인화면 3안 + 주간 일정 2안</span></div>
+  <p style="font-size:13.5px;line-height:1.7;color:var(--color-neutral-700);max-width:640px;margin:0">탭은 홈 · 레시피 · 일정 · 장보기 · 재료 5개입니다 — 지금의 레시피 · 장보기 · 재료를 그대로 두고 앞에 홈, 그리고 일정 탭을 새로 넣었습니다. 6탭은 좁아서 설정은 홈 우상단 프로필로 옮겼습니다. 주방 신(<a class="dv-oid" href="#1b">1b</a>)은 사진 대신 시스템의 둥근 도형으로 그린 일러스트 안이고, 실제 주방 사진으로 바꿔도 같은 히트존 구조가 그대로 씁니다.</p>
+
+  <div class="dv-opts">
+
+    <div class="dv-opt" id="1a">
+      <div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>피드형 홈 — 오늘 뭐 먹지</div>
+      <p class="dv-onote">지금 프로토타입 방향. 추천 한 개를 크게 밀고, 그 아래 이번 주 일정 스트립과 임박 재료. 정보가 많고 안정적입니다.</p>
+      <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" hint-size="402px,874px">
+        <div style="height:100%;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);display:flex;flex-direction:column">
+          <div style="flex:1;overflow-y:auto;padding:64px 22px 108px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between">
+              <div>
+                <div style="font-size:13px;color:var(--color-neutral-700)">수요일 저녁 · 지우님</div>
+                <h2 style="font-size:30px;margin:6px 0 0">오늘 뭐 먹지?</h2>
+              </div>
+              <div style="width:44px;height:44px;border-radius:999px;background:var(--color-accent-2-300)"></div>
+            </div>
+            <div style="margin-top:18px;display:flex;align-items:center;gap:10px;background:var(--color-neutral-100);border-radius:999px;padding:13px 18px;box-shadow:var(--shadow-sm)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.75" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+              <span style="font-size:14px;color:var(--color-neutral-700)">레시피나 재료 검색</span>
+            </div>
+            <div style="margin-top:22px;border-radius:var(--radius-lg);background:var(--color-neutral-100);box-shadow:var(--shadow-md);overflow:hidden">
+              <div class="washed" style="height:176px;background:var(--color-accent-200);position:relative;display:flex;align-items:center;justify-content:center">
+                <div style="width:124px;height:124px;border-radius:999px;background:var(--color-accent-300)"></div>
+                <div style="position:absolute;width:68px;height:68px;border-radius:999px;background:var(--color-accent-2-300)"></div>
+                <div style="position:absolute;left:14px;top:14px;font-size:11px;padding:6px 12px;border-radius:999px;background:var(--color-neutral-100);color:var(--color-accent-2-900)">재료 6개 중 4개 있어요</div>
+              </div>
+              <div style="padding:16px 18px 20px">
+                <div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-700)">오늘의 추천</div>
+                <h3 style="font-size:23px;margin:8px 0 6px">된장 크림 파스타</h3>
+                <p style="font-size:13.5px;line-height:1.6;color:var(--color-neutral-700);margin:0 0 14px">남은 된장으로 감칠맛을 낸 원팬 파스타.</p>
+                <button class="btn btn-primary" style="border-radius:999px;padding:11px 20px;font-size:14px;font-family:var(--font-heading)">요리 시작</button>
+              </div>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;margin:26px 0 12px">
+              <h3 style="font-size:19px;margin:0">이번 주 일정</h3>
+              <span style="font-size:13px;color:var(--color-accent-700)">전체 보기</span>
+            </div>
+            <div style="display:flex;gap:9px;overflow-x:auto;margin:0 -22px;padding:0 22px 4px">
+              <sc-for list="{{ weekStrip }}" as="d" hint-placeholder-count="5">
+                <div style="flex:none;width:76px;border-radius:var(--radius-md);background:{{ d.bg }};padding:12px 10px;text-align:center">
+                  <div style="font-size:12px;color:{{ d.fg }}">{{ d.day }}</div>
+                  <div style="font-size:13px;margin-top:8px;line-height:1.35;color:{{ d.fg }}">{{ d.short }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <h3 style="font-size:19px;margin:26px 0 12px">유통기한이 다가와요</h3>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:center;gap:14px;background:var(--color-neutral-100);border-radius:var(--radius-md);padding:13px 16px">
+                <div style="width:40px;height:40px;border-radius:999px;background:var(--color-accent-200)"></div>
+                <div style="flex:1"><div style="font-size:15px">우유 200ml</div><div style="font-size:12.5px;color:var(--color-accent-700);margin-top:2px">3일 남음</div></div>
+                <span style="font-size:12.5px;padding:7px 13px;border-radius:999px;background:var(--color-accent-2-200);color:var(--color-accent-2-900)">레시피</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px;background:var(--color-neutral-100);border-radius:var(--radius-md);padding:13px 16px">
+                <div style="width:40px;height:40px;border-radius:999px;background:var(--color-accent-200)"></div>
+                <div style="flex:1"><div style="font-size:15px">두부 1모</div><div style="font-size:12.5px;color:var(--color-accent-700);margin-top:2px">내일까지</div></div>
+                <span style="font-size:12.5px;padding:7px 13px;border-radius:999px;background:var(--color-accent-2-200);color:var(--color-accent-2-900)">레시피</span>
+              </div>
+            </div>
+          </div>
+          <dc-import name="CookKitTabs" active="home" hint-size="100%,96px"></dc-import>
+        </div>
+      </x-import>
+    </div>
+
+    <div class="dv-opt" id="1b">
+      <div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>주방 신 홈 — 눌러서 들어가기</div>
+      <p class="dv-onote">주방 그림 자체가 내비게이션. 냉장고→재료, 조리대→요리하기, 달력→주간 일정, 장바구니→장보기. 눌러 보세요. 브랜드 인상은 가장 강하지만 정보 밀도는 가장 낮습니다.</p>
+      <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" hint-size="402px,874px">
+        <div style="height:100%;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);display:flex;flex-direction:column">
+          <div style="flex:1;overflow-y:auto;padding:64px 0 108px">
+            <div style="padding:0 22px">
+              <div style="font-size:13px;color:var(--color-neutral-700)">수요일 저녁 · 지우님</div>
+              <h2 style="font-size:28px;margin:6px 0 0">주방에 오셨어요</h2>
+            </div>
+
+            <div style="margin-top:18px;position:relative;height:450px;background:var(--color-accent-100);overflow:hidden">
+              <div style="position:absolute;left:0;right:0;bottom:0;height:110px;background:var(--color-accent-2-200)"></div>
+              <div style="position:absolute;left:150px;top:40px;width:62px;height:62px;border-radius:999px;background:var(--color-accent-200)"></div>
+
+              <div onClick="{{ tapFridge }}" style="position:absolute;left:20px;bottom:92px;width:108px;height:250px;border-radius:26px;background:var(--color-accent-2-400);cursor:pointer;box-shadow:var(--shadow-md)">
+                <div style="position:absolute;left:0;right:0;top:96px;height:4px;background:var(--color-accent-2-600)"></div>
+                <div style="position:absolute;right:12px;top:58px;width:7px;height:26px;border-radius:999px;background:var(--color-accent-2-700)"></div>
+                <div style="position:absolute;right:12px;top:112px;width:7px;height:26px;border-radius:999px;background:var(--color-accent-2-700)"></div>
+                <div style="position:absolute;left:50%;transform:translateX(-50%);bottom:-16px;white-space:nowrap;font-size:12.5px;padding:7px 14px;border-radius:999px;background:var(--color-neutral-100);box-shadow:var(--shadow-sm)">재료</div>
+              </div>
+
+              <div onClick="{{ tapCook }}" style="position:absolute;right:20px;bottom:92px;width:176px;height:100px;border-radius:24px;background:var(--color-neutral-300);cursor:pointer;box-shadow:var(--shadow-md)">
+                <div style="position:absolute;left:30px;top:-46px;width:84px;height:58px;border-radius:0 0 34px 34px;background:var(--color-accent-400)"></div>
+                <div style="position:absolute;left:22px;top:-56px;width:100px;height:12px;border-radius:999px;background:var(--color-accent-500)"></div>
+                <div style="position:absolute;left:126px;top:-36px;width:44px;height:50px;border-radius:12px 12px 20px 20px;background:var(--color-neutral-400)"></div>
+                <div style="position:absolute;left:50%;transform:translateX(-50%);bottom:-16px;white-space:nowrap;font-size:12.5px;padding:7px 14px;border-radius:999px;background:var(--color-neutral-100);box-shadow:var(--shadow-sm)">요리하기</div>
+              </div>
+
+              <div onClick="{{ tapPlan }}" style="position:absolute;right:26px;top:44px;width:108px;height:92px;border-radius:20px;background:var(--color-neutral-100);cursor:pointer;box-shadow:var(--shadow-md);padding:12px">
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px">
+                  <sc-for list="{{ calDots }}" as="c" hint-placeholder-count="8">
+                    <div style="height:11px;border-radius:4px;background:{{ c.bg }}"></div>
+                  </sc-for>
+                </div>
+                <div style="position:absolute;left:50%;transform:translateX(-50%);bottom:-16px;white-space:nowrap;font-size:12.5px;padding:7px 14px;border-radius:999px;background:var(--color-neutral-100);box-shadow:var(--shadow-sm)">주간 일정</div>
+              </div>
+
+              <div onClick="{{ tapShop }}" style="position:absolute;left:110px;bottom:26px;width:88px;height:64px;border-radius:10px 10px 30px 30px;background:var(--color-accent-300);cursor:pointer;box-shadow:var(--shadow-md)">
+                <div style="position:absolute;left:0;right:0;top:-9px;height:12px;border-radius:999px;background:var(--color-accent-400)"></div>
+                <div style="position:absolute;left:26px;top:-26px;width:40px;height:22px;border:4px solid var(--color-accent-400);border-bottom:0;border-radius:20px 20px 0 0"></div>
+                <div style="position:absolute;left:50%;transform:translateX(-50%);bottom:-14px;white-space:nowrap;font-size:12.5px;padding:6px 13px;border-radius:999px;background:var(--color-neutral-100);box-shadow:var(--shadow-sm)">장보기 3</div>
+              </div>
+            </div>
+
+            <div style="padding:26px 22px 0">
+              <div style="border-radius:var(--radius-lg);background:var(--color-neutral-100);padding:18px 20px;box-shadow:var(--shadow-sm);display:flex;align-items:center;gap:16px">
+                <div class="washed" style="width:62px;height:62px;border-radius:999px;background:var(--color-accent-200);flex:none"></div>
+                <div style="flex:1">
+                  <div style="font-size:12px;color:var(--color-accent-700)">오늘 저녁 예정</div>
+                  <div style="font-size:17px;margin-top:4px">된장 크림 파스타</div>
+                  <div style="font-size:12.5px;color:var(--color-neutral-700);margin-top:3px">20분 · 재료 4/6 있어요</div>
+                </div>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-neutral-600)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg>
+              </div>
+              <div style="text-align:center;font-size:12.5px;color:var(--color-neutral-600);margin-top:16px">{{ tapHint }}</div>
+            </div>
+          </div>
+          <dc-import name="CookKitTabs" active="home" hint-size="100%,96px"></dc-import>
+        </div>
+      </x-import>
+    </div>
+
+    <div class="dv-opt" id="1c">
+      <div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>절충안 — 주방 스트립 + 오늘</div>
+      <p class="dv-onote">주방 신을 상단 가로 스트립으로 줄여 진입점 4개만 남기고, 아래는 오늘 할 일 위주. <a class="dv-oid" href="#1b">1b</a>의 인상과 <a class="dv-oid" href="#1a">1a</a>의 정보량을 반씩.</p>
+      <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" hint-size="402px,874px">
+        <div style="height:100%;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);display:flex;flex-direction:column">
+          <div style="flex:1;overflow-y:auto;padding:64px 22px 108px">
+            <h2 style="font-size:28px;margin:0">저녁 준비할까요?</h2>
+            <div style="font-size:13px;color:var(--color-neutral-700);margin-top:6px">냉장고에 17개 · 이번 주 4끼 계획됨</div>
+
+            <div style="margin-top:20px;border-radius:var(--radius-lg);background:var(--color-accent-100);padding:18px 14px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+              <sc-for list="{{ quickEntries }}" as="q" hint-placeholder-count="4">
+                <div onClick="{{ q.tap }}" style="display:flex;flex-direction:column;align-items:center;gap:9px;cursor:pointer">
+                  <div style="width:58px;height:58px;border-radius:20px;background:{{ q.bg }};display:flex;align-items:center;justify-content:center">
+                    <div style="width:{{ q.dotW }};height:{{ q.dotH }};border-radius:{{ q.dotR }};background:{{ q.dot }}"></div>
+                  </div>
+                  <div style="font-size:12px">{{ q.label }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <h3 style="font-size:19px;margin:26px 0 12px">오늘 저녁</h3>
+            <div style="border-radius:var(--radius-lg);background:var(--color-neutral-100);box-shadow:var(--shadow-md);overflow:hidden">
+              <div class="washed" style="height:150px;background:var(--color-accent-200);display:flex;align-items:center;justify-content:center">
+                <div style="width:104px;height:104px;border-radius:999px;background:var(--color-accent-300)"></div>
+              </div>
+              <div style="padding:16px 18px 18px;display:flex;align-items:center;gap:14px">
+                <div style="flex:1">
+                  <div style="font-size:20px">된장 크림 파스타</div>
+                  <div style="font-size:12.5px;color:var(--color-neutral-700);margin-top:4px">20분 · 재료 4/6</div>
+                </div>
+                <button class="btn btn-primary" style="border-radius:999px;padding:11px 20px;font-size:14px;font-family:var(--font-heading)">시작</button>
+              </div>
+            </div>
+
+            <h3 style="font-size:19px;margin:26px 0 12px">내일부터</h3>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ upcoming }}" as="u" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:14px;background:var(--color-neutral-100);border-radius:var(--radius-md);padding:13px 16px">
+                  <div style="width:38px;height:38px;border-radius:999px;background:var(--color-accent-2-200);color:var(--color-accent-2-900);font-size:13px;display:flex;align-items:center;justify-content:center;font-family:var(--font-heading)">{{ u.day }}</div>
+                  <div style="flex:1;font-size:15px">{{ u.title }}</div>
+                  <div style="font-size:12px;color:var(--color-neutral-700)">{{ u.status }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <dc-import name="CookKitTabs" active="home" hint-size="100%,96px"></dc-import>
+        </div>
+      </x-import>
+    </div>
+
+    <div class="dv-opt" id="1d">
+      <div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>주간 일정 — 한 주 한 화면</div>
+      <p class="dv-onote">7일이 세로로 다 보이고 빈 날은 점선 자리. 주 단위 장보기 CTA가 아래 고정. 계획을 짜는 사람에게 유리.</p>
+      <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" hint-size="402px,874px">
+        <div style="height:100%;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);display:flex;flex-direction:column;position:relative">
+          <div style="flex:1;overflow-y:auto;padding:64px 22px 190px">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <h2 style="font-size:28px;margin:0">이번 주 밥상</h2>
+              <div style="display:flex;gap:8px">
+                <div style="width:34px;height:34px;border-radius:999px;background:var(--color-neutral-100);display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></div>
+                <div style="width:34px;height:34px;border-radius:999px;background:var(--color-neutral-100);display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></div>
+              </div>
+            </div>
+            <div style="font-size:13px;color:var(--color-neutral-700);margin-top:6px">8월 10일 – 16일 · 4끼 계획됨</div>
+
+            <div style="display:flex;flex-direction:column;gap:12px;margin-top:20px">
+              <sc-for list="{{ week }}" as="d" hint-placeholder-count="7">
+                <div style="display:flex;gap:13px;align-items:stretch">
+                  <div style="width:46px;flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:14px">
+                    <div style="font-size:12px;color:{{ d.dayFg }}">{{ d.day }}</div>
+                    <div style="width:28px;height:28px;border-radius:999px;background:{{ d.numBg }};color:{{ d.numFg }};font-size:13px;display:flex;align-items:center;justify-content:center;font-family:var(--font-heading)">{{ d.date }}</div>
+                  </div>
+                  <sc-if value="{{ d.planned }}" hint-placeholder-val="{{ true }}">
+                    <div style="flex:1;display:flex;align-items:center;gap:13px;background:var(--color-neutral-100);border-radius:var(--radius-lg);padding:12px 14px;box-shadow:var(--shadow-sm)">
+                      <div class="washed" style="width:52px;height:52px;border-radius:999px;background:{{ d.thumb }};flex:none"></div>
+                      <div style="flex:1">
+                        <div style="font-size:15.5px">{{ d.title }}</div>
+                        <div style="font-size:12px;color:var(--color-neutral-700);margin-top:3px">{{ d.meta }}</div>
+                      </div>
+                      <span style="font-size:11.5px;padding:5px 10px;border-radius:999px;background:{{ d.tagBg }};color:{{ d.tagFg }};white-space:nowrap">{{ d.tag }}</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ d.empty }}">
+                    <div style="flex:1;border:1px dashed var(--color-neutral-400);border-radius:var(--radius-lg);padding:18px 14px;color:var(--color-neutral-600);font-size:13.5px;display:flex;align-items:center;gap:8px">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>메뉴 정하기
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="position:absolute;left:0;right:0;bottom:96px;padding:14px 22px 16px;background:var(--color-bg)">
+            <button class="btn btn-primary btn-block" style="border-radius:999px;padding:15px;font-size:15px;margin:0;font-family:var(--font-heading)">이번 주 장볼 것 8개 담기</button>
+          </div>
+          <dc-import name="CookKitTabs" active="plan" hint-size="100%,96px"></dc-import>
+        </div>
+      </x-import>
+    </div>
+
+    <div class="dv-opt" id="1e">
+      <div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>주간 일정 — 요일 선택형</div>
+      <p class="dv-onote">상단 요일 스트립에서 하루를 고르면 그 날만 크게. 눌러 보세요. 하루 한 끼를 정하는 데 집중되고, 남는 재료 안내를 붙이기 좋습니다.</p>
+      <x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" hint-size="402px,874px">
+        <div style="height:100%;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);display:flex;flex-direction:column">
+          <div style="flex:1;overflow-y:auto;padding:64px 0 108px">
+            <div style="padding:0 22px">
+              <h2 style="font-size:28px;margin:0">주간 일정</h2>
+              <div style="font-size:13px;color:var(--color-neutral-700);margin-top:6px">8월 10일 – 16일</div>
+            </div>
+            <div style="display:flex;gap:9px;overflow-x:auto;padding:18px 22px 6px">
+              <sc-for list="{{ picker }}" as="p" hint-placeholder-count="7">
+                <div onClick="{{ p.tap }}" style="flex:none;width:52px;border-radius:20px;background:{{ p.bg }};color:{{ p.fg }};padding:11px 0;text-align:center;cursor:pointer;transition:background .2s ease">
+                  <div style="font-size:12px">{{ p.day }}</div>
+                  <div style="font-size:16px;margin-top:5px;font-family:var(--font-heading)">{{ p.date }}</div>
+                  <div style="width:5px;height:5px;border-radius:999px;margin:7px auto 0;background:{{ p.dot }}"></div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="padding:14px 22px 0" key="{{ selKey }}">
+              <div style="border-radius:var(--radius-lg);background:var(--color-neutral-100);box-shadow:var(--shadow-md);overflow:hidden;animation:ckIn .25s ease both">
+                <div class="washed" style="height:180px;background:{{ selThumb }};display:flex;align-items:center;justify-content:center">
+                  <div style="width:118px;height:118px;border-radius:999px;background:var(--color-accent-300)"></div>
+                </div>
+                <div style="padding:18px 20px 20px">
+                  <div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-accent-700)">{{ selDayLabel }} 저녁</div>
+                  <h3 style="font-size:24px;margin:8px 0 8px">{{ selTitle }}</h3>
+                  <div style="font-size:13px;color:var(--color-neutral-700)">{{ selMeta }}</div>
+                  <div style="display:flex;gap:10px;margin-top:16px">
+                    <button class="btn btn-primary" style="border-radius:999px;padding:12px 22px;font-size:14px;font-family:var(--font-heading)">{{ selCta }}</button>
+                    <button class="btn btn-secondary" style="border-radius:999px;padding:12px 20px;font-size:14px;font-family:var(--font-heading)">바꾸기</button>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-top:18px;background:var(--color-accent-2-200);border-radius:var(--radius-lg);padding:17px 19px">
+                <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-accent-2-900);margin-bottom:7px">이어 쓰기</div>
+                <div style="font-size:14.5px;line-height:1.65;color:var(--color-accent-2-900)">{{ selReuse }}</div>
+              </div>
+
+              <h3 style="font-size:18px;margin:24px 0 12px">이 날 살 것</h3>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <sc-for list="{{ selBuy }}" as="b" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:12px;background:var(--color-neutral-100);border-radius:var(--radius-md);padding:12px 15px">
+                    <div style="width:22px;height:22px;border-radius:999px;border:2px solid var(--color-neutral-400)"></div>
+                    <div style="flex:1;font-size:14.5px">{{ b.name }}</div>
+                    <div style="font-size:13px;color:var(--color-neutral-700)">{{ b.amount }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+          <dc-import name="CookKitTabs" active="plan" hint-size="100%,96px"></dc-import>
+        </div>
+      </x-import>
+    </div>
+
+  </div>
+
+  <p class="dv-next">이어서 해볼 것: "<a class="dv-oid" href="#1b">1b</a>로 가되 주방을 실제 사진으로" · "<a class="dv-oid" href="#1c">1c</a> + <a class="dv-oid" href="#1e">1e</a> 조합으로 전체 플로우 만들어줘" · "탭에 홈 대신 <a class="dv-oid" href="#1b">1b</a>를 레시피 탭 상단에 넣으면?"</p>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+const WEEK = [
+  { day: '월', date: '10', title: '두부 강된장 비빔밥', meta: '18분 · 2인분', tag: '재료 있음', ok: true },
+  { day: '화', date: '11', title: '애호박 새우 볶음', meta: '15분 · 2인분', tag: '2개 부족', ok: false },
+  { day: '수', date: '12', title: '된장 크림 파스타', meta: '20분 · 2인분', tag: '오늘', ok: true, today: true },
+  { day: '목', date: '13', title: '', meta: '', tag: '' },
+  { day: '금', date: '14', title: '버섯 들깨 스튜', meta: '30분 · 3인분', tag: '1개 부족', ok: false },
+  { day: '토', date: '15', title: '', meta: '', tag: '' },
+  { day: '일', date: '16', title: '', meta: '', tag: '' },
+];
+
+const BUY = {
+  '10': [], '11': [{ name: '새우', amount: '200g' }, { name: '애호박', amount: '1개' }],
+  '12': [{ name: '베이컨', amount: '60g' }, { name: '파르메산', amount: '20g' }],
+  '13': [], '14': [{ name: '들깨가루', amount: '3큰술' }], '15': [], '16': [],
+};
+
+const REUSE = {
+  '11': '월요일에 쓰고 남은 두부 1/2모를 이 날 함께 쓰도록 짰어요.',
+  '12': '남은 우유 200ml를 이 날 다 쓰게 됩니다. 유통기한 하루 전이에요.',
+  '14': '금요일 표고버섯 3개는 토요일 국물용으로 남겨 둘게요.',
+};
+
+class Component extends DCLogic {
+  state = { sel: '12', hint: '주방의 물건을 눌러 보세요' };
+
+  renderVals() {
+    const st = this.state;
+    const sel = WEEK.find(d => d.date === st.sel) || WEEK[2];
+    const say = (msg) => () => {
+      this.setState({ hint: msg });
+      clearTimeout(this._h);
+      this._h = setTimeout(() => this.setState({ hint: '주방의 물건을 눌러 보세요' }), 2000);
+    };
+
+    return {
+      weekStrip: WEEK.slice(2, 7).map(d => ({
+        day: d.day,
+        short: d.title ? d.title.split(' ')[0] : '비어 있음',
+        bg: d.today ? 'var(--color-accent-200)' : 'var(--color-neutral-100)',
+        fg: d.today ? 'var(--color-accent-800)' : 'var(--color-neutral-800)',
+      })),
+
+      tapHint: st.hint,
+      tapFridge: say('냉장고 → 재료 화면으로'),
+      tapCook: say('조리대 → 오늘 요리 시작'),
+      tapPlan: say('달력 → 주간 일정으로'),
+      tapShop: say('장바구니 → 장보기 목록으로'),
+      calDots: [1, 1, 0, 1, 0, 0, 1, 0].map(v => ({ bg: v ? 'var(--color-accent-400)' : 'var(--color-neutral-300)' })),
+
+      quickEntries: [
+        { label: '재료', bg: 'var(--color-accent-2-300)', dot: 'var(--color-accent-2-600)', dotW: '20px', dotH: '30px', dotR: '8px', tap: say('') },
+        { label: '요리', bg: 'var(--color-accent-300)', dot: 'var(--color-accent-600)', dotW: '28px', dotH: '20px', dotR: '0 0 14px 14px', tap: say('') },
+        { label: '일정', bg: 'var(--color-neutral-300)', dot: 'var(--color-neutral-600)', dotW: '26px', dotH: '24px', dotR: '7px', tap: say('') },
+        { label: '장보기', bg: 'var(--color-accent-200)', dot: 'var(--color-accent-500)', dotW: '26px', dotH: '20px', dotR: '4px 4px 12px 12px', tap: say('') },
+      ],
+      upcoming: [
+        { day: '목', title: '메뉴 미정', status: '정하기' },
+        { day: '금', title: '버섯 들깨 스튜', status: '1개 부족' },
+        { day: '토', title: '메뉴 미정', status: '정하기' },
+      ],
+
+      week: WEEK.map(d => ({
+        day: d.day, date: d.date, title: d.title, meta: d.meta, tag: d.tag,
+        planned: !!d.title, empty: !d.title,
+        dayFg: d.today ? 'var(--color-accent-700)' : 'var(--color-neutral-600)',
+        numBg: d.today ? 'var(--color-accent)' : 'transparent',
+        numFg: d.today ? 'var(--color-bg)' : 'var(--color-neutral-800)',
+        thumb: d.ok ? 'var(--color-accent-2-200)' : 'var(--color-accent-200)',
+        tagBg: d.ok ? 'var(--color-accent-2-200)' : 'var(--color-accent-200)',
+        tagFg: d.ok ? 'var(--color-accent-2-900)' : 'var(--color-accent-800)',
+      })),
+
+      picker: WEEK.map(d => ({
+        day: d.day, date: d.date,
+        bg: d.date === st.sel ? 'var(--color-accent)' : 'var(--color-neutral-100)',
+        fg: d.date === st.sel ? 'var(--color-bg)' : 'var(--color-neutral-800)',
+        dot: d.title ? (d.date === st.sel ? 'var(--color-bg)' : 'var(--color-accent-500)') : 'transparent',
+        tap: () => this.setState({ sel: d.date }),
+      })),
+      selKey: sel.date,
+      selDayLabel: sel.day + '요일',
+      selTitle: sel.title || '아직 정하지 않았어요',
+      selMeta: sel.title ? sel.meta + ' · ' + sel.tag : '냉장고 재료로 추천 4개가 있어요',
+      selCta: sel.title ? '레시피 보기' : '메뉴 정하기',
+      selThumb: sel.title ? 'var(--color-accent-200)' : 'var(--color-neutral-200)',
+      selReuse: REUSE[sel.date] || '이 날 재료는 앞뒤 요일과 겹치지 않아요.',
+      selBuy: BUY[sel.date] || [],
+    };
+  }
+}
+
+</script>
+</body>
+</html>

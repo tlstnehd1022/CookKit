@@ -26,8 +26,8 @@ export default defineConfig({
         description: '알러지 있는 가족/친구와 함께 요리하는 레시피·재료 관리 앱',
         start_url: '/',
         display: 'standalone',
-        background_color: '#fdfbf6',
-        theme_color: '#993c1d',
+        background_color: '#f5ead8',
+        theme_color: '#c67139',
         icons: [
           { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },

@@ -1,20 +1,37 @@
 :root {
-  /* 따뜻한 아날로그 + Soft UI 팔레트 (라이트) */
-  --bg-page: #fdfbf6;
-  --bg-card: #f5efe3;
-  --text-primary: #2c2c2a;
-  --text-secondary: #7a6f5a;
-  --accent: #993c1d;
-  --accent-hover: #b24e2a;
-  --accent-contrast: #fdfbf6;
-  --border: #e5dfd0;
-  --shadow-soft: 0 2px 8px rgba(44, 44, 42, 0.06);
-  --shadow-soft-hover: 0 4px 14px rgba(44, 44, 42, 0.1);
-  --chip-bg: #efe7d6;
-  --danger: #b0342a;
-  --success: #4f7942;
-  --warning: #a5720e;
-  --radius: 12px;
+  /* Claude Design 핸드오프(design_handoff_cookkit_home_plan/designs/organic-styles.css) 기준
+     디자인 시스템 — 변수 "이름"은 CookKit 기존 것을 유지하고 "값"만 새 팔레트로 교체했다(이름을
+     바꾸면 참조하는 곳을 전부 고쳐야 해서). 괄호 안은 새 팔레트에서의 원래 이름 — 매핑 근거는
+     CLAUDE.md 참고. */
+  --bg-page: #f5ead8; /* --color-bg */
+  --bg-card: #f9f4ed; /* --color-neutral-100 (카드·탭바 배경) */
+  --text-primary: #201e1d; /* --color-text */
+  --text-secondary: #645c50; /* --color-neutral-700 (보조 텍스트) */
+  --accent: #c67139; /* --color-accent (테라코타) */
+  --accent-hover: #b2622d; /* --color-accent-600 */
+  --accent-contrast: #f5ead8; /* --color-bg — accent 배경 위 텍스트 색 */
+  --border: rgba(32, 30, 29, 0.16); /* --color-divider */
+  --shadow-soft: 0 1px 2px rgba(46, 43, 37, 0.14); /* --shadow-sm */
+  --shadow-soft-hover: 0 3px 10px rgba(46, 43, 37, 0.16); /* --shadow-md */
+  --shadow-lg: 0 12px 32px rgba(46, 43, 37, 0.22); /* 신규 — 홈/주간일정 큰 카드용 */
+  --chip-bg: #eee7db; /* --color-neutral-200 */
+  /* danger는 핸드오프 팔레트에 없는 역할이라 새로 설계함(따뜻한 톤에 맞춘 브릭레드) */
+  --danger: #a8382a;
+  --success: #728157; /* --color-accent-2-600 (세이지 — 핸드오프의 "체크 채움" 색과 동일) */
+  --warning: #8c491a; /* --color-accent-700 (테라코타 계열 — 팔레트에 앰버색이 따로 없어 재사용) */
+  --radius: 16px; /* --radius-md — 카드류 기본. 버튼/칩/입력은 아래 컴포넌트 규칙에서 pill 처리 */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 28px; /* 홈 추천 카드, 주간일정 선택된 날 카드 등 큰 카드 전용 */
+  --radius-pill: 999px;
+  --font-heading: 'Jua', system-ui, sans-serif;
+  --font-body: 'Gowun Dodum', system-ui, sans-serif;
+  --space-1: 4.4px;
+  --space-2: 8.8px;
+  --space-3: 13.2px;
+  --space-4: 17.6px;
+  --space-6: 26.4px;
+  --space-8: 35.2px;
   color-scheme: light;
 
   /* 예전 변수명 별칭 — 기존 컴포넌트가 var(--text)/var(--text-muted)를 참조하고 있어 유지 */
@@ -23,21 +40,27 @@
 }
 
 [data-theme='dark'] {
-  /* 따뜻한 아날로그 + Soft UI 팔레트 (다크) */
-  --bg-page: #1e1c1a;
-  --bg-card: #2c2925;
-  --text-primary: #f1efe8;
-  --text-secondary: #b4afa0;
-  --accent: #d8724a;
-  --accent-hover: #e28a63;
-  --accent-contrast: #1e1c1a;
-  --border: #443f38;
-  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.25);
-  --shadow-soft-hover: 0 4px 16px rgba(0, 0, 0, 0.35);
-  --chip-bg: #3a362e;
-  --danger: #e2685a;
-  --success: #8fbf7a;
-  --warning: #d9a552;
+  /* 다크모드 — 핸드오프에 다크 값이 없어 직접 설계함(단순 반전 금지). 배경은 순검정이 아니라
+     핸드오프 팔레트의 neutral-900(따뜻한 다크브라운)을 그대로 재사용해 색 온도를 유지하고,
+     accent/accent-2는 라이트보다 밝은 램프 단계로 올려 어두운 배경에서도 잘 보이게 했다. 테두리는
+     라이트의 잉크 틴트 대신 밝은 색의 저투명도 hairline으로, 그림자는 은은한 검정만 남기고
+     테두리가 주된 경계 역할을 하도록 했다(기존 .card/.recipe-card 등에 이미 border가 있어서
+     구조 변경 없이 --border 값만 바꿔도 적용됨). 본문 텍스트 대비는 전부 WCAG AA(4.5:1) 이상. */
+  --bg-page: #2e2b25; /* --color-neutral-900 */
+  --bg-card: #474238; /* --color-neutral-800 — page보다 한 단계 밝게(카드 분리감) */
+  --text-primary: #f9f4ed; /* --color-neutral-100 — bg 대비 약 13:1 */
+  --text-secondary: #c0b6a5; /* --color-neutral-400 — bg 대비 약 8:1 */
+  --accent: #f6a06b; /* --color-accent-400 — 라이트보다 밝게 */
+  --accent-hover: #d67f48; /* --color-accent-500 */
+  --accent-contrast: #2e2b25; /* accent 배경 위 텍스트 — 다크모드의 --bg-page와 동일 톤 */
+  --border: rgba(249, 244, 237, 0.14); /* 밝은 색 저투명도 hairline */
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-soft-hover: 0 3px 10px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --chip-bg: #645c50; /* --color-neutral-700 — bg-card보다 한 단계 밝게(칩이 살짝 떠 보이게) */
+  --danger: #e2685a; /* bg 대비 약 6.8:1 */
+  --success: #aebf92; /* --color-accent-2-400 */
+  --warning: #ffc6a5; /* --color-accent-300 — accent/accent-hover와 구분되도록 더 밝게 */
   color-scheme: dark;
 }
 
@@ -47,7 +70,7 @@
 
 body {
   margin: 0;
-  font-family: system-ui, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  font-family: var(--font-body);
   background: var(--bg-page);
   color: var(--text-primary);
   font-size: 14px;
@@ -148,24 +171,24 @@ textarea {
 h1,
 h2,
 .recipe-title {
-  font-family: 'Noto Serif KR', serif;
+  /* Jua는 400 한 웨이트뿐이라 굵기를 강제하면 브라우저가 합성(faux) 볼드를 만들어 뭉개져
+     보인다 — 굵기는 폰트 자체의 두꺼운 디스플레이 형태에 맡기고 font-weight는 항상 400. */
+  font-family: var(--font-heading);
+  font-weight: 400;
 }
 
 h1 {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 28px; /* 핸드오프 "화면 제목" 크기 — 앱 전역에서 h1을 화면 제목으로 일관되게 씀 */
   margin: 0 0 16px;
 }
 
 h2 {
   font-size: 18px;
-  font-weight: 600;
   margin: 0 0 8px;
 }
 
 .recipe-title {
   font-size: 16px;
-  font-weight: 600;
 }
 
 .card {
@@ -554,8 +577,10 @@ h2 {
   border: 1px solid var(--border);
   background: var(--bg-card);
   color: var(--text-primary);
-  border-radius: var(--radius);
+  border-radius: var(--radius-pill); /* 핸드오프의 "small controls go pill" 규칙 */
   padding: 8px 14px;
+  font-family: var(--font-heading);
+  font-weight: 400;
   font-size: 14px;
   box-shadow: var(--shadow-soft);
   transition: box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
@@ -641,7 +666,7 @@ h2 {
 .field textarea {
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--bg-page);
   color: var(--text-primary);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -663,9 +688,9 @@ select {
   -webkit-appearance: none;
   padding: 10px 32px 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background-color: var(--bg-page);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%237a6f5a' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23645c50' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
   background-size: 12px;
@@ -683,7 +708,7 @@ select:focus {
 /* url() 안의 SVG data URI는 CSS 변수를 참조할 수 없어서(고정 색상 문자열이라야 함) 다크모드용
    화살표 색(--text-secondary의 다크 값)을 별도로 하드코딩한다. */
 [data-theme='dark'] select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23b4afa0' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23c0b6a5' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
 }
 
 .section-title {
@@ -709,7 +734,9 @@ select:focus {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(30, 28, 26, 0.45);
+  /* 새 팔레트의 neutral-900(가장 어두운 중립색) 톤에 맞춘 반투명 스크림 — 라이트/다크 어느
+     테마든 항상 어둡게 깔려야 해서 --bg-page 등 테마별 변수에는 의도적으로 연결하지 않는다. */
+  background: rgba(46, 43, 37, 0.5);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -718,7 +745,7 @@ select:focus {
 
 .modal-sheet {
   background: var(--bg-card);
-  border-radius: 16px 16px 0 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
   padding: 20px;
   width: 100%;
   max-width: 640px;

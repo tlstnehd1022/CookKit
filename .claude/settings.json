@@ -97,7 +97,12 @@
       "Bash(npx oxlint *)",
       "Bash(echo \"EXIT: $?\")",
       "Bash(grep -rn \"from '\\\\.\\\\./\\\\.\\\\./src\" api/_lib/*.ts api/*.ts)",
-      "Bash(git restore *)"
+      "Bash(git restore *)",
+      "Bash(cd c:/projects/CookKit && find . -maxdepth 2 -iname \"*prototype*\" -o -iname \"*organic*\" 2>/dev/null | grep -v node_modules; echo \"---\"; find / -maxdepth 3 -iname \"*CookKit_mobile*\" 2>/dev/null)",
+      "Read(//c//**)",
+      "Bash(grep -rEn \"#[0-9a-fA-F]{3,8}\\\\b\" src --include=\"*.tsx\" --include=\"*.ts\")",
+      "Bash(grep -n \"^\\\\.field input,\\\\|^select {\" -A 12 src/index.css)",
+      "Bash(mkdir -p \"/c/Users/PEPPER/AppData/Local/Temp/claude/c--projects-CookKit/08c0d2eb-fe5c-4734-af18-c5333f72ce15/scratchpad\")"
     ],
     "deny": [
       "Bash(rm -rf *)",
@@ -106,6 +111,9 @@
     ],
     "ask": [
       "Bash(git push*)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\PEPPER\\AppData\\Local\\Temp\\claude\\c--projects-CookKit\\08c0d2eb-fe5c-4734-af18-c5333f72ce15\\scratchpad"
     ]
   }
 }

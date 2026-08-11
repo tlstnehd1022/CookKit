@@ -49,8 +49,10 @@ async function bootstrap() {
   } catch (err) {
     console.error('앱을 시작하지 못했습니다:', err)
     const message = err instanceof Error ? err.message : String(err)
+    // 앱 부트스트랩 자체가 실패한 상황(예: 환경변수 누락)이라 index.css의 --danger 변수가
+    // 제대로 로드됐다고 보장할 수 없어 의도적으로 하드코딩한다(새 팔레트 danger 값과 맞춰둠).
     root.render(
-      <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif', color: '#b0342a', lineHeight: 1.6 }}>
+      <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif', color: '#a8382a', lineHeight: 1.6 }}>
         <h1 style={{ fontSize: 18 }}>앱을 시작할 수 없습니다</h1>
         <p style={{ whiteSpace: 'pre-wrap' }}>{message}</p>
       </div>,

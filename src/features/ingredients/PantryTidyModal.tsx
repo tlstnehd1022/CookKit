@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useCategories, useIngredients } from '../../data/store';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { markPantryCleaned } from '../../data/cookingLog';
+import { showUndoToast } from '../../data/undoToast';
 import type { Category, Ingredient } from '../../data/types';
 
 interface CategoryGroup {
@@ -77,9 +78,13 @@ export function PantryTidyModal({
     setApplying(true);
     setError(null);
     try {
+      // 실행 취소(E)용 — 바뀌기 전 원본을 그대로 저장해두면 되돌릴 때 saveIngredient만 다시
+      // 호출하면 owned/lastFilledAt 등이 전부 원래대로 복원된다.
+      const beforeSnapshots: Ingredient[] = [];
       for (const ingredient of ingredients) {
         const next = localOwned.get(ingredient.id) ?? ingredient.owned;
         if (next === ingredient.owned) continue;
+        beforeSnapshots.push(ingredient);
         if (next) {
           await markIngredientFilled(ingredient);
         } else {
@@ -88,6 +93,13 @@ export function PantryTidyModal({
       }
       if (cookingLogId) {
         await markPantryCleaned(cookingLogId).catch((err) => console.error('정리 완료 기록 실패:', err));
+      }
+      if (beforeSnapshots.length > 0) {
+        showUndoToast(`냉장고를 정리했어요 (${beforeSnapshots.length}개 변경)`, async () => {
+          for (const snapshot of beforeSnapshots) {
+            await saveIngredient(snapshot);
+          }
+        });
       }
       onApplied?.();
       onClose();

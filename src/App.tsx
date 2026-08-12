@@ -19,6 +19,7 @@ import { initializeNotifications, resetNotifications } from './data/notification
 import { useImageGenerationCompletionMessage, useImageGenerationStatus } from './data/imageGenerationStatus';
 import { setActiveTab, useActiveTab, type Tab } from './data/activeTab';
 import { useOnlineStatus } from './data/useOnlineStatus';
+import { useUndoToast, triggerUndo } from './data/undoToast';
 
 const TABS: { id: Tab; label: string; icon: typeof House }[] = [
   { id: 'home', label: '홈', icon: House },
@@ -37,6 +38,7 @@ function App() {
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
   const shoppingNeededCount = useShoppingNeededCount();
   const isOnline = useOnlineStatus();
+  const undoToast = useUndoToast();
 
   useEffect(() => {
     if (!user) {
@@ -146,6 +148,14 @@ function App() {
         })}
       </nav>
       {imageGenCompletionMessage && <div className="toast">{imageGenCompletionMessage}</div>}
+      {undoToast && (
+        <div className="toast toast-undo">
+          <span>{undoToast.message}</span>
+          <button type="button" onClick={() => triggerUndo()}>
+            실행 취소
+          </button>
+        </div>
+      )}
     </>
   );
 }

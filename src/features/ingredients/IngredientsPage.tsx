@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import { useCategories, useIngredients, useIngredientsById, useRecipes, makeId } from '../../data/store';
 import { isRecipeMakeableWithPantry } from '../../data/computed';
 import { requestPantryOnlyFilter } from '../../data/pantryFilterRequest';
+import { showUndoToast } from '../../data/undoToast';
 import { CategoryManager } from './CategoryManager';
 import { ReceiptScanModal } from './ReceiptScanModal';
 import { PantryTidyModal } from './PantryTidyModal';
@@ -208,8 +209,12 @@ export function IngredientsPage() {
             setEditingDetailsId(null);
           }}
           onDelete={async () => {
+            const target = ingredients.find((i) => i.id === editingDetailsId);
             await deleteIngredient(editingDetailsId);
             setEditingDetailsId(null);
+            if (target) {
+              showUndoToast(`'${target.name}' 재료를 지웠어요`, () => saveIngredient(target));
+            }
           }}
         />
       )}

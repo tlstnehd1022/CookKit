@@ -9,6 +9,7 @@ import { fetchLikeInfo } from '../../data/recipeLikes';
 import * as aiProxy from '../../lib/aiProxy';
 import { ApiProxyError } from '../../lib/aiProxy';
 import { requestProfileSheet } from '../../data/profileSheet';
+import { showUndoToast } from '../../data/undoToast';
 import { getErrorMessage } from '../../lib/errorMessage';
 import {
   fetchCookingStats,
@@ -22,7 +23,7 @@ import { CookingLogModal } from './CookingLogModal';
 import { CookingModePage } from './CookingModePage';
 import { TimingAdjustmentModal } from './TimingAdjustmentModal';
 import { PantryTidyModal } from '../ingredients/PantryTidyModal';
-import type { CookingLogStepTiming } from '../../data/types';
+import type { CookingLogStepTiming, Ingredient } from '../../data/types';
 
 const NUTRITION_SOURCE_LABEL: Record<string, string> = {
   public_data: '식약처 기준',
@@ -154,12 +155,22 @@ export function RecipeDetailPage({
       stepTimings: pendingStepTimings,
     });
     setLastCookingLogId(cookingLogId);
-    // 체크된 재료만 보유 해제 — 이미 owned=false인 재료는 건드리지 않음
+    // 체크된 재료만 보유 해제 — 이미 owned=false인 재료는 건드리지 않음. 실행 취소(E)를 위해
+    // 실제로 바뀐(원래 owned=true였던) 재료의 원본을 따로 모아둔다.
+    const deductedSnapshots: Ingredient[] = [];
     for (const ingredientId of selectedIngredientIds) {
       const ingredient = ingredientsById.get(ingredientId);
       if (ingredient?.owned) {
+        deductedSnapshots.push(ingredient);
         await saveIngredient({ ...ingredient, owned: false });
       }
+    }
+    if (deductedSnapshots.length > 0) {
+      showUndoToast(`재료를 차감했어요 (${deductedSnapshots.length}개)`, async () => {
+        for (const snapshot of deductedSnapshots) {
+          await saveIngredient(snapshot);
+        }
+      });
     }
     const stats = await fetchCookingStats([recipe.id]);
     setCookingStats(stats.get(recipe.id) ?? null);
@@ -252,8 +263,10 @@ export function RecipeDetailPage({
             className="btn small danger"
             onClick={() => {
               if (confirm(`'${recipe.name}' 레시피를 삭제할까요?`)) {
+                const snapshot = recipe;
                 deleteRecipe(recipe.id);
                 onBack();
+                showUndoToast(`'${snapshot.name}' 레시피를 지웠어요`, () => saveRecipe(snapshot));
               }
             }}
           >

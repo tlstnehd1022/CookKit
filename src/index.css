@@ -137,6 +137,26 @@ textarea {
   text-align: center;
 }
 
+/* 실행 취소 토스트(E) — 기본 .toast는 텍스트 중앙 정렬 pill이라, 버튼을 나란히 두는 이 변형만
+   flex row로 덮어쓴다. */
+.toast-undo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: var(--radius-pill);
+}
+
+.toast-undo button {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-contrast);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .app-nav {
   position: sticky;
   bottom: 0;

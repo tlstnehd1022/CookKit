@@ -7,6 +7,7 @@ import { AddIngredientModal } from '../ingredients/IngredientsPage';
 import { fetchFillFrequencies, type FillFrequencyInfo } from '../../data/ingredientFillLog';
 import { computeRefillSuggestions } from '../../lib/refillSuggestions';
 import { getErrorMessage } from '../../lib/errorMessage';
+import { showUndoToast } from '../../data/undoToast';
 import type { Ingredient, Recipe } from '../../data/types';
 
 type FilterMode = 'all' | 'need' | 'owned';
@@ -300,20 +301,43 @@ export function ShoppingListPage() {
           ingredientsById={ingredientsById}
           onClose={() => setShowMoveToFridge(false)}
           onApply={async (expirationDates) => {
+            // 실행 취소(E)용 — 재료 원본과, 삭제될 shopping_extra_items 행(재추가에 필요한
+            // ingredientId/amount/unit)을 미리 스냅샷으로 남겨둔다.
+            const ingredientSnapshots: Ingredient[] = [];
+            const removedExtraItems: { ingredientId: string; amount?: number; unit?: string }[] = [];
             for (const row of checkedRows) {
               const ingredient = ingredientsById.get(row.ingredientId);
               if (!ingredient) continue;
+              ingredientSnapshots.push(ingredient);
               const expirationDate = expirationDates.get(row.key)?.trim();
               await markIngredientFilled({
                 ...ingredient,
                 expirationDate: expirationDate || ingredient.expirationDate,
               });
               if (row.extraItemId) {
+                const extra = extraItems.find((e) => e.id === row.extraItemId);
+                if (extra) {
+                  removedExtraItems.push({
+                    ingredientId: extra.ingredientId,
+                    amount: extra.amount ?? undefined,
+                    unit: extra.unit ?? undefined,
+                  });
+                }
                 await removeExtraItem(row.extraItemId);
               }
             }
             setCheckedKeys(new Set());
             setShowMoveToFridge(false);
+            if (ingredientSnapshots.length > 0) {
+              showUndoToast(`냉장고로 옮겼어요 (${ingredientSnapshots.length}개)`, async () => {
+                for (const snapshot of ingredientSnapshots) {
+                  await saveIngredient(snapshot);
+                }
+                for (const extra of removedExtraItems) {
+                  await addExtraItem(extra.ingredientId, extra.amount, extra.unit);
+                }
+              });
+            }
           }}
         />
       )}

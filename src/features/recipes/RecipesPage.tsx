@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { SlidersHorizontal } from 'lucide-react';
 import { useIngredientsById, useRecipes, useTags } from '../../data/store';
 import {
   collectAllAllergens,
@@ -12,6 +13,7 @@ import { fetchCookingStats } from '../../data/cookingLog';
 import { useSession } from '../../data/session';
 import { usePantryFilterRequested, clearPantryFilterRequest } from '../../data/pantryFilterRequest';
 import { useRequestedMaxMinutesFilter, clearMaxMinutesFilterRequest } from '../../data/recipeTimeFilterRequest';
+import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
 import {
   RecipeCategoryDetailPage,
   RecipeRowSection,
@@ -20,7 +22,7 @@ import {
   type RecipeRowItem,
   type TagRow,
 } from './RecipeRowSection';
-import type { Ingredient, Recipe, Tag } from '../../data/types';
+import type { Difficulty, Ingredient, Recipe, Tag } from '../../data/types';
 
 // 태그 이름별 대표 이모지 — 대표 이미지(조리 단계 이미지)가 없는 레시피의 플레이스홀더용.
 // 매칭되는 태그가 없으면 기본 이모지로 대체.
@@ -39,6 +41,14 @@ export function resolveRecipeTagNames(recipe: Recipe, tags: Tag[]): string[] {
 const SEARCH_DEBOUNCE_MS = 300;
 
 type SortMode = 'recent' | 'name' | 'frequent';
+
+interface FilterChip {
+  key: string;
+  label: string;
+  onRemove: () => void;
+}
+
+const TIME_PRESETS = [20, 40, 60];
 
 export function RecipesPage({
   onSelectRecipe,
@@ -64,7 +74,9 @@ export function RecipesPage({
   const [excludedAllergens, setExcludedAllergens] = useState<string[]>([]);
   const [pantryOnly, setPantryOnly] = useState(false);
   const [maxCookMinutes, setMaxCookMinutes] = useState<number | null>(null);
+  const [difficulties, setDifficulties] = useState<Difficulty[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
+  const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [categoryDetail, setCategoryDetail] = useState<{ title: string; items: RecipeRowItem[] } | null>(null);
   const [cookingCountById, setCookingCountById] = useState<Map<string, number>>(new Map());
   const pantryFilterRequested = usePantryFilterRequested();
@@ -78,6 +90,7 @@ export function RecipesPage({
     setActiveTagIds([]);
     setExcludedAllergens([]);
     setMaxCookMinutes(null);
+    setDifficulties([]);
     setPantryOnly(true);
     clearPantryFilterRequest();
   }, [pantryFilterRequested]);
@@ -90,6 +103,7 @@ export function RecipesPage({
     setActiveTagIds([]);
     setExcludedAllergens([]);
     setPantryOnly(false);
+    setDifficulties([]);
     setMaxCookMinutes(requestedMaxMinutes);
     clearMaxMinutesFilterRequest();
   }, [requestedMaxMinutes]);
@@ -152,6 +166,9 @@ export function RecipesPage({
     if (maxCookMinutes != null && (recipe.estimatedMinutes == null || recipe.estimatedMinutes > maxCookMinutes)) {
       return false;
     }
+    if (difficulties.length > 0 && (!recipe.difficulty || !difficulties.includes(recipe.difficulty))) {
+      return false;
+    }
     return true;
   });
 
@@ -186,7 +203,33 @@ export function RecipesPage({
     activeTagIds.length > 0 ||
     excludedAllergens.length > 0 ||
     pantryOnly ||
-    maxCookMinutes != null;
+    maxCookMinutes != null ||
+    difficulties.length > 0;
+
+  const appliedFilterChips: FilterChip[] = [
+    ...activeTagIds.map((id) => ({
+      key: `tag-${id}`,
+      label: tags.find((t) => t.id === id)?.name ?? '태그',
+      onRemove: () => toggleTag(id),
+    })),
+    ...excludedAllergens.map((allergen) => ({
+      key: `allergen-${allergen}`,
+      label: `${allergen} 제외`,
+      onRemove: () => toggleAllergen(allergen),
+    })),
+    ...(pantryOnly
+      ? [{ key: 'pantry', label: '🧺 보유 재료로 가능', onRemove: () => setPantryOnly(false) }]
+      : []),
+    ...(maxCookMinutes != null
+      ? [{ key: 'time', label: `~${maxCookMinutes}분`, onRemove: () => setMaxCookMinutes(null) }]
+      : []),
+    ...difficulties.map((d) => ({
+      key: `difficulty-${d}`,
+      label: DIFFICULTY_LABEL[d],
+      onRemove: () => setDifficulties((prev) => prev.filter((x) => x !== d)),
+    })),
+  ];
+  const appliedFilterCount = appliedFilterChips.length;
   const isRowMode = !hasActiveFilter && recipes.length > 0;
 
   // 행 구조에서는 항상 "최근 추가순"으로 카드를 배열한다(요구사항 5) — 이후 각 행은 이 순서를
@@ -241,6 +284,14 @@ export function RecipesPage({
 
   return (
     <div>
+      {/* B-2: 단일 레시피 요리는 상세 화면 하단 고정 버튼이 주 경로라 목록의 FAB은 "여러 개
+          요리하기" 전용으로 쓴다 — 굳이 speed dial로 펼치지 않고 단일 FAB으로 충분하다고 판단. */}
+      {recipes.length > 0 && (
+        <button type="button" className="recipe-fab" onClick={onOpenMultiCook} aria-label="여러 개 요리하기">
+          🍳
+        </button>
+      )}
+
       <div className="row">
         <h1>레시피 관리</h1>
         <div className="chip-row" style={{ marginTop: 0 }}>
@@ -258,9 +309,6 @@ export function RecipesPage({
           <button className="btn small" onClick={onOpenCookingHistory}>
             📋 요리 기록
           </button>
-          <button className="btn small" onClick={onOpenMultiCook}>
-            🍳 여러개 요리하기
-          </button>
           <button className="btn small" onClick={onManageTags}>
             태그 관리
           </button>
@@ -270,55 +318,31 @@ export function RecipesPage({
         </div>
       </div>
 
-      <div className="field">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="레시피 이름 또는 재료로 검색"
-        />
+      <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+        <div className="pill-input-row" style={{ flex: 1, marginBottom: 0 }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="레시피 이름 또는 재료로 검색"
+          />
+        </div>
+        <button type="button" className="recipe-filter-btn" onClick={() => setShowFilterSheet(true)} aria-label="필터">
+          <SlidersHorizontal size={19} strokeWidth={2.5} />
+          {appliedFilterCount > 0 && <span className="recipe-filter-badge">{appliedFilterCount}</span>}
+        </button>
       </div>
 
-      {/* 알러지 제외는 일반 태그/보유재료 필터 칩 사이에 묻히면 잘 안 보인다는 피드백이 있어서
-          (기능 자체는 이미 있었지만 발견성이 낮았음) 별도 섹션으로 분리해 더 눈에 띄게 함 —
-          설정된 알러지가 있는 household에서만 노출된다. */}
-      {allAllergens.length > 0 && (
-        <>
-          <div className="section-title">⚠️ 알러지 제외</div>
-          <div className="chip-row-scroll">
-            {allAllergens.map((allergen) => (
-              <button
-                key={allergen}
-                className={`chip allergen selectable ${excludedAllergens.includes(allergen) ? 'active' : ''}`}
-                onClick={() => toggleAllergen(allergen)}
-              >
-                {allergen} 제외
+      {appliedFilterChips.length > 0 && (
+        <div className="chip-row-scroll" style={{ marginTop: 8 }}>
+          {appliedFilterChips.map((chip) => (
+            <span className="chip selectable active" key={chip.key}>
+              {chip.label}
+              <button onClick={chip.onRemove} aria-label={`${chip.label} 해제`}>
+                ✕
               </button>
-            ))}
-          </div>
-        </>
-      )}
-
-      {recipes.length > 0 && (
-        <>
-          <div className="section-title">필터</div>
-          <div className="chip-row-scroll">
-            <button
-              className={`chip selectable ${pantryOnly ? 'active' : ''}`}
-              onClick={() => setPantryOnly((prev) => !prev)}
-            >
-              🧺 보유 재료로 가능한 것만
-            </button>
-            {tags.map((tag) => (
-              <button
-                key={tag.id}
-                className={`chip selectable ${activeTagIds.includes(tag.id) ? 'active' : ''}`}
-                onClick={() => toggleTag(tag.id)}
-              >
-                {tag.name}
-              </button>
-            ))}
-          </div>
-        </>
+            </span>
+          ))}
+        </div>
       )}
 
       {recipes.length === 0 && (
@@ -343,21 +367,8 @@ export function RecipesPage({
         </div>
       ) : (
         <>
-          <div className="row">
-            <div className="section-title" style={{ margin: 0 }}>
-              레시피 목록 ({sorted.length})
-            </div>
-            {recipes.length > 0 && (
-              <select
-                value={sortMode}
-                onChange={(e) => setSortMode(e.target.value as SortMode)}
-                style={{ width: 'auto', fontSize: 13 }}
-              >
-                <option value="recent">최근 추가순</option>
-                <option value="name">이름순</option>
-                <option value="frequent">자주 해먹은 순</option>
-              </select>
-            )}
+          <div className="section-title" style={{ margin: '0 0 8px' }}>
+            레시피 목록 ({sorted.length})
           </div>
 
           {sorted.length === 0 && recipes.length > 0 && (
@@ -371,6 +382,8 @@ export function RecipesPage({
                   setActiveTagIds([]);
                   setExcludedAllergens([]);
                   setPantryOnly(false);
+                  setMaxCookMinutes(null);
+                  setDifficulties([]);
                 }}
               >
                 필터 초기화
@@ -406,6 +419,187 @@ export function RecipesPage({
           )}
         </>
       )}
+
+      {showFilterSheet && (
+        <RecipeFilterSheet
+          tags={tags}
+          allAllergens={allAllergens}
+          initialTagIds={activeTagIds}
+          initialExcludedAllergens={excludedAllergens}
+          initialPantryOnly={pantryOnly}
+          initialMaxCookMinutes={maxCookMinutes}
+          initialDifficulties={difficulties}
+          initialSortMode={sortMode}
+          onClose={() => setShowFilterSheet(false)}
+          onApply={(draft) => {
+            setActiveTagIds(draft.tagIds);
+            setExcludedAllergens(draft.excludedAllergens);
+            setPantryOnly(draft.pantryOnly);
+            setMaxCookMinutes(draft.maxCookMinutes);
+            setDifficulties(draft.difficulties);
+            setSortMode(draft.sortMode);
+            setShowFilterSheet(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+interface RecipeFilterDraft {
+  tagIds: string[];
+  excludedAllergens: string[];
+  pantryOnly: boolean;
+  maxCookMinutes: number | null;
+  difficulties: Difficulty[];
+  sortMode: SortMode;
+}
+
+const ALL_DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
+
+function RecipeFilterSheet({
+  tags,
+  allAllergens,
+  initialTagIds,
+  initialExcludedAllergens,
+  initialPantryOnly,
+  initialMaxCookMinutes,
+  initialDifficulties,
+  initialSortMode,
+  onClose,
+  onApply,
+}: {
+  tags: Tag[];
+  allAllergens: string[];
+  initialTagIds: string[];
+  initialExcludedAllergens: string[];
+  initialPantryOnly: boolean;
+  initialMaxCookMinutes: number | null;
+  initialDifficulties: Difficulty[];
+  initialSortMode: SortMode;
+  onClose: () => void;
+  onApply: (draft: RecipeFilterDraft) => void;
+}) {
+  const [tagIds, setTagIds] = useState(initialTagIds);
+  const [excludedAllergens, setExcludedAllergens] = useState(initialExcludedAllergens);
+  const [pantryOnly, setPantryOnly] = useState(initialPantryOnly);
+  const [maxCookMinutes, setMaxCookMinutes] = useState(initialMaxCookMinutes);
+  const [difficulties, setDifficulties] = useState(initialDifficulties);
+  const [sortMode, setSortMode] = useState(initialSortMode);
+
+  function toggleTagId(id: string) {
+    setTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function toggleExcludedAllergen(allergen: string) {
+    setExcludedAllergens((prev) => (prev.includes(allergen) ? prev.filter((x) => x !== allergen) : [...prev, allergen]));
+  }
+
+  function toggleDifficulty(d: Difficulty) {
+    setDifficulties((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+  }
+
+  function reset() {
+    setTagIds([]);
+    setExcludedAllergens([]);
+    setPantryOnly(false);
+    setMaxCookMinutes(null);
+    setDifficulties([]);
+    setSortMode('recent');
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <h2>필터</h2>
+
+        <div className="section-title" style={{ marginTop: 0 }}>
+          태그
+        </div>
+        {tags.length === 0 && <p className="empty-hint" style={{ padding: '4px 0' }}>등록된 태그가 없어요.</p>}
+        <div className="chip-row">
+          {tags.map((tag) => (
+            <button
+              key={tag.id}
+              className={`chip selectable ${tagIds.includes(tag.id) ? 'active' : ''}`}
+              onClick={() => toggleTagId(tag.id)}
+            >
+              {tag.name}
+            </button>
+          ))}
+        </div>
+
+        {allAllergens.length > 0 && (
+          <>
+            <div className="section-title">알러지 제외</div>
+            <div className="chip-row">
+              {allAllergens.map((allergen) => (
+                <button
+                  key={allergen}
+                  className={`chip allergen selectable ${excludedAllergens.includes(allergen) ? 'active' : ''}`}
+                  onClick={() => toggleExcludedAllergen(allergen)}
+                >
+                  {allergen} 제외
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="section-title">보유 재료</div>
+        <div className="chip-row">
+          <button className={`chip selectable ${pantryOnly ? 'active' : ''}`} onClick={() => setPantryOnly((prev) => !prev)}>
+            🧺 보유 재료로 가능한 것만
+          </button>
+        </div>
+
+        <div className="section-title">조리시간</div>
+        <div className="chip-row">
+          {TIME_PRESETS.map((minutes) => (
+            <button
+              key={minutes}
+              className={`chip selectable ${maxCookMinutes === minutes ? 'active' : ''}`}
+              onClick={() => setMaxCookMinutes((prev) => (prev === minutes ? null : minutes))}
+            >
+              {minutes}분 이내
+            </button>
+          ))}
+        </div>
+
+        <div className="section-title">난이도</div>
+        <div className="chip-row">
+          {ALL_DIFFICULTIES.map((d) => (
+            <button
+              key={d}
+              className={`chip selectable ${difficulties.includes(d) ? 'active' : ''}`}
+              onClick={() => toggleDifficulty(d)}
+            >
+              {DIFFICULTY_LABEL[d]}
+            </button>
+          ))}
+        </div>
+
+        <div className="field">
+          <label>정렬</label>
+          <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)}>
+            <option value="recent">최근 추가순</option>
+            <option value="name">이름순</option>
+            <option value="frequent">자주 해먹은 순</option>
+          </select>
+        </div>
+
+        <div className="row" style={{ gap: 6, marginTop: 8 }}>
+          <button className="btn" onClick={reset}>
+            초기화
+          </button>
+          <button
+            className="btn primary"
+            onClick={() => onApply({ tagIds, excludedAllergens, pantryOnly, maxCookMinutes, difficulties, sortMode })}
+          >
+            적용
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

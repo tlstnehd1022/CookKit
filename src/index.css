@@ -291,6 +291,61 @@ h2 {
   white-space: nowrap;
 }
 
+/* 레시피 목록 화면 FAB(B-2, "여러 개 요리하기" 전용) — 탭바 위에 떠서 스크롤해도 따라다닌다.
+   #root가 max-width:640px로 가운데 정렬되므로, 넓은 화면에서도 그 컬럼 오른쪽 안쪽에 붙도록
+   .toast(중앙 정렬)와 달리 calc로 우측 위치를 계산한다. */
+.recipe-fab {
+  position: fixed;
+  right: max(20px, calc((100vw - 640px) / 2 + 20px));
+  bottom: 116px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border: none;
+  box-shadow: var(--shadow-soft-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 40;
+}
+
+/* 레시피 화면 검색창 옆 필터 아이콘 버튼(B-1) — 홈 아바타 버튼과 같은 원형 톤 */
+.recipe-filter-btn {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-soft);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.recipe-filter-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
 /* 넷플릭스/왓챠 스타일 가로 스크롤 행(RecipeRowSection) — 레시피가 많아져도 첫 화면 진입 시
    세로 스크롤 길이를 짧게 유지하기 위한 구조. 기존 .recipe-card를 그대로 재사용하되 크기만
    .recipe-card-row로 축소한다. */

@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useCategories, useIngredients, usePantryStatus, makeId } from '../../data/store';
+import { ChevronRight } from 'lucide-react';
+import { useCategories, useIngredients, useIngredientsById, useRecipes, makeId } from '../../data/store';
+import { isRecipeMakeableWithPantry } from '../../data/computed';
+import { requestPantryOnlyFilter } from '../../data/pantryFilterRequest';
 import { CategoryManager } from './CategoryManager';
 import { ReceiptScanModal } from './ReceiptScanModal';
+import { PantryTidyModal } from './PantryTidyModal';
 import { COMMON_UNITS } from '../../data/units';
 import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
 import { useHighlightIngredientIds, clearHighlightIngredientIds } from '../../data/highlightIngredients';
@@ -10,11 +14,13 @@ import type { Ingredient } from '../../data/types';
 export function IngredientsPage() {
   const { ingredients, saveIngredient, markIngredientFilled, deleteIngredient } = useIngredients();
   const { categories } = useCategories();
-  const { pantryStatus, setOwned } = usePantryStatus();
+  const { recipes } = useRecipes();
+  const ingredientsById = useIngredientsById();
   const [editingDetailsId, setEditingDetailsId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showReceiptScan, setShowReceiptScan] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [showTidyModal, setShowTidyModal] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const highlightIds = useHighlightIngredientIds();
 
@@ -46,25 +52,14 @@ export function IngredientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlightIds]);
 
-  // "유통기한 임박 / 있어요 / 없어요" 3구간으로 시각 분리(임박이 최상단) — 각 구간 안에서는
-  // 기존처럼 카테고리별 접기/펼치기 그루핑을 그대로 유지한다.
-  function isOwned(ingredient: Ingredient) {
-    return pantryStatus[ingredient.id] ?? false;
-  }
+  // 목록 = "지금 냉장고에 있는 것"만 보여준다(owned=false는 정리 모드에서만 다룸) — 카테고리별
+  // 접기/펼치기 그루핑은 그대로 유지.
+  const ownedIngredients = useMemo(() => ingredients.filter((i) => i.owned), [ingredients]);
   const ownedGroups = categories.map((category) => ({
     category,
-    items: ingredients.filter((i) => i.categoryId === category.id && isOwned(i)),
+    items: ownedIngredients.filter((i) => i.categoryId === category.id),
   }));
-  const notOwnedGroups = categories.map((category) => ({
-    category,
-    items: ingredients.filter((i) => i.categoryId === category.id && !isOwned(i)),
-  }));
-  const uncategorizedOwned = ingredients.filter(
-    (i) => !categories.some((c) => c.id === i.categoryId) && isOwned(i),
-  );
-  const uncategorizedNotOwned = ingredients.filter(
-    (i) => !categories.some((c) => c.id === i.categoryId) && !isOwned(i),
-  );
+  const uncategorizedOwned = ownedIngredients.filter((i) => !categories.some((c) => c.id === i.categoryId));
 
   // 유통기한 임박/경과 재료 요약 — 카테고리와 무관하게 전체 재료 중에서 뽑아 가장 급한 순으로 보여줌
   const expiringSoon = useMemo(() => {
@@ -76,10 +71,18 @@ export function IngredientsPage() {
       .sort((a, b) => a.info.daysLeft - b.info.daysLeft);
   }, [ingredients]);
 
+  // "지금 재료로 바로 만들 수 있는 레시피" 개수 — RecipesPage의 "🧺 보유 재료로 가능" 필터와
+  // 같은 기준(isRecipeMakeableWithPantry)을 공유한다.
+  const makeableRecipeCount = useMemo(
+    () => recipes.filter((recipe) => isRecipeMakeableWithPantry(recipe, ingredientsById)).length,
+    [recipes, ingredientsById],
+  );
+
   function renderCategoryGroups(groups: { category: { id: string; name: string }; items: Ingredient[] }[], uncategorized: Ingredient[]) {
     return (
       <>
         {groups.map(({ category, items }) => {
+          if (items.length === 0) return null;
           const isCollapsed = collapsed.has(category.id);
           return (
             <div key={category.id} style={{ marginBottom: 8 }}>
@@ -98,27 +101,18 @@ export function IngredientsPage() {
                   {isCollapsed ? '▸' : '▾'} {category.name} ({items.length})
                 </span>
               </button>
-              {!isCollapsed && items.length === 0 && (
-                <div className="empty-hint" style={{ padding: '4px 0' }}>
-                  등록된 재료가 없습니다.
+              {!isCollapsed && (
+                <div className="chip-row" style={{ marginTop: 0 }}>
+                  {items.map((ingredient) => (
+                    <IngredientChip
+                      key={ingredient.id}
+                      ingredient={ingredient}
+                      onClick={() => setEditingDetailsId(ingredient.id)}
+                      highlighted={highlightIds.includes(ingredient.id)}
+                    />
+                  ))}
                 </div>
               )}
-              {!isCollapsed &&
-                items.map((ingredient) => (
-                  <IngredientRow
-                    key={ingredient.id}
-                    ingredient={ingredient}
-                    owned={isOwned(ingredient)}
-                    onToggleOwned={() => setOwned(ingredient.id, !isOwned(ingredient))}
-                    onEditDetails={() => setEditingDetailsId(ingredient.id)}
-                    onDelete={() => {
-                      if (confirm(`'${ingredient.name}'을(를) 삭제할까요? 이 재료를 쓰는 레시피에서는 "삭제된 재료"로 표시돼요.`)) {
-                        deleteIngredient(ingredient.id);
-                      }
-                    }}
-                    highlighted={highlightIds.includes(ingredient.id)}
-                  />
-                ))}
             </div>
           );
         })}
@@ -126,21 +120,16 @@ export function IngredientsPage() {
         {uncategorized.length > 0 && (
           <div style={{ marginBottom: 8 }}>
             <div className="section-title">미분류 ({uncategorized.length})</div>
-            {uncategorized.map((ingredient) => (
-              <IngredientRow
-                key={ingredient.id}
-                ingredient={ingredient}
-                owned={isOwned(ingredient)}
-                onToggleOwned={() => setOwned(ingredient.id, !isOwned(ingredient))}
-                onEditDetails={() => setEditingDetailsId(ingredient.id)}
-                onDelete={() => {
-                  if (confirm(`'${ingredient.name}'을(를) 삭제할까요? 이 재료를 쓰는 레시피에서는 "삭제된 재료"로 표시돼요.`)) {
-                    deleteIngredient(ingredient.id);
-                  }
-                }}
-                highlighted={highlightIds.includes(ingredient.id)}
-              />
-            ))}
+            <div className="chip-row" style={{ marginTop: 0 }}>
+              {uncategorized.map((ingredient) => (
+                <IngredientChip
+                  key={ingredient.id}
+                  ingredient={ingredient}
+                  onClick={() => setEditingDetailsId(ingredient.id)}
+                  highlighted={highlightIds.includes(ingredient.id)}
+                />
+              ))}
+            </div>
           </div>
         )}
       </>
@@ -156,6 +145,10 @@ export function IngredientsPage() {
         </button>
       </div>
 
+      <p className="text-muted" style={{ marginTop: -8, marginBottom: 14 }}>
+        재료 {ownedIngredients.length}개 · 이걸로 만들 수 있는 레시피 {makeableRecipeCount}개
+      </p>
+
       <div className="row" style={{ gap: 8 }}>
         <button className="btn primary" style={{ flex: 1 }} onClick={() => setShowReceiptScan(true)}>
           📷 영수증으로 채우기
@@ -163,7 +156,21 @@ export function IngredientsPage() {
         <button className="btn primary" style={{ flex: 1 }} onClick={() => setShowAddForm(true)}>
           ➕ 직접 추가
         </button>
+        <button className="btn" style={{ flex: 1 }} onClick={() => setShowTidyModal(true)}>
+          🧹 정리하기
+        </button>
       </div>
+
+      {makeableRecipeCount > 0 && (
+        <button type="button" className="action-banner" style={{ marginTop: 14 }} onClick={() => requestPantryOnlyFilter()}>
+          <span className="action-banner-text">
+            🧺 지금 재료로 바로 만들 수 있는 레시피 {makeableRecipeCount}개를 찾았어요
+          </span>
+          <span className="action-banner-cta">
+            보러 가기 <ChevronRight size={14} strokeWidth={2.75} />
+          </span>
+        </button>
+      )}
 
       {expiringSoon.length > 0 && (
         <>
@@ -184,13 +191,11 @@ export function IngredientsPage() {
         </>
       )}
 
-      <div className="section-title">✅ 있어요 ({ownedGroups.reduce((sum, g) => sum + g.items.length, 0) + uncategorizedOwned.length})</div>
+      <div className="section-title">냉장고에 있는 재료</div>
+      {ownedIngredients.length === 0 && (
+        <p className="empty-hint">보유 중인 재료가 없어요. 영수증으로 채우거나 직접 추가해보세요.</p>
+      )}
       {renderCategoryGroups(ownedGroups, uncategorizedOwned)}
-
-      <div className="section-title" style={{ marginTop: 8 }}>
-        🛒 없어요 ({notOwnedGroups.reduce((sum, g) => sum + g.items.length, 0) + uncategorizedNotOwned.length})
-      </div>
-      {renderCategoryGroups(notOwnedGroups, uncategorizedNotOwned)}
 
       {editingDetailsId && (
         <IngredientDetailModal
@@ -200,6 +205,10 @@ export function IngredientsPage() {
             const target = ingredients.find((i) => i.id === editingDetailsId);
             if (!target) return;
             await saveIngredient({ ...target, ...patch });
+            setEditingDetailsId(null);
+          }}
+          onDelete={async () => {
+            await deleteIngredient(editingDetailsId);
             setEditingDetailsId(null);
           }}
         />
@@ -219,88 +228,45 @@ export function IngredientsPage() {
       {showReceiptScan && <ReceiptScanModal onClose={() => setShowReceiptScan(false)} />}
 
       {showCategoryManager && <CategoryManager onClose={() => setShowCategoryManager(false)} />}
+
+      {showTidyModal && <PantryTidyModal onClose={() => setShowTidyModal(false)} />}
     </div>
   );
 }
 
-/** 아직 한 번도 채워진 적 없으면(예전부터 있던 재료) null — "오늘 채움"/"n일 전 채움" 표시용. */
-function formatFilledBadge(lastFilledAt?: string): string | null {
-  if (!lastFilledAt) return null;
-  const days = Math.floor((Date.now() - new Date(lastFilledAt).getTime()) / (24 * 60 * 60 * 1000));
-  if (days <= 0) return '오늘 채움';
-  return `${days}일 전 채움`;
-}
-
-function IngredientRow({
+function IngredientChip({
   ingredient,
-  owned,
-  onToggleOwned,
-  onEditDetails,
-  onDelete,
+  onClick,
   highlighted,
 }: {
   ingredient: Ingredient;
-  owned: boolean;
-  onToggleOwned: () => void;
-  onEditDetails: () => void;
-  onDelete: () => void;
+  onClick: () => void;
   /** 유통기한 알림을 클릭해서 들어온 경우, 그 알림이 가리키는 재료면 true — 스크롤+반짝임 강조 */
   highlighted?: boolean;
 }) {
-  const hasPreference = Boolean(ingredient.preferredUnit || ingredient.preferredMethod);
   const expirationInfo = getExpirationInfo(ingredient.expirationDate);
-  const filledBadge = formatFilledBadge(ingredient.lastFilledAt);
-  const rowRef = useRef<HTMLDivElement>(null);
+  const chipRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (highlighted) {
-      rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      chipRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [highlighted]);
 
   return (
-    <div
-      ref={rowRef}
-      className={`row ${highlighted ? 'ingredient-row-highlight' : ''}`}
-      style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}
+    <button
+      ref={chipRef}
+      type="button"
+      className={`chip selectable ${expirationInfo ? `expiration-${expirationInfo.level}` : ''} ${
+        highlighted ? 'ingredient-row-highlight' : ''
+      }`}
+      onClick={onClick}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {ingredient.name}
-        </span>
-        {filledBadge && (
-          <span className="text-muted" style={{ fontSize: 11, flexShrink: 0 }}>
-            {filledBadge}
-          </span>
-        )}
-        {expirationInfo && (
-          <button
-            className={`chip expiration-${expirationInfo.level}`}
-            style={{ flexShrink: 0 }}
-            onClick={onEditDetails}
-          >
-            {formatExpirationBadge(expirationInfo)}
-          </button>
-        )}
-        {ingredient.allergens.length > 0 ? (
-          <button className="chip allergen" style={{ flexShrink: 0 }} onClick={onEditDetails}>
-            ⚠ {ingredient.allergens.length}
-          </button>
-        ) : (
-          <button className="chip selectable" style={{ flexShrink: 0 }} onClick={onEditDetails}>
-            {hasPreference ? '⚙ 선호' : '설정'}
-          </button>
-        )}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <button className="btn small danger" onClick={onDelete}>
-          삭제
-        </button>
-        <button className={`toggle ${owned ? 'on' : ''}`} onClick={onToggleOwned} aria-label="보유 여부">
-          <span className="knob" />
-        </button>
-      </div>
-    </div>
+      {ingredient.name}
+      {ingredient.defaultBuyUnit ? ` · ${ingredient.defaultBuyUnit}` : ''}
+      {expirationInfo ? ` · ${formatExpirationBadge(expirationInfo)}` : ''}
+      {ingredient.allergens.length > 0 ? ' · ⚠' : ''}
+    </button>
   );
 }
 
@@ -318,10 +284,12 @@ function IngredientDetailModal({
   ingredient,
   onClose,
   onSave,
+  onDelete,
 }: {
   ingredient: Ingredient;
   onClose: () => void;
   onSave: (patch: IngredientDetailPatch) => Promise<void>;
+  onDelete: () => Promise<void>;
 }) {
   const [allergens, setAllergens] = useState<string[]>(ingredient.allergens);
   const [draft, setDraft] = useState('');
@@ -329,6 +297,18 @@ function IngredientDetailModal({
   const [expirationDate, setExpirationDate] = useState(ingredient.expirationDate ?? '');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!confirm(`'${ingredient.name}'을(를) 삭제할까요? 이 재료를 쓰는 레시피에서는 "삭제된 재료"로 표시돼요.`)) return;
+    setDeleting(true);
+    try {
+      await onDelete();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : '삭제에 실패했어요. 다시 시도해주세요.');
+      setDeleting(false);
+    }
+  }
 
   const initialMethod = ingredient.preferredMethod ?? '';
   const isInitialPreset = METHOD_PRESETS.includes(initialMethod);
@@ -439,12 +419,15 @@ function IngredientDetailModal({
         </div>
 
         <div className="row" style={{ marginTop: 16 }}>
-          <button className="btn" onClick={onClose} disabled={saving}>
+          <button className="btn danger" onClick={handleDelete} disabled={saving || deleting}>
+            {deleting ? '삭제 중...' : '삭제'}
+          </button>
+          <button className="btn" onClick={onClose} disabled={saving || deleting}>
             취소
           </button>
           <button
             className="btn primary"
-            disabled={saving}
+            disabled={saving || deleting}
             onClick={async () => {
               setSaving(true);
               setSaveError(null);

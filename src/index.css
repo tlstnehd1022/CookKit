@@ -1367,6 +1367,93 @@ select:focus {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   냉장고 정리 모드 — src/features/ingredients/PantryTidyModal.tsx
+   ══════════════════════════════════════════════════════════════════════ */
+
+.pantry-tidy-box {
+  margin-bottom: 18px;
+}
+
+.pantry-tidy-box-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.pantry-tidy-group {
+  margin-bottom: 10px;
+}
+
+@keyframes pantry-tidy-chip-move {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.12);
+    background: color-mix(in srgb, var(--accent) 35%, var(--chip-bg));
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.pantry-tidy-chip-moved {
+  animation: pantry-tidy-chip-move 0.35s ease;
+}
+
+/* 홈 검색 필드(.home-search-field)와 같은 톤의 pill 입력창 — 카테고리 관리 등 기본 브라우저
+   input이 새 디자인과 어긋나 보이는 곳에 재사용한다(radius-pill, bg-card, shadow-soft). */
+.pill-input-row {
+  background: var(--bg-card);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-soft);
+  padding: 6px 6px 6px 16px;
+}
+
+.pill-input-row input {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 8px 0;
+}
+
+.pill-input-row input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* 홈/냉장고 화면의 액션이 필요한 안내 카드 — 인사말과 달리 휘발되지 않고 액션을 유도한다 */
+.action-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-card));
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  text-align: left;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+}
+
+.action-banner-text {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.action-banner-cta {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    알림함 — 프로필 바텀시트 "알림" 메뉴 (src/features/settings/ProfileSheet.tsx)
    ══════════════════════════════════════════════════════════════════════ */
 

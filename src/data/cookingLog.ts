@@ -39,7 +39,9 @@ export async function fetchCookingStats(recipeIds: string[]): Promise<Map<string
 
 /** "오늘 만들었어요" 확정 시 기록을 남긴다 — 재료 차감(owned=false)은 호출부(RecipeDetailPage)가
  * 사용자가 체크한 재료에 대해 별도로 처리한다(이 함수는 기록만 담당). stepTimings는 요리 모드를
- * 거쳐 실제 소요시간을 측정한 경우에만 전달된다(직접 "오늘 만들었어요"를 누른 경우는 없음). */
+ * 거쳐 실제 소요시간을 측정한 경우에만 전달된다(직접 "오늘 만들었어요"를 누른 경우는 없음).
+ * 생성된 기록의 id를 반환한다 — 냉장고 정리 연결(D. pantry_cleaned_at)에서 이 id로 나중에
+ * 정리 완료를 표시하기 위함. */
 export async function logCooking(params: {
   recipeId: string;
   householdId: string;
@@ -47,16 +49,58 @@ export async function logCooking(params: {
   memo?: string;
   stepTimings?: CookingLogStepTiming[];
   isMultiRecipe?: boolean;
-}): Promise<void> {
-  const { error } = await supabase.from('cooking_log').insert({
-    recipe_id: params.recipeId,
-    household_id: params.householdId,
-    user_id: params.userId,
-    memo: params.memo?.trim() || null,
-    step_timings: params.stepTimings && params.stepTimings.length > 0 ? params.stepTimings : null,
-    is_multi_recipe: params.isMultiRecipe ?? false,
-  });
+}): Promise<{ id: string }> {
+  const { data, error } = await supabase
+    .from('cooking_log')
+    .insert({
+      recipe_id: params.recipeId,
+      household_id: params.householdId,
+      user_id: params.userId,
+      memo: params.memo?.trim() || null,
+      step_timings: params.stepTimings && params.stepTimings.length > 0 ? params.stepTimings : null,
+      is_multi_recipe: params.isMultiRecipe ?? false,
+    })
+    .select('id')
+    .single();
   if (error) throw error;
+  return { id: data.id as string };
+}
+
+/** 냉장고 정리 완료 표시 — 요리한 사람이 아닌 다른 가구원도 정리할 수 있어(household 공유 작업)
+ * SECURITY DEFINER RPC(0024)를 거친다. */
+export async function markPantryCleaned(cookingLogId: string): Promise<void> {
+  const { error } = await supabase.rpc('mark_pantry_cleaned', { p_cooking_log_id: cookingLogId });
+  if (error) throw error;
+}
+
+export interface UncleanedCookingLog {
+  id: string;
+  recipeId: string;
+  recipeName: string | null;
+  cookedAt: string;
+}
+
+/** 최근 3일 이내 요리 기록 중 아직 냉장고 정리를 안 한(pantry_cleaned_at이 null) 가장 최근
+ * 것을 찾는다 — 홈 화면 "냉장고 정리 안 함" 안내(A-4)의 근거 데이터. */
+export async function fetchUncleanedRecentCookingLog(householdId: string): Promise<UncleanedCookingLog | null> {
+  const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('cooking_log')
+    .select('id, recipe_id, cooked_at, recipes(title)')
+    .eq('household_id', householdId)
+    .is('pantry_cleaned_at', null)
+    .gte('cooked_at', since)
+    .order('cooked_at', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row) return null;
+  return {
+    id: row.id as string,
+    recipeId: row.recipe_id as string,
+    recipeName: (row.recipes as unknown as { title: string } | null)?.title ?? null,
+    cookedAt: row.cooked_at as string,
+  };
 }
 
 function median(values: number[]): number {

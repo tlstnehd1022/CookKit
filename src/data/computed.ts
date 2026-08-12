@@ -32,3 +32,10 @@ export function computeTotalCookMinutes(recipe: Recipe): number {
   const totalSeconds = recipe.steps.reduce((sum, step) => sum + (step.timerSeconds ?? 0), 0);
   return Math.round(totalSeconds / 60);
 }
+
+/** 레시피가 쓰는 재료 전부가 owned=true인지 — "🧺 보유 재료로 가능" 필터/배너(RecipesPage,
+ * IngredientsPage)가 공유하는 판단 기준. 재료가 하나도 없는 레시피는 대상에서 제외한다. */
+export function isRecipeMakeableWithPantry(recipe: Recipe, ingredientsById: Map<string, Ingredient>): boolean {
+  if (recipe.ingredients.length === 0) return false;
+  return recipe.ingredients.every((item) => ingredientsById.get(item.ingredientId)?.owned === true);
+}

@@ -71,7 +71,7 @@ export function CategoryManager({ onClose }: { onClose: () => void }) {
         )}
 
         <div className="section-title">새 카테고리 추가</div>
-        <div className="row">
+        <div className="row pill-input-row">
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}

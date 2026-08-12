@@ -536,7 +536,9 @@ create table public.cooking_log (
   step_timings jsonb,
   -- 복합 요리(여러 레시피 동시 진행) 세션에서 생성된 기록인지 — true면 조정 제안 계산에서
   -- 제외한다(0019).
-  is_multi_recipe boolean not null default false
+  is_multi_recipe boolean not null default false,
+  -- 요리 완료 후 냉장고 정리를 했는지 — null이면 아직 정리 안 함(0024, 홈 화면 안내 대상)
+  pantry_cleaned_at timestamptz
 );
 
 create index cooking_log_recipe_id_idx on public.cooking_log (recipe_id);
@@ -555,6 +557,32 @@ create policy "cooking_log_update_own" on public.cooking_log
 
 create policy "cooking_log_delete_own" on public.cooking_log
   for delete using (user_id = auth.uid());
+
+-- 냉장고 정리는 요리한 사람이 아닌 다른 가구원이 할 수도 있어(household 공유 작업) 위
+-- cooking_log_update_own(본인 것만)만으로는 부족하다. SECURITY DEFINER 함수로 "같은
+-- household 멤버면" pantry_cleaned_at 갱신을 허용한다(0024).
+create or replace function public.mark_pantry_cleaned(p_cooking_log_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_household_id uuid;
+begin
+  select household_id into v_household_id from public.cooking_log where id = p_cooking_log_id;
+  if v_household_id is null then
+    return;
+  end if;
+  if not public.is_household_member(v_household_id) then
+    raise exception '이 요리 기록에 접근할 권한이 없어요.';
+  end if;
+  update public.cooking_log set pantry_cleaned_at = now() where id = p_cooking_log_id;
+end;
+$$;
+
+revoke all on function public.mark_pantry_cleaned(uuid) from public;
+grant execute on function public.mark_pantry_cleaned(uuid) to authenticated;
 
 -- ---- meal_plans (0022) — 주간 일정(저녁 메뉴 계획) -------------------------------------------
 -- household 공유. 지금은 저녁 한 끼만 관리(아침/점심 구분 없음) — 나중에 meal_type을 추가할 수

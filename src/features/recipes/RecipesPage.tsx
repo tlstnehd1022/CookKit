@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useIngredientsById, useRecipes, useTags } from '../../data/store';
-import { collectAllAllergens, computeRecipeAllergens, computeTotalCookMinutes } from '../../data/computed';
+import {
+  collectAllAllergens,
+  computeRecipeAllergens,
+  computeTotalCookMinutes,
+  isRecipeMakeableWithPantry,
+} from '../../data/computed';
 import { useStoredImage } from '../../data/imageStore';
 import { useRecipeViewMode } from '../../data/viewMode';
 import { fetchCookingStats } from '../../data/cookingLog';
 import { useSession } from '../../data/session';
+import { usePantryFilterRequested, clearPantryFilterRequest } from '../../data/pantryFilterRequest';
 import {
   RecipeCategoryDetailPage,
   RecipeRowSection,
@@ -59,6 +65,18 @@ export function RecipesPage({
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [categoryDetail, setCategoryDetail] = useState<{ title: string; items: RecipeRowItem[] } | null>(null);
   const [cookingCountById, setCookingCountById] = useState<Map<string, number>>(new Map());
+  const pantryFilterRequested = usePantryFilterRequested();
+
+  // 냉장고 화면의 "지금 재료로 만들 수 있는 레시피" 배너(C-2)를 통해 들어온 경우, 다른 필터는
+  // 비우고 "🧺 보유 재료로 가능" 필터만 적용된 상태로 연다.
+  useEffect(() => {
+    if (!pantryFilterRequested) return;
+    setSearch('');
+    setActiveTagIds([]);
+    setExcludedAllergens([]);
+    setPantryOnly(true);
+    clearPantryFilterRequest();
+  }, [pantryFilterRequested]);
 
   // 검색은 재료 이름까지 훑어야 해서(레시피 개수가 늘어날 걸 감안하면) 매 키 입력마다 바로
   // 필터링하지 않고 300ms 디바운스 — 지금 데이터 규모에선 사실 없어도 되지만, 나중에 레시피가
@@ -100,11 +118,6 @@ export function RecipesPage({
     );
   }
 
-  function isMakeableWithPantry(recipe: Recipe, ingredientsMap: Map<string, Ingredient>): boolean {
-    if (recipe.ingredients.length === 0) return false;
-    return recipe.ingredients.every((item) => ingredientsMap.get(item.ingredientId)?.owned === true);
-  }
-
   // 지금은 클라이언트 사이드 필터링/정렬(레시피 몇십 개 규모에서는 충분히 빠름). 나중에 레시피가
   // 수백 개 이상으로 늘어나면 서버 사이드 필터링/정렬 + 페이지네이션으로 옮기는 걸 고려할 것
   // (CLAUDE.md "레시피 관리 화면(모바일 개편)" 항목에도 같은 내용 기록해둠).
@@ -119,7 +132,7 @@ export function RecipesPage({
         return false;
       }
     }
-    if (pantryOnly && !isMakeableWithPantry(recipe, ingredientsById)) return false;
+    if (pantryOnly && !isRecipeMakeableWithPantry(recipe, ingredientsById)) return false;
     return true;
   });
 
@@ -179,7 +192,7 @@ export function RecipesPage({
   );
 
   const pantryRowItems = useMemo(
-    () => rowItems.filter((item) => isMakeableWithPantry(item.recipe, ingredientsById)),
+    () => rowItems.filter((item) => isRecipeMakeableWithPantry(item.recipe, ingredientsById)),
     [rowItems, ingredientsById],
   );
 

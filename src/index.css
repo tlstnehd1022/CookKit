@@ -912,14 +912,27 @@ select:focus {
 .home-recommend-card {
   display: block;
   width: 100%;
-  text-align: left;
   background: var(--bg-card);
-  border: none;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft-hover);
   overflow: hidden;
-  cursor: pointer;
   padding: 0;
+}
+
+/* A-3: 카드 이미지+본문만 감싸는 클릭 영역(상세로 이동) — "바로 요리하기" 버튼(.home-recommend-actions)은
+   형제 요소라 버튼 중첩(<button> 안에 <button>) 없이 별도로 눌린다. */
+.home-recommend-clickarea {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.home-recommend-actions {
+  padding: 0 18px 18px;
 }
 
 .home-recommend-image {
@@ -956,7 +969,7 @@ select:focus {
 }
 
 .home-recommend-body {
-  padding: 16px 18px 20px;
+  padding: 16px 18px 8px;
 }
 
 .home-recommend-kicker {
@@ -1070,6 +1083,22 @@ select:focus {
 .home-expiring-days {
   font-size: 12.5px;
   color: var(--danger);
+}
+
+/* A-2: 요리 기록 진입점 — 다른 홈 섹션들과 달리 그 자체가 하나의 탭 가능한 요약 카드 */
+.home-cooking-history-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: var(--bg-card);
+  border: none;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  padding: 14px 16px;
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
 }
 
 .home-expiring-pill {

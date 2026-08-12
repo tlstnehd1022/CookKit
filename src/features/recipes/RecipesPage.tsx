@@ -11,6 +11,7 @@ import { useRecipeViewMode } from '../../data/viewMode';
 import { fetchCookingStats } from '../../data/cookingLog';
 import { useSession } from '../../data/session';
 import { usePantryFilterRequested, clearPantryFilterRequest } from '../../data/pantryFilterRequest';
+import { useRequestedMaxMinutesFilter, clearMaxMinutesFilterRequest } from '../../data/recipeTimeFilterRequest';
 import {
   RecipeCategoryDetailPage,
   RecipeRowSection,
@@ -62,10 +63,12 @@ export function RecipesPage({
   const [activeTagIds, setActiveTagIds] = useState<string[]>([]);
   const [excludedAllergens, setExcludedAllergens] = useState<string[]>([]);
   const [pantryOnly, setPantryOnly] = useState(false);
+  const [maxCookMinutes, setMaxCookMinutes] = useState<number | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [categoryDetail, setCategoryDetail] = useState<{ title: string; items: RecipeRowItem[] } | null>(null);
   const [cookingCountById, setCookingCountById] = useState<Map<string, number>>(new Map());
   const pantryFilterRequested = usePantryFilterRequested();
+  const requestedMaxMinutes = useRequestedMaxMinutesFilter();
 
   // 냉장고 화면의 "지금 재료로 만들 수 있는 레시피" 배너(C-2)를 통해 들어온 경우, 다른 필터는
   // 비우고 "🧺 보유 재료로 가능" 필터만 적용된 상태로 연다.
@@ -74,9 +77,22 @@ export function RecipesPage({
     setSearch('');
     setActiveTagIds([]);
     setExcludedAllergens([]);
+    setMaxCookMinutes(null);
     setPantryOnly(true);
     clearPantryFilterRequest();
   }, [pantryFilterRequested]);
+
+  // 홈의 "⏱ 20분 안에 되는 것" 섹션(A-1) "전체 보기"를 통해 들어온 경우, 다른 필터는 비우고
+  // 조리시간 필터만 적용된 상태로 연다.
+  useEffect(() => {
+    if (requestedMaxMinutes == null) return;
+    setSearch('');
+    setActiveTagIds([]);
+    setExcludedAllergens([]);
+    setPantryOnly(false);
+    setMaxCookMinutes(requestedMaxMinutes);
+    clearMaxMinutesFilterRequest();
+  }, [requestedMaxMinutes]);
 
   // 검색은 재료 이름까지 훑어야 해서(레시피 개수가 늘어날 걸 감안하면) 매 키 입력마다 바로
   // 필터링하지 않고 300ms 디바운스 — 지금 데이터 규모에선 사실 없어도 되지만, 나중에 레시피가
@@ -133,6 +149,9 @@ export function RecipesPage({
       }
     }
     if (pantryOnly && !isRecipeMakeableWithPantry(recipe, ingredientsById)) return false;
+    if (maxCookMinutes != null && (recipe.estimatedMinutes == null || recipe.estimatedMinutes > maxCookMinutes)) {
+      return false;
+    }
     return true;
   });
 
@@ -163,7 +182,11 @@ export function RecipesPage({
   // 대신 기존 필터링된 그리드/리스트 결과 화면을 보여준다(요구사항 3) — "행 탐색"과 "검색 결과"는
   // 서로 다른 화면이라는 게 이 기능의 핵심 설계라 명확히 분기한다.
   const hasActiveFilter =
-    debouncedSearch.length > 0 || activeTagIds.length > 0 || excludedAllergens.length > 0 || pantryOnly;
+    debouncedSearch.length > 0 ||
+    activeTagIds.length > 0 ||
+    excludedAllergens.length > 0 ||
+    pantryOnly ||
+    maxCookMinutes != null;
   const isRowMode = !hasActiveFilter && recipes.length > 0;
 
   // 행 구조에서는 항상 "최근 추가순"으로 카드를 배열한다(요구사항 5) — 이후 각 행은 이 순서를

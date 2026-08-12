@@ -198,6 +198,19 @@ export async function fetchTodayCookingLog(householdId: string, dateStr: string)
   return recipeName ? { recipeName } : null;
 }
 
+/** 이번 달(1일 0시 ~ 지금) household 요리 횟수 — 홈 화면 "이번 달 n번 요리했어요" 진입점(A-2)용. */
+export async function fetchMonthlyCookingCount(householdId: string): Promise<number> {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const { count, error } = await supabase
+    .from('cooking_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('household_id', householdId)
+    .gte('cooked_at', monthStart);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 const HISTORY_LIMIT = 50;
 
 export interface CookingLogEntry {

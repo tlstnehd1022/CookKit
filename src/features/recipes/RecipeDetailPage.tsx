@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useIngredients, useIngredientsById, useRecipes, useTags, getCurrentHouseholdId } from '../../data/store';
 import { useShoppingSelection } from '../../data/shoppingSelection';
 import { useSettings } from '../../data/settings';
@@ -35,10 +35,14 @@ export function RecipeDetailPage({
   recipeId,
   onBack,
   onEdit,
+  autoStartCookingMode,
 }: {
   recipeId: string;
   onBack: () => void;
   onEdit: () => void;
+  /** A-3: 홈의 "오늘의 추천" 카드에서 "바로 요리하기"로 들어온 경우, 상세 화면을 거치지 않고
+   * 곧바로 요리 모드를 연다(이미 레시피가 정해진 상태라 확인 다이얼로그 없이 즉시 시작). */
+  autoStartCookingMode?: boolean;
 }) {
   const { recipes, deleteRecipe, saveRecipe } = useRecipes();
   const { tags } = useTags();
@@ -75,6 +79,14 @@ export function RecipeDetailPage({
   useEffect(() => {
     if (recipe) setServings(recipe.servingsBase);
   }, [recipe?.id]);
+
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoStartCookingMode && recipe && !autoStartedRef.current) {
+      autoStartedRef.current = true;
+      setShowCookingMode(true);
+    }
+  }, [autoStartCookingMode, recipe]);
 
   // 공개된 내 레시피는 다른 사람이 얼마나 좋아했는지(좋아요 수) 조회 전용으로 보여준다 —
   // 내 레시피에 내가 좋아요를 누르는 건 의미가 없어서 토글 버튼은 안 두고 숫자만 표시.

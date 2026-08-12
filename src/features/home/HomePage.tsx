@@ -11,29 +11,40 @@ import { useStoredImage } from '../../data/imageStore';
 import { setActiveTab, useActiveTab } from '../../data/activeTab';
 import { useShoppingSelection } from '../../data/shoppingSelection';
 import { requestRecipeSearchFocus } from '../../data/recipeSearchFocus';
+import { requestMaxMinutesFilter } from '../../data/recipeTimeFilterRequest';
 import { useProfileSheetRequested, clearProfileSheetRequest } from '../../data/profileSheet';
 import { useNotifications } from '../../data/notifications';
 import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
 import { pickTodayRecommendation, pickBestRecipeUsingIngredient } from '../../lib/recipeRecommendation';
 import { fetchMealPlans } from '../../data/mealPlans';
-import { fetchTodayCookingLog } from '../../data/cookingLog';
+import {
+  fetchTodayCookingLog,
+  fetchMonthlyCookingCount,
+  fetchUncleanedRecentCookingLog,
+  type UncleanedCookingLog,
+} from '../../data/cookingLog';
 import { getCurrentWeekDates, formatWeekdayShort, formatDayOfMonth, todayDateString } from '../../lib/weekDates';
 import { pickGreeting, TIME_SLOT_LABEL } from '../../lib/homeGreeting';
 import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
 import { RecipeDetailPage } from '../recipes/RecipeDetailPage';
 import { RecipeEditor } from '../recipes/RecipeEditor';
+import { CookingHistoryPage } from '../recipes/CookingHistoryPage';
+import { PantryTidyModal } from '../ingredients/PantryTidyModal';
 import { ProfileSheet } from '../settings/ProfileSheet';
 import { WeeklyPlanPage } from './WeeklyPlanPage';
 import type { MealPlan, Recipe } from '../../data/types';
 
 type View =
   | { screen: 'feed' }
-  | { screen: 'detail'; recipeId: string }
+  | { screen: 'detail'; recipeId: string; autoCook?: boolean }
   | { screen: 'edit'; recipeId: string }
-  | { screen: 'weekly-plan' };
+  | { screen: 'weekly-plan' }
+  | { screen: 'cooking-history' };
 
 const OWNED_CHIP_LIMIT = 6;
 const EXPIRING_LIMIT = 4;
+const QUICK_RECIPE_MAX_MINUTES = 20;
+const QUICK_RECIPE_MIN_COUNT = 3;
 const WEEK_DATES = getCurrentWeekDates();
 
 export function HomePage() {
@@ -41,6 +52,9 @@ export function HomePage() {
   const [showProfileSheet, setShowProfileSheet] = useState(false);
   const [weekPlans, setWeekPlans] = useState<Map<string, MealPlan>>(new Map());
   const [cookedTodayRecipeName, setCookedTodayRecipeName] = useState<string | undefined>(undefined);
+  const [monthlyCookingCount, setMonthlyCookingCount] = useState<number | null>(null);
+  const [uncleanedLog, setUncleanedLog] = useState<UncleanedCookingLog | null>(null);
+  const [showPantryTidy, setShowPantryTidy] = useState(false);
   const profileSheetRequested = useProfileSheetRequested();
 
   const { recipes } = useRecipes();
@@ -88,7 +102,35 @@ export function HomePage() {
     };
   }, [householdId, activeTab, view.screen]);
 
+  // A-2(이번 달 요리 횟수)/A-4(냉장고 정리 안 함 안내) 근거 데이터 — 위 오늘 요리 조회와 같은
+  // 시점(홈 진입/복귀)에 함께 다시 불러온다.
+  useEffect(() => {
+    if (!householdId || activeTab !== 'home' || view.screen !== 'feed') return;
+    let cancelled = false;
+    fetchMonthlyCookingCount(householdId)
+      .then((result) => {
+        if (!cancelled) setMonthlyCookingCount(result);
+      })
+      .catch((err) => console.error('이번 달 요리 횟수 조회 실패:', err));
+    fetchUncleanedRecentCookingLog(householdId)
+      .then((result) => {
+        if (!cancelled) setUncleanedLog(result);
+      })
+      .catch((err) => console.error('냉장고 정리 여부 조회 실패:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [householdId, activeTab, view.screen]);
+
   const ownedIngredients = useMemo(() => ingredients.filter((i) => i.owned), [ingredients]);
+
+  // A-1: 예상 조리시간이 짧은 순으로, 최소 3개 이상일 때만 섹션 노출(빈약해 보이지 않게)
+  const quickRecipes = useMemo(() => {
+    const candidates = recipes
+      .filter((r) => r.estimatedMinutes != null && r.estimatedMinutes <= QUICK_RECIPE_MAX_MINUTES)
+      .sort((a, b) => (a.estimatedMinutes ?? 0) - (b.estimatedMinutes ?? 0));
+    return candidates.length >= QUICK_RECIPE_MIN_COUNT ? candidates : [];
+  }, [recipes]);
 
   const expiringSoon = useMemo(() => {
     return ingredients
@@ -135,6 +177,7 @@ export function HomePage() {
         recipeId={view.recipeId}
         onBack={() => setView({ screen: 'feed' })}
         onEdit={() => setView({ screen: 'edit', recipeId: view.recipeId })}
+        autoStartCookingMode={view.autoCook}
       />
     );
   }
@@ -145,6 +188,12 @@ export function HomePage() {
 
   if (view.screen === 'weekly-plan') {
     return <WeeklyPlanPage onBack={() => setView({ screen: 'feed' })} />;
+  }
+
+  if (view.screen === 'cooking-history') {
+    return householdId ? (
+      <CookingHistoryPage householdId={householdId} onBack={() => setView({ screen: 'feed' })} />
+    ) : null;
   }
 
   return (
@@ -202,35 +251,67 @@ export function HomePage() {
 
       {recommendation && (
         <div className="home-section">
-          <button type="button" className="home-recommend-card" onClick={() => openRecipe(recommendation.recipe.id)}>
-            <div className="home-recommend-image">
-              {recommendationImageUrl ? (
-                <img src={recommendationImageUrl} alt="" />
-              ) : (
-                <span className="home-recommend-placeholder">🍽️</span>
-              )}
-              <span className="home-recommend-badge">
-                재료 {recommendation.totalCount}개 중 {recommendation.ownedCount}개 있어요
-              </span>
-            </div>
-            <div className="home-recommend-body">
-              <div className="home-recommend-kicker">오늘의 추천</div>
-              <div className="home-recommend-title">{recommendation.recipe.name}</div>
-              <div className="home-recommend-meta">
-                {recommendation.recipe.estimatedMinutes != null && (
-                  <span>
-                    <Clock size={13} strokeWidth={2.75} /> {recommendation.recipe.estimatedMinutes}분
-                  </span>
+          <div className="home-recommend-card">
+            <button
+              type="button"
+              className="home-recommend-clickarea"
+              onClick={() => openRecipe(recommendation.recipe.id)}
+            >
+              <div className="home-recommend-image">
+                {recommendationImageUrl ? (
+                  <img src={recommendationImageUrl} alt="" />
+                ) : (
+                  <span className="home-recommend-placeholder">🍽️</span>
                 )}
-                {recommendation.recipe.difficulty && (
-                  <span>
-                    <Flame size={13} strokeWidth={2.75} /> {DIFFICULTY_LABEL[recommendation.recipe.difficulty]}
-                  </span>
-                )}
-                <span>{recommendation.recipe.servingsBase}인분</span>
+                <span className="home-recommend-badge">
+                  재료 {recommendation.totalCount}개 중 {recommendation.ownedCount}개 있어요
+                </span>
               </div>
+              <div className="home-recommend-body">
+                <div className="home-recommend-kicker">오늘의 추천</div>
+                <div className="home-recommend-title">{recommendation.recipe.name}</div>
+                <div className="home-recommend-meta">
+                  {recommendation.recipe.estimatedMinutes != null && (
+                    <span>
+                      <Clock size={13} strokeWidth={2.75} /> {recommendation.recipe.estimatedMinutes}분
+                    </span>
+                  )}
+                  {recommendation.recipe.difficulty && (
+                    <span>
+                      <Flame size={13} strokeWidth={2.75} /> {DIFFICULTY_LABEL[recommendation.recipe.difficulty]}
+                    </span>
+                  )}
+                  <span>{recommendation.recipe.servingsBase}인분</span>
+                </div>
+              </div>
+            </button>
+            <div className="home-recommend-actions">
+              <button
+                type="button"
+                className="btn primary"
+                style={{ width: '100%' }}
+                onClick={() => setView({ screen: 'detail', recipeId: recommendation.recipe.id, autoCook: true })}
+              >
+                🍳 바로 요리하기
+              </button>
             </div>
-          </button>
+          </div>
+        </div>
+      )}
+
+      {quickRecipes.length > 0 && (
+        <div className="home-section">
+          <div className="home-section-head">
+            <span className="home-section-title">⏱ {QUICK_RECIPE_MAX_MINUTES}분 안에 되는 것</span>
+            <button type="button" className="home-link" onClick={() => requestMaxMinutesFilter(QUICK_RECIPE_MAX_MINUTES)}>
+              전체 보기
+            </button>
+          </div>
+          <div className="recipe-row-scroll">
+            {quickRecipes.map((recipe) => (
+              <QuickRecipeCard key={recipe.id} recipe={recipe} onClick={() => openRecipe(recipe.id)} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -287,6 +368,28 @@ export function HomePage() {
         </div>
       )}
 
+      {uncleanedLog && (
+        <button type="button" className="action-banner" onClick={() => setShowPantryTidy(true)}>
+          <span className="action-banner-text">
+            🧹 요리 후 냉장고 정리를 하지 않았어요. 정리할까요?
+          </span>
+          <span className="action-banner-cta">
+            정리하기 <ChevronRight size={14} strokeWidth={2.75} />
+          </span>
+        </button>
+      )}
+
+      {monthlyCookingCount != null && monthlyCookingCount > 0 && (
+        <button
+          type="button"
+          className="home-section home-cooking-history-entry"
+          onClick={() => setView({ screen: 'cooking-history' })}
+        >
+          <span>📋 이번 달 {monthlyCookingCount}번 요리했어요</span>
+          <ChevronRight size={16} strokeWidth={2.75} />
+        </button>
+      )}
+
       {showProfileSheet && (
         <ProfileSheet
           onClose={() => setShowProfileSheet(false)}
@@ -296,6 +399,36 @@ export function HomePage() {
           }}
         />
       )}
+
+      {showPantryTidy && (
+        <PantryTidyModal
+          onClose={() => setShowPantryTidy(false)}
+          cookingLogId={uncleanedLog?.id}
+          onApplied={() => setUncleanedLog(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** A-1 "⏱ 20분 안에 되는 것" 행의 카드 — RecipesPage.tsx의 .recipe-card/.recipe-card-row CSS를
+ * 그대로 재사용하되, 메타 텍스트만 이 섹션 취지("12분 · 재료 5개")에 맞게 직접 구성한다. */
+function QuickRecipeCard({ recipe, onClick }: { recipe: Recipe; onClick: () => void }) {
+  const imageId = recipe.finalImageId ?? recipe.steps.find((s) => s.imageId)?.imageId;
+  const imageUrl = useStoredImage(imageId);
+  return (
+    <div className="recipe-card recipe-card-row" onClick={onClick}>
+      {imageUrl ? (
+        <img src={imageUrl} alt={recipe.name} className="recipe-card-image" />
+      ) : (
+        <div className="recipe-card-placeholder">🍽️</div>
+      )}
+      <div className="recipe-card-body">
+        <strong className="recipe-title">{recipe.name}</strong>
+        <span className="text-muted" style={{ fontSize: 12 }}>
+          {recipe.estimatedMinutes}분 · 재료 {recipe.ingredients.length}개
+        </span>
+      </div>
     </div>
   );
 }

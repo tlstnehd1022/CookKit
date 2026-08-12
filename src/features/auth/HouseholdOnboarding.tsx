@@ -1,6 +1,24 @@
 import { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
+// create_household/join_household_by_invite_code RPC(supabase/migrations/0002_household_rpc.sql)의
+// RAISE EXCEPTION 메시지가 이미 한국어라 그대로 보여줘도 되지만, 혹시 다른 원인(네트워크 등)으로
+// 그 외의(영문/알 수 없는) 메시지가 오면 일반 안내문으로 대체한다.
+function translateHouseholdError(message: string): string {
+  if (message.includes('이미 가구에 속해')) {
+    return '이미 다른 가구에 속해 있어요.';
+  }
+  if (message.includes('초대 코드가 올바르지')) {
+    return '초대 코드를 찾을 수 없어요. 정확한 코드인지 다시 확인해주세요.';
+  }
+  if (/[가-힣]/.test(message)) {
+    // 이미 한글 메시지면(RPC가 직접 던진 것으로 간주) 그대로 보여준다
+    return message;
+  }
+  // 순수 영문 메시지(네트워크 오류 등 RPC 밖에서 온 에러)는 일반 문구로 대체
+  return '요청을 처리하지 못했어요. 잠시 후 다시 시도해주세요.';
+}
+
 /** 새 household의 "기타" 카테고리를 찾거나 만든다 — 온보딩 시점은 initializeDataLayer가 아직
  * 실행되기 전이라 useCategories() 같은 반응형 훅을 못 쓰고, create_household/
  * join_household_by_invite_code RPC처럼 supabase를 직접 호출한다. */
@@ -39,7 +57,7 @@ export function HouseholdOnboarding({ onDone }: { onDone: () => void }) {
     const { data, error } = await supabase.rpc('create_household', { household_name: name.trim() });
     setLoading(false);
     if (error) {
-      setError(error.message);
+      setError(translateHouseholdError(error.message));
       return;
     }
     setHouseholdId(data as string);
@@ -53,7 +71,7 @@ export function HouseholdOnboarding({ onDone }: { onDone: () => void }) {
     const { data, error } = await supabase.rpc('join_household_by_invite_code', { code: inviteCode.trim() });
     setLoading(false);
     if (error) {
-      setError(error.message);
+      setError(translateHouseholdError(error.message));
       return;
     }
     setHouseholdId(data as string);

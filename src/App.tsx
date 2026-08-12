@@ -17,6 +17,7 @@ import {
 import { initializeNotifications, resetNotifications } from './data/notifications';
 import { useImageGenerationCompletionMessage, useImageGenerationStatus } from './data/imageGenerationStatus';
 import { setActiveTab, useActiveTab, type Tab } from './data/activeTab';
+import { useOnlineStatus } from './data/useOnlineStatus';
 
 const TABS: { id: Tab; label: string; icon: typeof House }[] = [
   { id: 'home', label: '홈', icon: House },
@@ -34,6 +35,7 @@ function App() {
   const imageGenCompletionMessage = useImageGenerationCompletionMessage();
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
   const shoppingNeededCount = useShoppingNeededCount();
+  const isOnline = useOnlineStatus();
 
   useEffect(() => {
     if (!user) {
@@ -54,7 +56,11 @@ function App() {
   }, [user, household]);
 
   if (!loaded) {
-    return null;
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p className="text-muted">불러오는 중...</p>
+      </div>
+    );
   }
 
   if (!user) {
@@ -62,7 +68,11 @@ function App() {
   }
 
   if (householdLoading) {
-    return null;
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p className="text-muted">불러오는 중...</p>
+      </div>
+    );
   }
 
   if (!household) {
@@ -87,6 +97,9 @@ function App() {
 
   return (
     <>
+      {!isOnline && (
+        <div className="image-gen-banner">📴 오프라인 상태예요. 변경사항이 저장되지 않을 수 있어요.</div>
+      )}
       {imageGenStatus.active && (
         <div className="image-gen-banner">
           🖼 "{imageGenStatus.recipeName}" 이미지 생성 중... ({imageGenStatus.done}/{imageGenStatus.total})

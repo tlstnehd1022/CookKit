@@ -16,6 +16,10 @@ function createEntityStore<T extends { id: string }>() {
   let repo: CrudRepository<T> | null = null;
   let cache: T[] = [];
   let loading = true;
+  // 로그아웃/계정 전환마다 증가시켜, 그 이전에 시작된 낡은 응답(save/refresh)이 새 세션의
+  // 캐시를 덮어쓰지 않도록 식별한다 — "저장 버튼을 누른 직후 곧바로 로그아웃 → 재로그인"처럼
+  // 빠르게 세션이 바뀌는 경우의 레이스 컨디션 방지.
+  let generation = 0;
   const listeners = new Set<() => void>();
 
   function notify() {
@@ -23,17 +27,23 @@ function createEntityStore<T extends { id: string }>() {
   }
 
   async function setRepo(newRepo: CrudRepository<T>) {
+    const myGeneration = ++generation;
     repo = newRepo;
     loading = true;
     notify();
-    cache = await newRepo.getAll();
+    const result = await newRepo.getAll();
+    if (myGeneration !== generation) return; // 그 사이 리셋/재초기화됨 — 낡은 응답 폐기
+    cache = result;
     loading = false;
     notify();
   }
 
   async function refresh() {
     if (!repo) return;
-    cache = await repo.getAll();
+    const myGeneration = generation;
+    const result = await repo.getAll();
+    if (myGeneration !== generation) return;
+    cache = result;
     notify();
   }
 
@@ -47,18 +57,28 @@ function createEntityStore<T extends { id: string }>() {
     setRepo,
     async save(item: T) {
       if (!repo) throw new Error('아직 데이터 저장소가 준비되지 않았습니다.');
+      const myGeneration = generation;
       await repo.save(item);
+      if (myGeneration !== generation) return; // 저장 자체는 이미 반영됐지만, refresh는 스킵
       await refresh();
     },
     async remove(id: string) {
       if (!repo) throw new Error('아직 데이터 저장소가 준비되지 않았습니다.');
+      const myGeneration = generation;
       await repo.delete(id);
+      if (myGeneration !== generation) return;
       await refresh();
     },
     async replaceAll(items: T[]) {
       if (!repo) throw new Error('아직 데이터 저장소가 준비되지 않았습니다.');
+      const myGeneration = generation;
       await repo.replaceAll(items);
+      if (myGeneration !== generation) return;
       await refresh();
+    },
+    /** 로그아웃/계정 전환 시 호출 — 진행 중이던 낡은 요청의 결과를 무효화한다. */
+    invalidate() {
+      generation++;
     },
   };
 }
@@ -91,6 +111,10 @@ export async function initializeDataLayer(householdId: string, userId: string): 
 /** 로그아웃 시 호출 — 다음 로그인(다른 계정일 수도 있음)에서 다시 초기화되게 한다. */
 export function resetDataLayer(): void {
   initializedForHouseholdId = null;
+  ingredientsStore.invalidate();
+  categoriesStore.invalidate();
+  tagsStore.invalidate();
+  recipesStore.invalidate();
 }
 
 /** 현재 초기화된 household id(훅이 아닌 일반 함수 — imageStore.ts처럼 React 렌더 바깥/이미지

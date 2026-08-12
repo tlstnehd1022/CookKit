@@ -111,7 +111,11 @@ export function IngredientsPage() {
                     owned={isOwned(ingredient)}
                     onToggleOwned={() => setOwned(ingredient.id, !isOwned(ingredient))}
                     onEditDetails={() => setEditingDetailsId(ingredient.id)}
-                    onDelete={() => deleteIngredient(ingredient.id)}
+                    onDelete={() => {
+                      if (confirm(`'${ingredient.name}'을(를) 삭제할까요? 이 재료를 쓰는 레시피에서는 "삭제된 재료"로 표시돼요.`)) {
+                        deleteIngredient(ingredient.id);
+                      }
+                    }}
                     highlighted={highlightIds.includes(ingredient.id)}
                   />
                 ))}
@@ -129,7 +133,11 @@ export function IngredientsPage() {
                 owned={isOwned(ingredient)}
                 onToggleOwned={() => setOwned(ingredient.id, !isOwned(ingredient))}
                 onEditDetails={() => setEditingDetailsId(ingredient.id)}
-                onDelete={() => deleteIngredient(ingredient.id)}
+                onDelete={() => {
+                  if (confirm(`'${ingredient.name}'을(를) 삭제할까요? 이 재료를 쓰는 레시피에서는 "삭제된 재료"로 표시돼요.`)) {
+                    deleteIngredient(ingredient.id);
+                  }
+                }}
                 highlighted={highlightIds.includes(ingredient.id)}
               />
             ))}
@@ -188,9 +196,10 @@ export function IngredientsPage() {
         <IngredientDetailModal
           ingredient={ingredients.find((i) => i.id === editingDetailsId)!}
           onClose={() => setEditingDetailsId(null)}
-          onSave={(patch) => {
+          onSave={async (patch) => {
             const target = ingredients.find((i) => i.id === editingDetailsId);
-            if (target) saveIngredient({ ...target, ...patch });
+            if (!target) return;
+            await saveIngredient({ ...target, ...patch });
             setEditingDetailsId(null);
           }}
         />
@@ -198,9 +207,10 @@ export function IngredientsPage() {
 
       {showAddForm && (
         <AddIngredientModal
+          existingNames={ingredients.map((i) => i.name.trim().toLowerCase())}
           onClose={() => setShowAddForm(false)}
-          onSave={(ingredient) => {
-            markIngredientFilled(ingredient);
+          onSave={async (ingredient) => {
+            await markIngredientFilled(ingredient);
             setShowAddForm(false);
           }}
         />
@@ -311,12 +321,14 @@ function IngredientDetailModal({
 }: {
   ingredient: Ingredient;
   onClose: () => void;
-  onSave: (patch: IngredientDetailPatch) => void;
+  onSave: (patch: IngredientDetailPatch) => Promise<void>;
 }) {
   const [allergens, setAllergens] = useState<string[]>(ingredient.allergens);
   const [draft, setDraft] = useState('');
   const [preferredUnit, setPreferredUnit] = useState(ingredient.preferredUnit ?? '');
   const [expirationDate, setExpirationDate] = useState(ingredient.expirationDate ?? '');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const initialMethod = ingredient.preferredMethod ?? '';
   const isInitialPreset = METHOD_PRESETS.includes(initialMethod);
@@ -427,26 +439,35 @@ function IngredientDetailModal({
         </div>
 
         <div className="row" style={{ marginTop: 16 }}>
-          <button className="btn" onClick={onClose}>
+          <button className="btn" onClick={onClose} disabled={saving}>
             취소
           </button>
           <button
             className="btn primary"
-            onClick={() =>
-              onSave({
-                allergens,
-                preferredUnit: preferredUnit.trim() || undefined,
-                preferredMethod:
-                  selectedMethod === CUSTOM_METHOD_VALUE
-                    ? customMethodText.trim() || undefined
-                    : selectedMethod || undefined,
-                expirationDate: expirationDate || undefined,
-              })
-            }
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              setSaveError(null);
+              try {
+                await onSave({
+                  allergens,
+                  preferredUnit: preferredUnit.trim() || undefined,
+                  preferredMethod:
+                    selectedMethod === CUSTOM_METHOD_VALUE
+                      ? customMethodText.trim() || undefined
+                      : selectedMethod || undefined,
+                  expirationDate: expirationDate || undefined,
+                });
+              } catch (err) {
+                setSaveError(err instanceof Error ? err.message : '저장에 실패했어요. 다시 시도해주세요.');
+                setSaving(false);
+              }
+            }}
           >
-            저장
+            {saving ? '저장 중...' : '저장'}
           </button>
         </div>
+        {saveError && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{saveError}</p>}
       </div>
     </div>
   );
@@ -455,16 +476,44 @@ function IngredientDetailModal({
 function AddIngredientModal({
   onClose,
   onSave,
+  existingNames,
 }: {
   onClose: () => void;
-  onSave: (ingredient: Ingredient) => void;
+  onSave: (ingredient: Ingredient) => Promise<void>;
+  existingNames: string[];
 }) {
   const { categories } = useCategories();
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '');
   const [defaultBuyUnit, setDefaultBuyUnit] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const canSave = name.trim().length > 0 && categoryId;
+
+  async function handleSubmit() {
+    const trimmedName = name.trim();
+    if (existingNames.includes(trimmedName.toLowerCase())) {
+      if (!confirm(`'${trimmedName}'은(는) 이미 등록된 재료예요. 그래도 새로 추가할까요?`)) return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onSave({
+        id: makeId(),
+        name: trimmedName,
+        categoryId,
+        defaultBuyUnit: defaultBuyUnit.trim() || '1개',
+        allergens: [],
+        // "냉장고 채우기" 흐름의 두 액션 중 하나라 지금 보유 중인 것으로 바로 등록한다
+        // (예전엔 "재료 관리" 화면의 일반 등록 기능이라 owned:false가 기본이었음).
+        owned: true,
+      });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : '저장에 실패했어요. 다시 시도해주세요.');
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -496,28 +545,14 @@ function AddIngredientModal({
           />
         </div>
         <div className="row">
-          <button className="btn" onClick={onClose}>
+          <button className="btn" onClick={onClose} disabled={saving}>
             취소
           </button>
-          <button
-            className="btn primary"
-            disabled={!canSave}
-            onClick={() =>
-              onSave({
-                id: makeId(),
-                name: name.trim(),
-                categoryId,
-                defaultBuyUnit: defaultBuyUnit.trim() || '1개',
-                allergens: [],
-                // "냉장고 채우기" 흐름의 두 액션 중 하나라 지금 보유 중인 것으로 바로 등록한다
-                // (예전엔 "재료 관리" 화면의 일반 등록 기능이라 owned:false가 기본이었음).
-                owned: true,
-              })
-            }
-          >
-            저장
+          <button className="btn primary" disabled={!canSave || saving} onClick={handleSubmit}>
+            {saving ? '저장 중...' : '저장'}
           </button>
         </div>
+        {saveError && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{saveError}</p>}
       </div>
     </div>
   );

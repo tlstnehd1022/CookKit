@@ -42,7 +42,11 @@ export function TagManager({ onClose }: { onClose: () => void }) {
                 saveTag({ ...tag, name: renameDraft.trim() || tag.name });
                 setRenamingId(null);
               }}
-              onDelete={() => deleteTag(tag.id)}
+              onDelete={() => {
+                if (confirm(`'${tag.name}' 태그를 삭제할까요? 이 태그를 쓰던 레시피에서는 태그가 사라져요.`)) {
+                  deleteTag(tag.id);
+                }
+              }}
             />
           ))}
 
@@ -65,7 +69,11 @@ export function TagManager({ onClose }: { onClose: () => void }) {
                 saveTag({ ...tag, name: renameDraft.trim() || tag.name });
                 setRenamingId(null);
               }}
-              onDelete={() => deleteTag(tag.id)}
+              onDelete={() => {
+                if (confirm(`'${tag.name}' 태그를 삭제할까요? 이 태그를 쓰던 레시피에서는 태그가 사라져요.`)) {
+                  deleteTag(tag.id);
+                }
+              }}
             />
           ))}
 
@@ -90,7 +98,11 @@ export function TagManager({ onClose }: { onClose: () => void }) {
                 saveTag({ ...tag, name: renameDraft.trim() || tag.name });
                 setRenamingId(null);
               }}
-              onDelete={() => deleteTag(tag.id)}
+              onDelete={() => {
+                if (confirm(`'${tag.name}' 태그를 삭제할까요? 이 태그를 쓰던 레시피에서는 태그가 사라져요.`)) {
+                  deleteTag(tag.id);
+                }
+              }}
             />
           ))}
 

@@ -169,7 +169,9 @@ export function ShoppingListPage() {
               <button
                 className={`toggle ${owned ? 'on' : ''}`}
                 onClick={() => handleToggleOwned(row.ingredientId, !owned)}
+                disabled={!ingredient}
                 aria-label="보유 여부"
+                title={!ingredient ? '삭제된 재료라 상태를 변경할 수 없어요' : undefined}
               >
                 <span className="knob" />
               </button>

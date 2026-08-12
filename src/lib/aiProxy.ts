@@ -107,6 +107,23 @@ export async function estimateRecipeNutrition(
   return result.nutrition;
 }
 
+/** 온디맨드 전용(C-2) — 직접 입력해서 만든 레시피 저장 시 "이런 태그 어때요?" 제안에서만
+ * 호출된다. 결과는 그대로 적용되지 않고 사용자가 선택한 것만 붙어야 한다(호출부 책임). */
+export async function suggestRecipeTags(
+  provider: 'anthropic' | 'gemini',
+  model: string,
+  recipe: { name: string; ingredients: { name: string }[]; steps: { title: string; content: string }[] },
+  existingTagNames: string[],
+): Promise<string[]> {
+  const result = await callAiApi<{ tagNames: string[] }>('/api/ai-tags', {
+    provider,
+    model,
+    recipe,
+    existingTagNames,
+  });
+  return result.tagNames;
+}
+
 /** 영수증 이미지(base64, data: 접두사 없이)에서 식료품 품목을 인식한다. 결과는 항상 확인 화면
  * (ReceiptScanModal)을 거친 뒤 사용자가 명시적으로 반영해야만 재료에 저장된다. */
 export async function extractReceiptItems(

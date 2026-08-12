@@ -14,6 +14,7 @@ import { useSession } from '../../data/session';
 import { usePantryFilterRequested, clearPantryFilterRequest } from '../../data/pantryFilterRequest';
 import { useRequestedMaxMinutesFilter, clearMaxMinutesFilterRequest } from '../../data/recipeTimeFilterRequest';
 import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
+import { matchesRecipeSearch } from '../../lib/recipeSearch';
 import {
   RecipeCategoryDetailPage,
   RecipeRowSection,
@@ -22,7 +23,7 @@ import {
   type RecipeRowItem,
   type TagRow,
 } from './RecipeRowSection';
-import type { Difficulty, Ingredient, Recipe, Tag } from '../../data/types';
+import type { Difficulty, Recipe, Tag } from '../../data/types';
 
 // 태그 이름별 대표 이모지 — 대표 이미지(조리 단계 이미지)가 없는 레시피의 플레이스홀더용.
 // 매칭되는 태그가 없으면 기본 이모지로 대체.
@@ -146,19 +147,11 @@ export function RecipesPage({
     [ingredientsById],
   );
 
-  function matchesSearch(recipe: Recipe, query: string, ingredientsMap: Map<string, Ingredient>): boolean {
-    if (!query) return true;
-    if (recipe.name.toLowerCase().includes(query)) return true;
-    return recipe.ingredients.some((item) =>
-      ingredientsMap.get(item.ingredientId)?.name.toLowerCase().includes(query),
-    );
-  }
-
   // 지금은 클라이언트 사이드 필터링/정렬(레시피 몇십 개 규모에서는 충분히 빠름). 나중에 레시피가
   // 수백 개 이상으로 늘어나면 서버 사이드 필터링/정렬 + 페이지네이션으로 옮기는 걸 고려할 것
   // (CLAUDE.md "레시피 관리 화면(모바일 개편)" 항목에도 같은 내용 기록해둠).
   const filtered = recipes.filter((recipe) => {
-    if (!matchesSearch(recipe, debouncedSearch, ingredientsById)) return false;
+    if (!matchesRecipeSearch(recipe, debouncedSearch, ingredientsById, tags)) return false;
     if (activeTagIds.length > 0 && !activeTagIds.every((tagId) => recipe.tagIds.includes(tagId))) {
       return false;
     }

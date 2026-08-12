@@ -193,6 +193,61 @@ export async function estimateRecipeNutrition(
   }
 }
 
+const TAG_SUGGESTION_SCHEMA = {
+  type: 'object',
+  properties: {
+    tagNames: {
+      type: 'array',
+      items: { type: 'string' },
+      description:
+        '이 레시피에 어울리는 태그 이름 2~4개(스타일/카테고리/국가 등 자유롭게). 기존 태그 목록에 맞는 게 ' +
+        '있으면 그 이름 그대로 재사용하고, 없으면 새로 제안.',
+    },
+  },
+  required: ['tagNames'],
+  additionalProperties: false,
+} as const;
+
+/** 이름/재료/조리순서를 보고 어울리는 태그를 제안한다(C-2, 온디맨드 전용 — 자동 적용 금지,
+ * 호출부가 사용자에게 확인받은 태그만 실제로 붙여야 한다). AI 대화(propose_recipe)를 거치지
+ * 않고 직접 입력해서 만든 레시피에도 저장 시 태그 제안을 받을 수 있게 하기 위함. */
+export async function suggestRecipeTags(
+  apiKey: string,
+  model: string,
+  recipe: { name: string; ingredients: { name: string }[]; steps: { title: string; content: string }[] },
+  existingTagNames: string[],
+): Promise<string[]> {
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  const ingredientLines = recipe.ingredients.map((i) => `- ${i.name}`).join('\n');
+  const stepLines = recipe.steps.map((s, i) => `${i + 1}. ${s.title}: ${s.content}`).join('\n');
+  const existingNote =
+    existingTagNames.length > 0 ? `기존 태그 목록(가능하면 재사용): ${existingTagNames.join(', ')}` : '기존 태그가 아직 없음.';
+
+  const response = await client.messages.create({
+    model,
+    max_tokens: 512,
+    output_config: { format: { type: 'json_schema', schema: TAG_SUGGESTION_SCHEMA }, effort: 'low' },
+    messages: [
+      {
+        role: 'user',
+        content:
+          `다음 레시피의 이름/재료/조리법을 보고 어울리는 태그를 2~4개 제안해줘.\n\n${existingNote}\n\n` +
+          `레시피: ${recipe.name}\n재료:\n${ingredientLines}\n\n조리 순서:\n${stepLines}`,
+      },
+    ],
+  });
+
+  const textBlocks = response.content.filter((block): block is Anthropic.TextBlock => block.type === 'text');
+  const lastTextBlock = textBlocks[textBlocks.length - 1];
+  if (!lastTextBlock) throw new Error('AI 응답에서 텍스트를 찾을 수 없습니다.');
+  try {
+    const parsed = JSON.parse(lastTextBlock.text) as { tagNames: string[] };
+    return parsed.tagNames;
+  } catch {
+    throw new Error('AI가 유효한 태그 제안 형식으로 응답하지 않았어요.');
+  }
+}
+
 const PROPOSE_RECIPE_TOOL: Anthropic.Tool = {
   name: 'propose_recipe',
   description:

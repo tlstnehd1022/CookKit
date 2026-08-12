@@ -650,9 +650,83 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
   }, [finalImageId]);
   const [visibility, setVisibility] = useState<RecipeVisibility>(existing?.visibility ?? 'household');
 
+  // C-2: 태그가 하나도 없는 채로(직접 만든 레시피 등, AI 채팅/유튜브 변환을 안 거친 경우) 처음
+  // 저장할 때만 "이런 태그 어때요?" 한 번 제안한다 — 자동 적용 금지, 사용자가 고른 것만 붙는다.
+  const [showTagSuggestion, setShowTagSuggestion] = useState(false);
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
+
+  async function maybeOfferTagSuggestion(): Promise<boolean> {
+    if (tagIds.length > 0) return false;
+    if (!name.trim() || recipeIngredients.length === 0) return false;
+    try {
+      const names = await aiProxy.suggestRecipeTags(
+        settings.aiProvider,
+        isGemini ? settings.geminiModel : settings.model,
+        {
+          name: name.trim(),
+          ingredients: recipeIngredients.map((row) => ({
+            name: ingredients.find((i) => i.id === row.ingredientId)?.name ?? '재료',
+          })),
+          steps: steps.map((s) => ({ title: s.title, content: s.content })),
+        },
+        tags.map((t) => t.name),
+      );
+      if (names.length === 0) return false;
+      setTagSuggestions(names);
+      setShowTagSuggestion(true);
+      return true;
+    } catch (err) {
+      // 태그 제안은 부가 기능이라 실패해도(API 키 없음 등) 저장을 막지 않고 조용히 건너뛴다.
+      console.error('태그 제안 실패(건너뛰고 저장 계속):', err);
+      return false;
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     setSaveError(null);
+    try {
+      const offered = await maybeOfferTagSuggestion();
+      if (offered) return;
+      await performSave();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleApplyTagSuggestion(selectedNames: string[]) {
+    setShowTagSuggestion(false);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      if (selectedNames.length > 0) {
+        const tagCache = new Map(tags.map((t) => [t.name, t.id]));
+        const newTagIds: string[] = [];
+        for (const tagName of selectedNames) {
+          newTagIds.push(await resolveOrCreateTag(tagName, tagCache));
+        }
+        setTagIds(newTagIds);
+        await performSave(newTagIds);
+      } else {
+        await performSave();
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSkipTagSuggestion() {
+    setShowTagSuggestion(false);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await performSave();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function performSave(tagIdsOverride?: string[]) {
     try {
       if (shouldOfferImageGenerationOnSave()) {
         const totalCount = steps.length + 1; // +1은 완성 사진
@@ -674,7 +748,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         id: stableRecipeId,
         name: name.trim() || '이름 없는 레시피',
         servingsBase: Math.max(1, servingsBase || 1),
-        tagIds,
+        tagIds: tagIdsOverride ?? tagIds,
         ingredients: recipeIngredients,
         // 방금 이미지 생성을 기다렸다면 그 결과가 반영된 최신 값을 ref로 읽는다(위 주석 참고).
         steps: stepsRef.current,
@@ -1205,6 +1279,69 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         <button className="btn primary" onClick={handleSave} disabled={!name.trim() || saving}>
           {saving ? '저장 중...' : '저장'}
         </button>
+      </div>
+
+      {showTagSuggestion && (
+        <TagSuggestionModal
+          suggestions={tagSuggestions}
+          saving={saving}
+          onApply={handleApplyTagSuggestion}
+          onSkip={handleSkipTagSuggestion}
+        />
+      )}
+    </div>
+  );
+}
+
+function TagSuggestionModal({
+  suggestions,
+  saving,
+  onApply,
+  onSkip,
+}: {
+  suggestions: string[];
+  saving: boolean;
+  onApply: (selectedNames: string[]) => void;
+  onSkip: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set(suggestions));
+
+  function toggle(name: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onSkip}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0 }}>이런 태그 어때요?</h2>
+        <p className="text-muted" style={{ marginTop: -4 }}>
+          레시피 이름·재료·조리순서를 보고 AI가 제안한 태그예요. 원하는 것만 골라 담아도 돼요.
+        </p>
+        <div className="chip-row" style={{ marginTop: 4 }}>
+          {suggestions.map((name) => (
+            <button
+              key={name}
+              type="button"
+              className={`chip selectable ${selected.has(name) ? 'active' : ''}`}
+              onClick={() => toggle(name)}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+        <div className="row" style={{ marginTop: 20 }}>
+          <button className="btn" onClick={onSkip} disabled={saving}>
+            건너뛰고 저장
+          </button>
+          <button className="btn primary" onClick={() => onApply(Array.from(selected))} disabled={saving}>
+            {saving ? '저장 중...' : '적용하고 저장'}
+          </button>
+        </div>
       </div>
     </div>
   );

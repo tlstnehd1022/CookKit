@@ -21,6 +21,7 @@ import { useSession } from '../../data/session';
 import { CookingLogModal } from './CookingLogModal';
 import { CookingModePage } from './CookingModePage';
 import { TimingAdjustmentModal } from './TimingAdjustmentModal';
+import { PantryTidyModal } from '../ingredients/PantryTidyModal';
 import type { CookingLogStepTiming } from '../../data/types';
 
 const NUTRITION_SOURCE_LABEL: Record<string, string> = {
@@ -57,6 +58,10 @@ export function RecipeDetailPage({
   const [cookingStats, setCookingStats] = useState<CookingStats | null>(null);
   const [showCookingLogModal, setShowCookingLogModal] = useState(false);
   const [showCookingMode, setShowCookingMode] = useState(false);
+  // D-1: "오늘 만들었어요" 확정 시 생성된 기록 id — 정리하기로 이동할 때 pantry_cleaned_at을
+  // 나중에 기록하기 위해 들고 있는다.
+  const [lastCookingLogId, setLastCookingLogId] = useState<string | null>(null);
+  const [showPantryTidy, setShowPantryTidy] = useState(false);
   // 요리 모드를 거쳐 왔을 때만 채워짐(직접 "오늘 만들었어요"를 누르면 undefined) — 로그를 남길 때
   // 같이 저장해서 나중에 조정 제안(fetchStepTimingAdjustments) 계산에 쓰인다.
   const [pendingStepTimings, setPendingStepTimings] = useState<CookingLogStepTiming[] | undefined>(undefined);
@@ -129,13 +134,14 @@ export function RecipeDetailPage({
     if (!recipe || !user || !householdId) {
       throw new Error('로그인이 필요합니다.');
     }
-    await logCooking({
+    const { id: cookingLogId } = await logCooking({
       recipeId: recipe.id,
       householdId,
       userId: user.id,
       memo,
       stepTimings: pendingStepTimings,
     });
+    setLastCookingLogId(cookingLogId);
     // 체크된 재료만 보유 해제 — 이미 owned=false인 재료는 건드리지 않음
     for (const ingredientId of selectedIngredientIds) {
       const ingredient = ingredientsById.get(ingredientId);
@@ -427,6 +433,16 @@ export function RecipeDetailPage({
             setShowCookingLogModal(false);
             onEdit();
           }}
+          onOpenPantryTidy={() => {
+            setShowCookingLogModal(false);
+            setShowPantryTidy(true);
+          }}
+        />
+      )}
+      {showPantryTidy && (
+        <PantryTidyModal
+          onClose={() => setShowPantryTidy(false)}
+          cookingLogId={lastCookingLogId ?? undefined}
         />
       )}
       {showCookingMode && (

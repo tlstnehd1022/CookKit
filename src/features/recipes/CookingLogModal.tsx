@@ -20,6 +20,7 @@ export function CookingLogModal({
   onConfirm,
   onSetFinalImage,
   onEditRecipe,
+  onOpenPantryTidy,
 }: {
   recipe: Recipe;
   ingredientsById: Map<string, Ingredient>;
@@ -28,6 +29,8 @@ export function CookingLogModal({
   onConfirm: (selectedIngredientIds: string[], memo: string) => Promise<void>;
   onSetFinalImage: (imageId: string) => Promise<void>;
   onEditRecipe: () => void;
+  /** D-1: 요리에 쓴 재료가 자동으로 "없어요"로 표시된 상태에서 냉장고 정리 모드로 이동 */
+  onOpenPantryTidy: () => void;
 }) {
   const uniqueIngredientIds = useMemo(
     () => Array.from(new Set(recipe.ingredients.map((item) => item.ingredientId))),
@@ -120,6 +123,11 @@ export function CookingLogModal({
     onEditRecipe();
   }
 
+  async function handleOpenPantryTidy() {
+    if (!(await applyFinalImageIfNeeded())) return;
+    onOpenPantryTidy();
+  }
+
   if (step === 'done') {
     return (
       <div className="modal-backdrop" onClick={handleClose}>
@@ -167,6 +175,19 @@ export function CookingLogModal({
               />
             </label>
           )}
+
+          <div className="section-title" style={{ marginTop: 16 }}>냉장고 정리</div>
+          <p className="text-muted" style={{ marginTop: -4 }}>
+            요리에 쓴 재료는 자동으로 "없어요"로 표시됐어요. 확인만 하고 남은 재료만 되돌리면 돼요.
+          </p>
+          <div className="row" style={{ gap: 6, marginBottom: 4 }}>
+            <button className="btn" onClick={handleClose} disabled={applyingFinalImage || photoUploading}>
+              나중에
+            </button>
+            <button className="btn primary" onClick={handleOpenPantryTidy} disabled={applyingFinalImage || photoUploading}>
+              🧹 정리하기
+            </button>
+          </div>
 
           <div className="row" style={{ gap: 6, marginTop: 16 }}>
             <button className="btn" onClick={handleEditRecipe} disabled={applyingFinalImage}>

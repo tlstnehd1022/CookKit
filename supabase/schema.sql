@@ -62,7 +62,10 @@ create table public.households (
   name text not null,
   invite_code text not null unique default substr(md5(random()::text), 1, 8),
   created_by uuid not null references public.profiles(id),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- 가구 기본 인원(0027) — recipe.servingsBase(레시피 원본 기준 인분)와는 다른 개념("우리집은
+  -- 보통 몇 인분씩 만드는지"). 레시피를 담거나 배치할 때 초기값으로 쓰인다.
+  default_servings integer not null default 2 check (default_servings > 0)
 );
 
 
@@ -230,6 +233,9 @@ create table public.shopping_selection (
   household_id uuid not null references public.households(id) on delete cascade,
   recipe_id uuid not null references public.recipes(id) on delete cascade,
   added_at timestamptz not null default now(),
+  -- 담을 때 화면에서 보고 있던 인분(0028) — recipe.servingsBase가 아니라 이 값 기준으로
+  -- 장보기 재료 집계를 계산한다(B-0에서 발견된 버그 수정: 인분 조절이 장보기에 반영 안 되던 문제).
+  servings integer not null default 2 check (servings > 0),
   primary key (household_id, recipe_id)
 );
 

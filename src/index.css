@@ -1678,6 +1678,28 @@ select:focus {
   padding-top: 8px;
 }
 
+/* "담은 레시피" 목록(B-3) — 레시피별 인분을 개별로 조절/제거 */
+.shopping-recipe-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  margin-bottom: 6px;
+}
+
+.shopping-recipe-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
    알림함 — 프로필 바텀시트 "알림" 메뉴 (src/features/settings/ProfileSheet.tsx)
    ══════════════════════════════════════════════════════════════════════ */

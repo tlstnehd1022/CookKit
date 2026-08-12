@@ -257,6 +257,17 @@ function HouseholdSection() {
     await refreshHousehold();
   }
 
+  async function saveDefaultServings(next: string) {
+    if (!household) return;
+    const parsed = Number(next);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error('1 이상의 숫자로 입력해주세요.');
+    }
+    const { error } = await supabase.from('households').update({ default_servings: parsed }).eq('id', household.id);
+    if (error) throw error;
+    await refreshHousehold();
+  }
+
   return (
     <div className="card">
       {household ? (
@@ -270,6 +281,13 @@ function HouseholdSection() {
               '특정 사람 기준의 호칭보다는, "김영희네"처럼 누가 봐도 자연스러운 이름을 추천해요.'
             }
             onSave={saveHouseholdName}
+          />
+          <InlineEditRow
+            label="기본 인원 수"
+            value={String(household.defaultServings)}
+            placeholder="예: 2"
+            helperText="레시피를 장보기에 담거나 식단에 배치할 때 처음 보여줄 인분 수예요. 손님이 오는 등 예외적인 날은 그 항목만 따로 조절할 수 있어요."
+            onSave={saveDefaultServings}
           />
           <p className="text-muted" style={{ marginTop: 12 }}>
             초대 코드: <strong>{household.inviteCode}</strong> (가족에게 공유해서 같이 쓰세요)

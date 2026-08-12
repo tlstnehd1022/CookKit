@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useIngredients, useIngredientsById, usePantryStatus, useRecipes, getCurrentHouseholdId } from '../../data/store';
-import { useShoppingSelection } from '../../data/shoppingSelection';
+import { useShoppingSelection, type ShoppingSelectionEntry } from '../../data/shoppingSelection';
 import { useShoppingExtraItems } from '../../data/shoppingExtraItems';
+import { useHousehold } from '../../data/household';
+import { scaleAmount } from '../../data/computed';
 import { AddIngredientModal } from '../ingredients/IngredientsPage';
 import { fetchFillFrequencies, type FillFrequencyInfo } from '../../data/ingredientFillLog';
 import { computeRefillSuggestions } from '../../lib/refillSuggestions';
@@ -28,8 +30,9 @@ export function ShoppingListPage() {
   const { ingredients, saveIngredient, markIngredientFilled } = useIngredients();
   const ingredientsById = useIngredientsById();
   const { pantryStatus, setOwned } = usePantryStatus();
-  const { selectedRecipeIds, toggle: toggleRecipe } = useShoppingSelection();
+  const { selection, selectedRecipeIds, toggle: toggleRecipe, updateServings } = useShoppingSelection();
   const { items: extraItems, add: addExtraItem, remove: removeExtraItem } = useShoppingExtraItems();
+  const { household } = useHousehold();
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [fillFrequencies, setFillFrequencies] = useState<Map<string, FillFrequencyInfo> | null>(null);
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
@@ -61,25 +64,31 @@ export function ShoppingListPage() {
 
   // 레시피에서 자동 집계된 항목 + 직접 추가한 항목(shopping_extra_items)을 하나의 목록으로 합친다 —
   // 직접 추가한 항목은 단위/수량이 다를 수 있어 레시피 집계와 병합하지 않고 별도 행으로 둔다.
+  // 재료 수량은 recipe.servingsBase가 아니라 담을 때(또는 아래에서 개별 조절한) 인분
+  // (entry.servings) 기준으로 scaleAmount 재계산한다 — B-0에서 확인된 버그(인분 조절이 장보기에
+  // 반영 안 되던 문제) 수정.
   const aggregated: AggregatedRow[] = useMemo(() => {
     const map = new Map<string, AggregatedRow>();
-    const selectedRecipes = recipes.filter((recipe) => selectedRecipeIds.includes(recipe.id));
-    for (const recipe of selectedRecipes) {
+    for (const entry of selection) {
+      const recipe = recipes.find((r) => r.id === entry.recipeId);
+      if (!recipe) continue;
+      const contributionLabel = `${recipe.name} ${entry.servings}인분`;
       for (const item of recipe.ingredients) {
+        const scaledAmount = scaleAmount(item.amount, recipe.servingsBase, entry.servings);
         const key = `${item.ingredientId}__${item.unit}`;
         const existing = map.get(key);
         if (existing) {
-          existing.totalAmount += item.amount;
-          if (!existing.sourceLabel.split(', ').includes(recipe.name)) {
-            existing.sourceLabel = `${existing.sourceLabel}, ${recipe.name}`;
+          existing.totalAmount += scaledAmount;
+          if (!existing.sourceLabel.split(', ').includes(contributionLabel)) {
+            existing.sourceLabel = `${existing.sourceLabel}, ${contributionLabel}`;
           }
         } else {
           map.set(key, {
             key,
             ingredientId: item.ingredientId,
             unit: item.unit,
-            totalAmount: item.amount,
-            sourceLabel: recipe.name,
+            totalAmount: scaledAmount,
+            sourceLabel: contributionLabel,
           });
         }
       }
@@ -95,7 +104,7 @@ export function ShoppingListPage() {
       });
     }
     return Array.from(map.values());
-  }, [recipes, selectedRecipeIds, extraItems, ingredientsById]);
+  }, [recipes, selection, extraItems, ingredientsById]);
 
   const filteredRows = aggregated.filter((row) => {
     const owned = pantryStatus[row.ingredientId] ?? false;
@@ -119,10 +128,31 @@ export function ShoppingListPage() {
 
   async function handleToggleRecipe(recipeId: string) {
     try {
-      await toggleRecipe(recipeId);
+      // 새로 담을 때(이미 담겨 있으면 무시되고 그냥 빠짐)는 가구 기본 인원을 초기값으로 쓴다 —
+      // 여기(레시피에서 담기 모달)는 "지금 보고 있던 인분" 같은 화면 맥락이 없어서.
+      await toggleRecipe(recipeId, household?.defaultServings ?? 2);
     } catch (err) {
       console.error('장보기 담기 실패:', err);
       alert('장보기에 담지 못했어요. 다시 시도해주세요.');
+    }
+  }
+
+  async function handleUpdateServings(recipeId: string, servings: number) {
+    if (servings < 1) return;
+    try {
+      await updateServings(recipeId, servings);
+    } catch (err) {
+      console.error('인분 수정 실패:', err);
+      alert('인분을 수정하지 못했어요. 다시 시도해주세요.');
+    }
+  }
+
+  async function handleRemoveRecipe(recipeId: string) {
+    try {
+      await toggleRecipe(recipeId, 0); // 이미 담긴 상태라 servings 인자는 쓰이지 않고 그냥 빠짐
+    } catch (err) {
+      console.error('장보기에서 빼기 실패:', err);
+      alert('장보기에서 빼지 못했어요. 다시 시도해주세요.');
     }
   }
 
@@ -192,6 +222,21 @@ export function ShoppingListPage() {
               <Plus size={22} strokeWidth={2.75} />
             </button>
           </div>
+
+          {selection.length > 0 && (
+            <>
+              <div className="section-title" style={{ marginTop: 4 }}>담은 레시피</div>
+              {selection.map((entry) => (
+                <ShoppingRecipeRow
+                  key={entry.recipeId}
+                  entry={entry}
+                  recipe={recipes.find((r) => r.id === entry.recipeId)}
+                  onChangeServings={(next) => handleUpdateServings(entry.recipeId, next)}
+                  onRemove={() => handleRemoveRecipe(entry.recipeId)}
+                />
+              ))}
+            </>
+          )}
 
           <div className="chip-row-scroll" style={{ marginTop: 6, marginBottom: 10 }}>
             <button
@@ -341,6 +386,34 @@ export function ShoppingListPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** "담은 레시피" 목록의 한 행 — 인분을 개별로 조절(수정 시 상위에서 즉시 재집계)하거나 통째로
+ * 뺄 수 있다(B-3). */
+function ShoppingRecipeRow({
+  entry,
+  recipe,
+  onChangeServings,
+  onRemove,
+}: {
+  entry: ShoppingSelectionEntry;
+  recipe: Recipe | undefined;
+  onChangeServings: (next: number) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="shopping-recipe-row">
+      <span className="shopping-recipe-name">{recipe?.name ?? '(삭제된 레시피)'}</span>
+      <div className="stepper">
+        <button onClick={() => onChangeServings(Math.max(1, entry.servings - 1))}>−</button>
+        <strong>{entry.servings}인분</strong>
+        <button onClick={() => onChangeServings(entry.servings + 1)}>+</button>
+      </div>
+      <button className="btn small danger" onClick={onRemove}>
+        빼기
+      </button>
     </div>
   );
 }

@@ -6,6 +6,8 @@ export interface Household {
   id: string;
   name: string;
   inviteCode: string;
+  /** 레시피를 담거나 배치할 때 초기 인분값으로 쓰는 가구 기본 인원(0027) — 기본 2 */
+  defaultServings: number;
 }
 
 /**
@@ -53,7 +55,7 @@ export function useHousehold() {
 
     const { data: row, error: householdError } = await supabase
       .from('households')
-      .select('id, name, invite_code')
+      .select('id, name, invite_code, default_servings')
       .eq('id', membership.household_id)
       .maybeSingle();
 
@@ -63,7 +65,11 @@ export function useHousehold() {
       return;
     }
 
-    setHousehold(row ? { id: row.id, name: row.name, inviteCode: row.invite_code } : null);
+    setHousehold(
+      row
+        ? { id: row.id, name: row.name, inviteCode: row.invite_code, defaultServings: row.default_servings }
+        : null,
+    );
     setLoading(false);
   }, [user?.id]);
 

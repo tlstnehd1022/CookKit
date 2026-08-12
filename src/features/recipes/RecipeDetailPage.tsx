@@ -307,7 +307,7 @@ export function RecipeDetailPage({
       <button
         className={`btn ${isSelected(recipe.id) ? 'primary' : ''}`}
         style={{ width: '100%', marginBottom: 8 }}
-        onClick={() => toggle(recipe.id)}
+        onClick={() => toggle(recipe.id, servings)}
       >
         {isSelected(recipe.id) ? '🛒 장보기에 담김 (빼기)' : '🛒 장보기에 담기'}
       </button>
@@ -426,6 +426,11 @@ export function RecipeDetailPage({
           <button onClick={() => setServings((s) => s + 1)}>+</button>
         </div>
       </div>
+      {servings !== recipe.servingsBase && (
+        <p className="text-muted" style={{ marginTop: -4, marginBottom: 8 }}>
+          {recipe.servingsBase}인분 레시피를 {servings}인분으로 보는 중이에요.
+        </p>
+      )}
       <div className="card" style={{ marginTop: 10 }}>
         {recipe.ingredients.map((item, index) => {
           const ingredient = ingredientsById.get(item.ingredientId);

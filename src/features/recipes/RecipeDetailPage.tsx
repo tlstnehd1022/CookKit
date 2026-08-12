@@ -37,6 +37,7 @@ export function RecipeDetailPage({
   onBack,
   onEdit,
   autoStartCookingMode,
+  initialServings,
 }: {
   recipeId: string;
   onBack: () => void;
@@ -44,6 +45,11 @@ export function RecipeDetailPage({
   /** A-3: 홈의 "오늘의 추천" 카드에서 "바로 요리하기"로 들어온 경우, 상세 화면을 거치지 않고
    * 곧바로 요리 모드를 연다(이미 레시피가 정해진 상태라 확인 다이얼로그 없이 즉시 시작). */
   autoStartCookingMode?: boolean;
+  /** B-5: 요리 모드 진입 시 인분 결정 — 식단에서 왔으면 그 MealPlan.servings, "바로 요리하기"류
+   * 진입(상세 화면을 거치지 않음)이면 가구 기본 인원을 호출부가 미리 정해서 넘긴다. 없으면
+   * (일반 방문) recipe.servingsBase로 초기화하던 기존 동작 그대로 — "그 화면에서 보고 있던
+   * 인분"이 곧 요리 모드에 넘어가는 값이 된다. */
+  initialServings?: number;
 }) {
   const { recipes, deleteRecipe, saveRecipe } = useRecipes();
   const { tags } = useTags();
@@ -54,7 +60,7 @@ export function RecipeDetailPage({
   const { settings } = useSettings();
   const householdId = getCurrentHouseholdId();
   const recipe = recipes.find((r) => r.id === recipeId);
-  const [servings, setServings] = useState(recipe?.servingsBase ?? 1);
+  const [servings, setServings] = useState(initialServings ?? recipe?.servingsBase ?? 1);
   const [showDifficultyReason, setShowDifficultyReason] = useState(false);
   const [likeCount, setLikeCount] = useState<number | null>(null);
   const [estimatingNutrition, setEstimatingNutrition] = useState(false);
@@ -78,7 +84,8 @@ export function RecipeDetailPage({
   const coverImageUrl = useStoredImage(coverImageId);
 
   useEffect(() => {
-    if (recipe) setServings(recipe.servingsBase);
+    if (recipe) setServings(initialServings ?? recipe.servingsBase);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recipe?.id]);
 
   const autoStartedRef = useRef(false);
@@ -478,6 +485,7 @@ export function RecipeDetailPage({
       {showCookingMode && (
         <CookingModePage
           recipe={recipe}
+          servings={servings}
           onExit={() => setShowCookingMode(false)}
           onFinish={(stepTimings) => {
             setPendingStepTimings(stepTimings);

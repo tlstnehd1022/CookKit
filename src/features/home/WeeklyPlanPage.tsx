@@ -31,7 +31,10 @@ import { RecipeDetailPage } from '../recipes/RecipeDetailPage';
 import { RecipeEditor } from '../recipes/RecipeEditor';
 import type { Ingredient, MealPlan, MealType, Recipe } from '../../data/types';
 
-type View = { screen: 'week' } | { screen: 'detail'; recipeId: string } | { screen: 'edit'; recipeId: string };
+type View =
+  | { screen: 'week' }
+  | { screen: 'detail'; recipeId: string; autoCook?: boolean; initialServings?: number }
+  | { screen: 'edit'; recipeId: string };
 
 /** "+ 메뉴 정하기"(신규)와 "바꾸기"(기존 메뉴 레시피 교체)가 같은 선택 모달을 공유한다 —
  * replaceId가 있으면 교체, 없으면 새 메뉴 추가. */
@@ -241,6 +244,8 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
         recipeId={view.recipeId}
         onBack={() => setView({ screen: 'week' })}
         onEdit={() => setView({ screen: 'edit', recipeId: view.recipeId })}
+        autoStartCookingMode={view.autoCook}
+        initialServings={view.initialServings}
       />
     );
   }
@@ -316,6 +321,9 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
             onRemove={handleRemovePlan}
             onChangeServings={handleUpdateServings}
             onViewRecipe={(recipeId) => setView({ screen: 'detail', recipeId })}
+            onCookNow={(recipeId, servings) =>
+              setView({ screen: 'detail', recipeId, autoCook: true, initialServings: servings })
+            }
           />
         );
       })}
@@ -382,6 +390,7 @@ function MealTypeSection({
   onRemove,
   onChangeServings,
   onViewRecipe,
+  onCookNow,
 }: {
   mealType: MealType;
   items: MealPlan[];
@@ -399,6 +408,9 @@ function MealTypeSection({
   onRemove: (planId: string) => void;
   onChangeServings: (planId: string, servings: number) => void;
   onViewRecipe: (recipeId: string) => void;
+  /** B-5: 큰 카드(다음 끼니)에서만 제공하는 지름길 — 상세 화면을 거치지 않고 그 메뉴의 인분
+   * 그대로 요리 모드로 바로 들어간다. */
+  onCookNow: (recipeId: string, servings: number) => void;
 }) {
   // 메뉴가 없는 끼니는 접힘이 기본값(2번 요구사항) — 제목+화살표만 있는 조용한 한 줄로, 탭하면
   // 펼쳐진다. 저녁은 항상 펼쳐져 있어 이 분기를 타지 않는다.
@@ -441,6 +453,7 @@ function MealTypeSection({
                 onReplace={() => onReplace(item.id)}
                 onRemove={() => onRemove(item.id)}
                 onChangeServings={(next) => onChangeServings(item.id, next)}
+                onCookNow={() => onCookNow(item.recipeId, item.servings)}
               />
             ) : (
               <SmallMealRow
@@ -471,6 +484,7 @@ function BigMealCard({
   onReplace,
   onRemove,
   onChangeServings,
+  onCookNow,
 }: {
   item: MealPlan;
   recipe: Recipe | undefined;
@@ -479,6 +493,7 @@ function BigMealCard({
   onReplace: () => void;
   onRemove: () => void;
   onChangeServings: (next: number) => void;
+  onCookNow: () => void;
 }) {
   const coverImageId = recipe?.finalImageId ?? recipe?.steps.find((s) => s.imageId)?.imageId;
   const coverImageUrl = useStoredImage(coverImageId);
@@ -518,6 +533,9 @@ function BigMealCard({
             <button onClick={() => onChangeServings(item.servings + 1)}>+</button>
           </div>
         </div>
+        <button className="btn primary" style={{ width: '100%', marginTop: 8 }} onClick={onCookNow}>
+          🍳 바로 요리하기
+        </button>
       </div>
     </div>
   );

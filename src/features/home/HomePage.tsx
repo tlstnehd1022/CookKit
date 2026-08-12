@@ -7,6 +7,7 @@ import {
   getCurrentHouseholdId,
 } from '../../data/store';
 import { useProfile } from '../../data/profile';
+import { useHousehold } from '../../data/household';
 import { useStoredImage } from '../../data/imageStore';
 import { setActiveTab, useActiveTab } from '../../data/activeTab';
 import { useShoppingSelection } from '../../data/shoppingSelection';
@@ -37,7 +38,7 @@ import type { MealPlan, Recipe } from '../../data/types';
 
 type View =
   | { screen: 'feed' }
-  | { screen: 'detail'; recipeId: string; autoCook?: boolean }
+  | { screen: 'detail'; recipeId: string; autoCook?: boolean; initialServings?: number }
   | { screen: 'edit'; recipeId: string }
   | { screen: 'weekly-plan' }
   | { screen: 'cooking-history' };
@@ -62,6 +63,7 @@ export function HomePage() {
   const { ingredients } = useIngredients();
   const ingredientsById = useIngredientsById();
   const { profile } = useProfile();
+  const { household } = useHousehold();
   const { selectedRecipeIds } = useShoppingSelection();
   const { unreadCount } = useNotifications();
   const activeTab = useActiveTab();
@@ -194,6 +196,7 @@ export function HomePage() {
         onBack={() => setView({ screen: 'feed' })}
         onEdit={() => setView({ screen: 'edit', recipeId: view.recipeId })}
         autoStartCookingMode={view.autoCook}
+        initialServings={view.initialServings}
       />
     );
   }
@@ -306,7 +309,16 @@ export function HomePage() {
                 type="button"
                 className="btn primary"
                 style={{ width: '100%' }}
-                onClick={() => setView({ screen: 'detail', recipeId: recommendation.recipe.id, autoCook: true })}
+                onClick={() =>
+                  setView({
+                    screen: 'detail',
+                    recipeId: recommendation.recipe.id,
+                    autoCook: true,
+                    // B-5: 상세 화면을 거치지 않고 곧바로 요리 모드로 들어가는 경로라 "그 화면에서
+                    // 보고 있던 인분"이 없음 — 가구 기본 인원을 대신 쓴다(우선순위 3번, "그 외").
+                    initialServings: household?.defaultServings ?? 2,
+                  })
+                }
               >
                 🍳 바로 요리하기
               </button>

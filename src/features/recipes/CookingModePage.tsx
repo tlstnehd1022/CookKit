@@ -39,10 +39,16 @@ function buildStepAnnouncement(step: RecipeStep, index: number, total: number, a
  */
 export function CookingModePage({
   recipe,
+  servings,
   onExit,
   onFinish,
 }: {
   recipe: Recipe;
+  /** 이 요리 모드 세션의 인분 — 진입 경로별 우선순위(B-5)는 호출부(RecipeDetailPage)가 이미
+   * 정해서 넘긴다: 식단에서 왔으면 그 MealPlan의 servings, 레시피 상세에서 왔으면 그 화면에서
+   * 보고 있던 인분, 그 외엔 가구 기본 인원. "이 단계에서 쓰는 재료" 칩(D-2)도 이 값으로 수량을
+   * 스케일링한다. */
+  servings: number;
   onExit: () => void;
   onFinish: (stepTimings: CookingLogStepTiming[]) => void;
 }) {
@@ -232,6 +238,9 @@ export function CookingModePage({
       <div className="row">
         <span className="cooking-mode-progress">
           {finished ? '완료' : `${stepIndex + 1}/${steps.length}단계`}
+          {' · '}
+          {servings}인분
+          {servings !== recipe.servingsBase ? ` (원래 ${recipe.servingsBase}인분)` : ''}
         </span>
         <button className="btn small" onClick={confirmExit}>
           ✕ 종료

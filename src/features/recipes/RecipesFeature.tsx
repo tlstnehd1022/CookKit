@@ -21,6 +21,7 @@ import {
   getCurrentHouseholdId,
 } from '../../data/store';
 import { useSession } from '../../data/session';
+import { useHousehold } from '../../data/household';
 import { copyImage, isStorageImagePath } from '../../data/imageStore';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { logCooking } from '../../data/cookingLog';
@@ -29,7 +30,7 @@ import type { CookingLogStepTiming, Recipe, RecipeIngredient, RecipeStep } from 
 
 type View =
   | { screen: 'list' }
-  | { screen: 'detail'; recipeId: string; autoCook?: boolean }
+  | { screen: 'detail'; recipeId: string; autoCook?: boolean; initialServings?: number }
   | { screen: 'edit'; recipeId?: string }
   | { screen: 'discover-detail'; entry: PublicRecipeEntry; ingredientNameById: Map<string, string> }
   | { screen: 'cooking-history' }
@@ -52,6 +53,7 @@ export function RecipesFeature() {
   const [showMultiCookLogModal, setShowMultiCookLogModal] = useState(false);
 
   const { user } = useSession();
+  const { household } = useHousehold();
   const { ingredients, saveIngredient } = useIngredients();
   const ingredientsById = useIngredientsById();
   const { categories } = useCategories();
@@ -221,6 +223,7 @@ export function RecipesFeature() {
           onBack={() => setView({ screen: 'list' })}
           onEdit={() => setView({ screen: 'edit', recipeId: view.recipeId })}
           autoStartCookingMode={view.autoCook}
+          initialServings={view.initialServings}
         />
       )}
       {view.screen === 'edit' && (
@@ -248,9 +251,15 @@ export function RecipesFeature() {
           onCancel={() => setView({ screen: 'list' })}
           onConfirm={(selectedRecipes) => {
             // 하나만 골랐으면 복합 요리 준비 화면을 거칠 필요 없이 그 레시피의 요리 모드로 바로
-            // 들어간다(레시피 상세의 "요리 시작하기"와 같은 경로 — autoStartCookingMode).
+            // 들어간다(레시피 상세의 "요리 시작하기"와 같은 경로 — autoStartCookingMode). 상세
+            // 화면을 거치지 않는 진입이라 가구 기본 인원을 쓴다(B-5 우선순위 3번).
             if (selectedRecipes.length === 1) {
-              setView({ screen: 'detail', recipeId: selectedRecipes[0].id, autoCook: true });
+              setView({
+                screen: 'detail',
+                recipeId: selectedRecipes[0].id,
+                autoCook: true,
+                initialServings: household?.defaultServings ?? 2,
+              });
             } else {
               setView({ screen: 'multi-cook-preview', recipes: selectedRecipes });
             }

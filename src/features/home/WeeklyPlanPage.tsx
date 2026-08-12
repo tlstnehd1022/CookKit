@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import {
   useRecipes,
   useIngredientsById,
   usePantryStatus,
+  useTags,
   getCurrentHouseholdId,
 } from '../../data/store';
 import { useStoredImage } from '../../data/imageStore';
@@ -17,8 +18,10 @@ import {
   MEAL_TYPE_LABEL,
 } from '../../data/mealPlans';
 import { useHousehold } from '../../data/household';
-import { scaleAmount } from '../../data/computed';
+import { isRecipeMakeableWithPantry, scaleAmount } from '../../data/computed';
+import { fetchCookingStats } from '../../data/cookingLog';
 import { pickNextMealPlan } from '../../lib/mealTime';
+import { buildAutoFillPlan, type AutoFillAssignment } from '../../lib/mealPlanAutoFill';
 import {
   getCurrentWeekDates,
   formatWeekdayShort,
@@ -29,6 +32,7 @@ import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { RecipeDetailPage } from '../recipes/RecipeDetailPage';
 import { RecipeEditor } from '../recipes/RecipeEditor';
+import { RecipeCard, RecipeListItem, resolveRecipeTagNames } from '../recipes/RecipesPage';
 import type { Ingredient, MealPlan, MealType, Recipe } from '../../data/types';
 
 type View =
@@ -168,6 +172,66 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
     }
   }
 
+  // A-3: "✨ 이번 주 자동으로 채우기" — 저녁 메뉴가 없는 날만 규칙 기반으로 골라 미리보기로
+  // 보여주고, 사용자가 "이대로 채우기"를 눌러야만 실제로 저장된다(자동 반영 금지). 이미 메뉴가
+  // 있는 날은 애초에 대상에서 빠지므로 건드리지 않는다.
+  const [autoFillPreview, setAutoFillPreview] = useState<AutoFillAssignment[] | null>(null);
+  const [autoFillLoading, setAutoFillLoading] = useState(false);
+  const [autoFillApplying, setAutoFillApplying] = useState(false);
+  const [autoFillError, setAutoFillError] = useState<string | null>(null);
+
+  async function runAutoFill() {
+    setAutoFillLoading(true);
+    setAutoFillError(null);
+    try {
+      const emptyDates = WEEK_DATES.filter(
+        (date) => (plans.get(date) ?? []).filter((p) => p.mealType === 'dinner').length === 0,
+      );
+      if (emptyDates.length === 0) {
+        setAutoFillError('이번 주는 저녁 메뉴가 이미 다 채워져 있어요.');
+        setAutoFillPreview(null);
+        return;
+      }
+      const stats = await fetchCookingStats(recipes.map((r) => r.id));
+      const plan = buildAutoFillPlan(
+        emptyDates,
+        recipes,
+        ingredientsById,
+        stats,
+        Math.floor(Math.random() * Math.max(recipes.length, 1)),
+      );
+      if (plan.length === 0) {
+        setAutoFillError('채울 수 있는 레시피가 없어요. 레시피를 먼저 추가해주세요.');
+        setAutoFillPreview(null);
+        return;
+      }
+      setAutoFillPreview(plan);
+    } catch (err) {
+      console.error('자동 채우기 계산 실패:', err);
+      setAutoFillError(getErrorMessage(err, '자동 채우기에 실패했어요.'));
+    } finally {
+      setAutoFillLoading(false);
+    }
+  }
+
+  async function applyAutoFill() {
+    if (!autoFillPreview || !householdId) return;
+    setAutoFillApplying(true);
+    setAutoFillError(null);
+    try {
+      for (const { date, recipe } of autoFillPreview) {
+        await addMealPlan(householdId, date, 'dinner', recipe.id, 0, household?.defaultServings ?? 2);
+      }
+      setAutoFillPreview(null);
+      await refresh();
+    } catch (err) {
+      console.error('자동 채우기 반영 실패:', err);
+      setAutoFillError(getErrorMessage(err, '자동 채우기를 반영하지 못했어요.'));
+    } finally {
+      setAutoFillApplying(false);
+    }
+  }
+
   const today = todayDateString();
   const selectedIndex = WEEK_DATES.indexOf(selectedDate);
   const selectedDayPlans = plans.get(selectedDate) ?? [];
@@ -282,6 +346,19 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
         })}
       </div>
 
+      <button
+        type="button"
+        className="btn"
+        style={{ width: '100%', marginBottom: 12 }}
+        onClick={runAutoFill}
+        disabled={autoFillLoading}
+      >
+        {autoFillLoading ? '채울 메뉴를 고르는 중...' : '✨ 이번 주 자동으로 채우기'}
+      </button>
+      {autoFillError && !autoFillPreview && (
+        <p style={{ color: 'var(--danger)', marginTop: -8, marginBottom: 12 }}>{autoFillError}</p>
+      )}
+
       {dailyNutritionTotal > 0 && (
         <p className="text-muted" style={{ marginTop: -12, marginBottom: 16 }}>
           이 날 합계 약 {Math.round(dailyNutritionTotal)}kcal
@@ -366,9 +443,24 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
         <MealPlanRecipePicker
           title={pickerContext.replaceId ? `${MEAL_TYPE_LABEL[pickerContext.mealType]} 메뉴 바꾸기` : `${MEAL_TYPE_LABEL[pickerContext.mealType]} 메뉴 정하기`}
           recipes={recipes}
+          ingredientsById={ingredientsById}
           error={assignError}
           onPick={handlePickRecipe}
           onClose={() => setPickerContext(null)}
+        />
+      )}
+
+      {autoFillPreview && (
+        <AutoFillPreviewModal
+          assignments={autoFillPreview}
+          applying={autoFillApplying}
+          error={autoFillError}
+          onApply={applyAutoFill}
+          onRetry={runAutoFill}
+          onCancel={() => {
+            setAutoFillPreview(null);
+            setAutoFillError(null);
+          }}
         />
       )}
     </div>
@@ -581,41 +673,161 @@ function SmallMealRow({
   );
 }
 
+function AutoFillPreviewModal({
+  assignments,
+  applying,
+  error,
+  onApply,
+  onRetry,
+  onCancel,
+}: {
+  assignments: AutoFillAssignment[];
+  applying: boolean;
+  error: string | null;
+  onApply: () => void;
+  onRetry: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <h2>✨ 이번 주 자동으로 채우기</h2>
+        <p className="text-muted" style={{ marginTop: -4 }}>
+          보유 재료·자주 해먹은 메뉴·유통기한을 참고해서 저녁 메뉴를 골라봤어요. 이대로 채운 뒤에도
+          마음에 안 드는 날만 "바꾸기"로 따로 바꿀 수 있어요.
+        </p>
+        <div className="meal-plan-picker-list" style={{ marginTop: 8, marginBottom: 12 }}>
+          {assignments.map(({ date, recipe }) => (
+            <div key={date} className="row" style={{ padding: '8px 4px', borderBottom: '1px solid var(--border)' }}>
+              <span className="text-muted" style={{ fontSize: 13, flexShrink: 0 }}>
+                {formatWeekdayShort(date)} {formatDayOfMonth(date)}일
+              </span>
+              <strong style={{ textAlign: 'right' }}>{recipe.name}</strong>
+            </div>
+          ))}
+        </div>
+        {error && <p style={{ color: 'var(--danger)', marginBottom: 8 }}>{error}</p>}
+        <div className="row" style={{ gap: 6 }}>
+          <button className="btn" onClick={onCancel} disabled={applying}>
+            취소
+          </button>
+          <button className="btn" onClick={onRetry} disabled={applying}>
+            다시 짜기
+          </button>
+          <button className="btn primary" onClick={onApply} disabled={applying}>
+            {applying ? '반영 중...' : '이대로 채우기'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MealPlanRecipePicker({
   title,
   recipes,
+  ingredientsById,
   error,
   onPick,
   onClose,
 }: {
   title: string;
   recipes: Recipe[];
+  ingredientsById: Map<string, Ingredient>;
   error: string | null;
   onPick: (recipeId: string) => void;
   onClose: () => void;
 }) {
+  const { tags } = useTags();
   const [query, setQuery] = useState('');
-  const filtered = query.trim()
-    ? recipes.filter((r) => r.name.toLowerCase().includes(query.trim().toLowerCase()))
-    : recipes;
+  // 추천 섹션(자주 해먹는 메뉴)용 — 모달이 열릴 때 한 번만 조회한다(recipeLikes.ts/cookingLog.ts의
+  // "1회 조회" 패턴, 계속 구독하는 캐시가 아님).
+  const [cookingCounts, setCookingCounts] = useState<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    if (recipes.length === 0) return;
+    fetchCookingStats(recipes.map((r) => r.id))
+      .then((stats) => {
+        setCookingCounts(new Map(Array.from(stats.entries()).map(([id, s]) => [id, s.count])));
+      })
+      .catch((err) => console.error('자주 해먹은 메뉴 집계 실패:', err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // "자주 해먹는 메뉴" — CookingLog 횟수 상위 3~4개, 기록이 없으면 섹션 자체가 숨는다.
+  const frequentRecipes = useMemo(() => {
+    return recipes
+      .filter((r) => (cookingCounts.get(r.id) ?? 0) > 0)
+      .sort((a, b) => (cookingCounts.get(b.id) ?? 0) - (cookingCounts.get(a.id) ?? 0))
+      .slice(0, 4);
+  }, [recipes, cookingCounts]);
+
+  // "지금 재료로 가능" — 레시피가 쓰는 재료 전부가 보유 상태인 것만(RecipesPage의 "🧺 보유
+  // 재료로 가능" 필터와 같은 기준, isRecipeMakeableWithPantry 공유).
+  const pantryMatchRecipes = useMemo(() => {
+    return recipes.filter((r) => isRecipeMakeableWithPantry(r, ingredientsById)).slice(0, 4);
+  }, [recipes, ingredientsById]);
+
+  const hasQuery = query.trim().length > 0;
+  const filtered = hasQuery ? recipes.filter((r) => r.name.toLowerCase().includes(query.trim().toLowerCase())) : recipes;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <h2>{title}</h2>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="레시피 이름 검색"
-          style={{ marginBottom: 10 }}
-        />
-        {error && <p style={{ color: 'var(--danger)', marginBottom: 8 }}>{error}</p>}
+
+        {!hasQuery && frequentRecipes.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div className="section-title" style={{ marginBottom: 6, fontSize: 13 }}>
+              🔁 자주 해먹는 메뉴
+            </div>
+            <div className="recipe-row-scroll" style={{ paddingBottom: 4 }}>
+              {frequentRecipes.map((recipe) => (
+                <RecipeCard
+                  key={recipe.id}
+                  recipe={recipe}
+                  tagNames={resolveRecipeTagNames(recipe, tags)}
+                  onClick={() => onPick(recipe.id)}
+                  size="row"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!hasQuery && pantryMatchRecipes.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div className="section-title" style={{ marginBottom: 6, fontSize: 13 }}>
+              🧺 지금 재료로 가능
+            </div>
+            <div className="recipe-row-scroll" style={{ paddingBottom: 4 }}>
+              {pantryMatchRecipes.map((recipe) => (
+                <RecipeCard
+                  key={recipe.id}
+                  recipe={recipe}
+                  tagNames={resolveRecipeTagNames(recipe, tags)}
+                  onClick={() => onPick(recipe.id)}
+                  size="row"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="row pill-input-row">
+          <Search size={16} strokeWidth={2.75} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="레시피 이름 검색" />
+        </div>
+        {error && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{error}</p>}
         {filtered.length === 0 && <p className="empty-hint">레시피가 없어요.</p>}
-        <div className="meal-plan-picker-list">
+        <div className="meal-plan-picker-list" style={{ marginTop: 8 }}>
           {filtered.map((recipe) => (
-            <button type="button" key={recipe.id} className="meal-plan-picker-item" onClick={() => onPick(recipe.id)}>
-              {recipe.name}
-            </button>
+            <RecipeListItem
+              key={recipe.id}
+              recipe={recipe}
+              tagNames={resolveRecipeTagNames(recipe, tags)}
+              onClick={() => onPick(recipe.id)}
+            />
           ))}
         </div>
         <button className="btn" style={{ marginTop: 12, width: '100%' }} onClick={onClose}>

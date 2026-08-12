@@ -353,6 +353,93 @@
     아래 서버/클라이언트 공용 파일에서 다른 모듈을 새로 import할 때는 그 모듈이 브라우저 전용
     상태(세션, localStorage 등)에 의존하지 않는지 확인할 것 — 의존한다면 정적 import 대신
     실제 사용 시점의 동적 import로 분리.
+- **24차 확장 완료 — 홈/레시피/냉장고/장보기 4탭 전면 개편**: 사용자가 첨부한 냉장고/홈
+  시안을 참고해 C(냉장고) → D(요리↔냉장고 연결) → E(장보기) → A(홈) → B(레시피) 순서로 진행
+  (C의 정리 모드를 D/A에서 재사용하기 위해 먼저 구현). 각 단계마다 별도 커밋.
+  - **C. 냉장고**: 목록을 "있어요/없어요" 두 섹션 대신 **owned=true 재료만** 카테고리별 칩으로
+    보여주도록 개편(칩 = 이름+`defaultBuyUnit`+유통기한 배지, 탭하면 상세 모달). 상세 모달
+    (`IngredientDetailModal`)에 삭제 버튼을 내장해서 행별 토글/삭제 버튼을 없앰. 상단에
+    "재료 N개 · 이걸로 만들 수 있는 레시피 M개" 요약 + 그 레시피 개수가 0보다 크면 초록
+    배너("🧺 지금 재료로 바로 만들 수 있는 레시피 N개") — 탭하면 레시피 탭에 "보유 재료로
+    가능" 필터가 적용된 채로 이동한다(`src/data/pantryFilterRequest.ts`, profileSheet.ts와
+    같은 신호 패턴). 이 판단 기준(`isRecipeMakeableWithPantry`)은 `src/data/computed.ts`로
+    뽑아서 냉장고/레시피 화면이 공유(예전엔 RecipesPage에만 로컬 함수로 있었음).
+    - **"🧹 정리하기"**(`PantryTidyModal.tsx`, 신규, 재사용 컴포넌트): 모든 재료(owned 무관)를
+      "있어요"/"없어요" 두 박스로 나눠 보여주고 **칩을 탭하면 반대편으로 즉시 이동**(드래그
+      대신 — 복합 요리 순서 재정렬 때 "모바일 터치에서 드래그가 불안정하다"고 이미 판단해
+      ▲/▼를 쓴 전례와 같은 이유, 재료가 십여 개면 드래그가 더 번거로움). **"적용"을 눌러야만**
+      원래 owned 값과 달라진 재료만 골라 일괄 저장(로컬 상태만 바뀌다가 적용 시점에 반영,
+      owned:true로 바뀐 건 `markIngredientFilled`로 채움 이력도 같이 남김). 이 모달은 D-1(요리
+      완료 직후)과 A-4(홈 안내)에서도 그대로 재사용된다.
+    - 카테고리 관리(`CategoryManager.tsx`) 입력창을 홈 검색 필드 스타일(pill, `--bg-card`,
+      `--shadow-soft`)로 다듬음 — 재사용 가능한 `.pill-input-row` CSS 클래스로 뽑아둠(장보기
+      "직접 추가" 등에서도 재사용 가능).
+  - **D. 요리 → 냉장고 정리 연결**: `cooking_log`에 `pantry_cleaned_at` 컬럼 추가(0024
+    마이그레이션) — null이면 아직 정리 안 함. 정리는 요리한 사람이 아닌 다른 가구원이 할 수도
+    있어서(household 공유 작업) 기존 `cooking_log_update_own`(본인 것만) RLS로는 부족해,
+    `mark_pantry_cleaned(cooking_log_id)` SECURITY DEFINER RPC로 "같은 household 멤버면"
+    갱신을 허용(`src/data/cookingLog.ts`). `logCooking()`이 이제 생성된 기록의 id를
+    반환하도록 바뀜(정리 모드 진입 시 이 id로 나중에 정리 완료를 표시하기 위함).
+    "오늘 만들었어요" 완료 화면(`CookingLogModal.tsx`)에 "냉장고를 정리할까요?" 안내 +
+    "정리하기"/"나중에" 추가 — "정리하기"를 누르면 PantryTidyModal로 이동하는데, 방금 요리에
+    쓴 재료는 이미 확정 단계에서 `owned:false`로 반영된 뒤라 **별도 사전 이동 처리 없이도
+    자연스럽게 "없어요" 박스에서 시작**한다(확인만 하고 남은 것만 되돌리면 되는 구조 — 명세의
+    "방금 요리에 쓴 재료가 미리 없어요 쪽으로 옮겨진 상태" 요구사항이 기존 흐름만으로 저절로
+    만족됨).
+  - **E. 장보기**: "영수증으로 재료 업데이트" 버튼 제거(냉장고 탭에 이미 있어 중복). 완전히
+    비었을 때(선택된 레시피도 직접 추가 항목도 없음) "아직 담은 게 없어요" + "레시피에서
+    담기"(모달)/"직접 추가" 버튼으로 개편 — 항상 펼쳐져 있던 레시피 선택 칩 목록을 모달
+    (`RecipeSelectModal`)로 옮김. 항목이 있으면 "살 것 n개 · 담은 것 m개" 요약 + 우상단
+    **+ 아이콘**(레시피에서 담기/직접 추가 선택 시트) — 각 항목은 원형 체크 + 재료명 + 출처
+    (레시피 이름들 또는 "직접 추가", 작게) + 수량, 체크하면 opacity 낮추고 취소선.
+    - **`shopping_extra_items` 테이블(신규, 0025)**: household 공유, 레시피를 거치지 않고
+      장보기에서 "직접 추가"한 항목을 추적(재료 하나당 household에 한 행, unique). 기존
+      `shopping_selection`은 `recipe_id`만 다뤄서 이 용도로 못 씀 — 이 앱의 장보기가 원래
+      "레시피 선택 → 재료 자동 집계" 구조였는데(21차 확장에서 이미 이 이유로 재고 선제 제안
+      기능을 "장보기에 담기" 대신 "채웠어요"로 설계한 전례가 있음), 이번엔 명세가 명확히
+      "직접 추가" 항목도 체크리스트/유통기한 입력 대상으로 요구해서 최소한의 새 테이블을
+      추가하는 쪽으로 판단. `AddIngredientModal`(원래 냉장고 전용, `IngredientsPage.tsx`)을
+      export하고 `defaultOwned` prop을 추가해(기본 true) 장보기의 "직접 추가"에서는
+      `defaultOwned={false}`로 재사용.
+    - **"담은 재료 냉장고로 옮기기"(E-4, 신규)**: 체크한 항목이 하나라도 있으면 하단에 버튼 →
+      확인 화면에서 재료별 유통기한을 선택 입력(장 보고 온 직후가 입력하기 가장 좋은 타이밍) →
+      적용하면 `markIngredientFilled`로 owned:true+lastFilledAt 갱신을 한 번에 처리하고, 직접
+      추가 항목이면 `shopping_extra_items`에서 제거(레시피 유래 항목은 owned:true가 되면
+      "구매 필요" 필터에서 자연히 빠지므로 별도 삭제 불필요). 영수증 스캔 흐름에는 이번에
+      유통기한 입력을 추가하지 않음(범위를 좁게 유지하기 위한 판단 — 필요해지면 다음에 추가).
+  - **A. 홈**: "오늘의 추천" 카드 아래에 **"⏱ 20분 안에 되는 것"** 가로 스크롤 섹션 추가
+    (`estimatedMinutes<=20`인 레시피가 **3개 미만이면 섹션 자체를 숨김**, 카드 = 이미지+이름+
+    "12분 · 재료 5개"). "전체 보기"는 새 `src/data/recipeTimeFilterRequest.ts` 신호로 레시피
+    탭에 조리시간 필터가 적용된 채로 이동(B에서 만든 필터 바텀시트의 `maxCookMinutes` 상태를
+    그대로 프리셋). **"이번 달 N번 요리했어요"** 요약 카드(신규 `fetchMonthlyCookingCount`) —
+    탭하면 홈 안에서 `CookingHistoryPage`로 push(레시피 탭 것과 별개 진입점, 컴포넌트는 그대로
+    재사용). 추천 카드를 클릭 영역(상세로 이동)과 **"🍳 바로 요리하기"** 버튼으로 분리(버튼
+    안에 버튼을 중첩할 수 없어서 구조 변경) — `RecipeDetailPage`에 `autoStartCookingMode`
+    prop을 추가해 상세 화면을 거치지 않고 확인 다이얼로그 없이 곧바로 요리 모드가 열리게 함.
+    **"냉장고 정리 안 함" 안내**: `pantry_cleaned_at`이 비어있는 최근(3일 이내) 요리 기록이
+    있으면(`fetchUncleanedRecentCookingLog`) 인사말과 분리된 액션 배너(`.action-banner`,
+    신규 공통 CSS 클래스 — "인사말은 휘발돼도 되지만 이건 행동이 필요한 안내"라 명세가 명시적
+    으로 분리를 요구함)로 "정리하기"를 노출, 탭하면 PantryTidyModal.
+  - **B. 레시피**: 상시 노출되던 태그/알러지/보유재료 필터 칩 줄을 제거하고, 홈 검색 필드와
+    같은 스타일의 pill 검색창(`.pill-input-row`, C-4와 공유) + 우측 필터 아이콘 버튼(적용된
+    필터 개수 배지)으로 교체. 필터 아이콘 → 바텀시트(`RecipeFilterSheet`)에서 태그(다중)/
+    알러지 제외/보유 재료로 가능/**조리시간(20·40·60분 이내, 신규)**/**난이도(신규)**/정렬을
+    한 번에 고르고 로컬 draft 상태로만 바뀌다가 "초기화"/"적용"으로 확정. 적용된 필터만 검색창
+    아래 칩으로 나열되고 칩의 X로 개별 해제. 목록 상단의 "🍳 여러개 요리하기" 버튼을 제거하고
+    화면 우하단 고정 **FAB**으로 이동(`#root`의 `max-width:640px` 중앙 정렬을 감안해 calc로
+    우측 위치 계산) — 단일 레시피 요리는 상세 화면 하단 버튼이 이미 주 경로라 FAB은 "여러 개
+    요리하기" 전용 단일 버튼으로 충분하다고 판단, speed dial 없이 구현. **범위에서 뺀 것**:
+    장보기 화면 필터(전체/구매 필요/보유)는 명세가 명시적으로 "대상이 다르니 적용하지 말 것"이라
+    제외, 둘러보기(`DiscoverRecipesPage`) 화면의 자체 검색/필터는 데이터 구조가 달라(공개
+    레시피, `PublicRecipeEntry`) 이번 개편 대상에서 제외(범위를 좁게 유지하기 위한 판단).
+  - **실기기/수동 테스트 필요**: 이번 확장 전체가 자동 빌드 검증(`tsc -b`/`npm run build`/
+    `npm run lint`)만 거쳤고 실제 화면 확인은 아직 안 됨 — SQL Editor에서 `0024_cooking_log_
+    pantry_cleaned.sql`/`0025_shopping_extra_items.sql` 마이그레이션을 실행해야 D/E 기능이
+    동작함. 특히 확인이 필요한 것: 냉장고 정리 모드의 탭 토글 애니메이션/카테고리 그룹핑,
+    요리 완료 → 정리하기 흐름에서 실제로 "없어요" 박스가 미리 채워져 보이는지, 장보기 "직접
+    추가" → "냉장고로 옮기기" 왕복, 홈의 "20분 안에 되는 것"/"이번 달 N번" 섹션이 실제 데이터
+    로 자연스럽게 보이는지, 레시피 필터 바텀시트의 초기화/적용 동작, FAB이 다른 화면 요소와
+    겹치지 않는지.
 
 ## 기술 스택 / 아키텍처 결정
 - **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
@@ -1363,10 +1450,17 @@ Tag {
 
 ShoppingSelection: string[]  // 장보기에 담긴 recipeId 목록 (household 공유 테이블, shopping_selection)
 
+// ShoppingExtraItem(24차 확장 E) — 레시피를 거치지 않고 장보기에서 직접 추가한 항목
+// (household 공유 테이블, shopping_extra_items). src/data/shoppingExtraItems.ts.
+ShoppingExtraItem {
+  id, ingredientId, amount?, unit?
+}
+
 // CookingLog(17차 확장에서 구현 완료 — 아래 "요리 완료 기록(CookingLog)" 항목 참고)는
 // household 공유 테이블(cooking_log)로 실제 저장됨. 조회 전용 집계는 src/data/cookingLog.ts.
 CookingLog {
   id, recipeId, householdId, userId, cookedAt, memo?
+  pantryCleanedAt?  // 24차 확장(D) — 요리 후 냉장고 정리를 했는지, null이면 아직 정리 안 함
 }
 
 // --- 아래는 아직 구현하지 않고 구조만 남겨둘 것 ---

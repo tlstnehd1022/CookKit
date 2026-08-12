@@ -21,7 +21,7 @@ export interface ExtractedRecipe {
   name: string;
   servingsBase: number;
   ingredients: { name: string; amount: number; unit: string; categoryName?: string | null }[];
-  steps: { title: string; content: string; timerSeconds?: number | null }[];
+  steps: { title: string; content: string; timerSeconds?: number | null; tip?: string | null }[];
   tagNames?: string[] | null;
   warning?: string | null;
   difficulty?: 'easy' | 'medium' | 'hard' | null;
@@ -61,8 +61,12 @@ const RECIPE_SCHEMA = {
             type: ['integer', 'null'],
             description: '이 단계에 타이머가 필요하면 초 단위 시간, 아니면 null',
           },
+          tip: {
+            type: ['string', 'null'],
+            description: '이 단계에 도움이 될 만한 짧은 팁(선택, 없으면 null). 예: "면수는 버리지 말고 한 국자 남겨 두세요"',
+          },
         },
-        required: ['title', 'content', 'timerSeconds'],
+        required: ['title', 'content', 'timerSeconds', 'tip'],
         additionalProperties: false,
       },
     },

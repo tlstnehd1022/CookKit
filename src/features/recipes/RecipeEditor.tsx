@@ -163,6 +163,7 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         title: step.title,
         content: step.content,
         timerSeconds: step.timerSeconds ?? undefined,
+        tip: step.tip ?? undefined,
       })),
     );
     if (result.difficulty) {
@@ -1097,6 +1098,15 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
               />
               <span>초</span>
             </div>
+          </div>
+
+          <div className="field">
+            <label>팁 (선택)</label>
+            <input
+              value={step.tip ?? ''}
+              onChange={(e) => updateStepRow(index, { tip: e.target.value || undefined })}
+              placeholder="예: 면수는 버리지 말고 한 국자 남겨 두세요"
+            />
           </div>
 
           <div className="field">

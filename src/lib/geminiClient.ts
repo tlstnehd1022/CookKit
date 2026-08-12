@@ -25,7 +25,7 @@ export interface ExtractedRecipe {
   name: string;
   servingsBase: number;
   ingredients: { name: string; amount: number; unit: string; categoryName?: string | null }[];
-  steps: { title: string; content: string; timerSeconds?: number | null }[];
+  steps: { title: string; content: string; timerSeconds?: number | null; tip?: string | null }[];
   tagNames?: string[] | null;
   warning?: string | null;
   difficulty?: 'easy' | 'medium' | 'hard' | null;
@@ -65,6 +65,11 @@ const GEMINI_RECIPE_SCHEMA = {
           timerSeconds: {
             type: 'INTEGER',
             description: '이 단계에 타이머가 필요하면 초 단위 시간, 아니면 생략',
+            nullable: true,
+          },
+          tip: {
+            type: 'STRING',
+            description: '이 단계에 도움이 될 만한 짧은 팁(선택). 예: "면수는 버리지 말고 한 국자 남겨 두세요"',
             nullable: true,
           },
         },

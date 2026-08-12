@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStoredImage } from '../../data/imageStore';
 import { useAutoStartTimer } from '../../data/cookingModeSettings';
+import { fetchTodayCookingCount } from '../../data/cookingLog';
+import { scaleAmount } from '../../data/computed';
+import { findStepIngredients } from '../../lib/stepIngredientMatch';
 import { useWakeLock } from './useWakeLock';
 import { useVoiceAssistant } from './useVoiceAssistant';
 import {
@@ -10,7 +13,7 @@ import {
   matchCommand,
   type Command,
 } from '../../lib/cookingVoiceCommands';
-import type { CookingLogStepTiming, Recipe, RecipeStep } from '../../data/types';
+import type { CookingLogStepTiming, Ingredient, Recipe, RecipeStep } from '../../data/types';
 
 function buildStepAnnouncement(step: RecipeStep, index: number, total: number, autoStarting: boolean): string {
   const parts = [`${index + 1}단계.`, step.title, step.content];
@@ -28,9 +31,9 @@ function buildStepAnnouncement(step: RecipeStep, index: number, total: number, a
 /**
  * "🍳 요리 시작하기"로 들어오는 전체화면 핸즈프리 요리 안내 모드(레시피 1개). 폰을 세워두고 보는
  * 용도라 큰 글씨/버튼 위주로 단순하게 디자인함(기존 디자인 시스템 색상/톤은 그대로, 레이아웃만
- * 이 화면 전용 `.cooking-mode-*` 클래스 사용). TTS/STT 인프라는 useVoiceAssistant, 화면 꺼짐
- * 방지는 useWakeLock을 공유(MultiCookModePage와 공통) — 명령어 해석과 타이머 처리는 이 화면
- * 전용 로직이다.
+ * 이 화면 전용 `.cooking-mode-*` 클래스 사용, D 단계에서 시안 반영). TTS/STT 인프라는
+ * useVoiceAssistant, 화면 꺼짐 방지는 useWakeLock을 공유(MultiCookModePage와 공통) — 명령어
+ * 해석과 타이머 처리는 이 화면 전용 로직이다.
  *
  * 음성은 "가능한 환경에서 더 편하게" 쓰는 보조 수단이고, 화면 탭(◀이전/다음▶/타이머/종료)은
  * "모든 환경에서 항상 가능한" 기본 수단이다 — iOS Safari는 PWA로 설치된 상태에서 음성 인식
@@ -40,6 +43,8 @@ function buildStepAnnouncement(step: RecipeStep, index: number, total: number, a
 export function CookingModePage({
   recipe,
   servings,
+  ingredientsById,
+  householdId,
   onExit,
   onFinish,
 }: {
@@ -49,6 +54,10 @@ export function CookingModePage({
    * 보고 있던 인분, 그 외엔 가구 기본 인원. "이 단계에서 쓰는 재료" 칩(D-2)도 이 값으로 수량을
    * 스케일링한다. */
   servings: number;
+  /** D-2: "이 단계에서 쓰는 재료" 칩의 이름/수량 조회용 */
+  ingredientsById: Map<string, Ingredient>;
+  /** D-4: 완료 화면 "오늘 요리 n번째" 통계 조회용 — null이면 그 통계를 생략 */
+  householdId: string | null;
   onExit: () => void;
   onFinish: (stepTimings: CookingLogStepTiming[]) => void;
 }) {
@@ -56,6 +65,7 @@ export function CookingModePage({
   const [timerRemaining, setTimerRemaining] = useState<number | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [todayCookingCount, setTodayCookingCount] = useState<number | null>(null);
   // 현재 단계의 준비/조리 시간 측정 draft — 타이머가 실제로 "처음" 시작된 시점(timerStartedAt)을
   // 기준으로 진입~시작을 prep, 시작~이탈(활성 시간만, 일시정지 제외)을 cook으로 나눈다.
   // cookElapsedSeconds는 카운트다운 tick에서만 증가시켜서 일시정지 구간이 섞이지 않게 한다.
@@ -73,6 +83,14 @@ export function CookingModePage({
   const currentStep = steps[stepIndex] as RecipeStep | undefined;
   const isLastStep = stepIndex === steps.length - 1;
   const imageUrl = useStoredImage(currentStep?.imageId);
+
+  // D-2: 이 단계 본문에 이름이 등장하는 재료만 뽑아 칩으로 보여준다(명시적 매핑 필드가 없어
+  // 텍스트 매칭으로 판단 — stepIngredientMatch.ts 참고). 인분(servings) 기준으로 스케일링.
+  const stepIngredients = useMemo(() => {
+    if (!currentStep) return [];
+    return findStepIngredients(currentStep, recipe.ingredients, ingredientsById);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, recipe.ingredients, ingredientsById]);
 
   useWakeLock();
 
@@ -131,7 +149,14 @@ export function CookingModePage({
   }, [timerRunning, timerRemaining]);
 
   useEffect(() => {
-    if (finished) speak('요리를 완성했어요! 수고하셨어요.');
+    if (!finished) return;
+    speak('요리를 완성했어요! 수고하셨어요.');
+    if (householdId) {
+      // 이 세션의 기록은 아직 안 남았으니(onFinish 이후 CookingLogModal에서 확정) +1로 표시.
+      fetchTodayCookingCount(householdId)
+        .then((count) => setTodayCookingCount(count + 1))
+        .catch((err) => console.error('오늘 요리 횟수 조회 실패:', err));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finished]);
 
@@ -235,25 +260,47 @@ export function CookingModePage({
 
   return (
     <div className="cooking-mode-overlay">
-      <div className="row">
-        <span className="cooking-mode-progress">
-          {finished ? '완료' : `${stepIndex + 1}/${steps.length}단계`}
-          {' · '}
-          {servings}인분
-          {servings !== recipe.servingsBase ? ` (원래 ${recipe.servingsBase}인분)` : ''}
-        </span>
-        <button className="btn small" onClick={confirmExit}>
-          ✕ 종료
-        </button>
-      </div>
+      {!finished && (
+        <>
+          <div className="cooking-mode-header">
+            <button className="cooking-mode-close" onClick={confirmExit} aria-label="요리 모드 종료">
+              ✕
+            </button>
+            <div className="cooking-mode-progress-bar">
+              <div
+                className="cooking-mode-progress-fill"
+                style={{ width: `${((stepIndex + 1) / steps.length) * 100}%` }}
+              />
+            </div>
+            <span className="cooking-mode-progress-count">
+              {stepIndex + 1} / {steps.length}
+            </span>
+          </div>
+          <div className="cooking-mode-recipe-name">
+            {recipe.name} · {servings}인분
+            {servings !== recipe.servingsBase ? ` (원래 ${recipe.servingsBase}인분)` : ''}
+          </div>
+        </>
+      )}
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {finished ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, marginTop: 24 }}>
-            <h1 className="cooking-mode-title">🎉 요리 완료!</h1>
-            <p className="cooking-mode-content">수고하셨어요!</p>
-            <button className="btn primary cooking-mode-timer-btn" onClick={() => onFinish(sessionTimingsRef.current)}>
-              🍳 오늘 만들었어요
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginTop: 24 }}>
+            <div className="cooking-mode-done-illustration">
+              <div className="cooking-mode-done-illustration-inner" />
+            </div>
+            <h1 className="cooking-mode-done-title">잘 만들었어요!</h1>
+            {todayCookingCount != null && (
+              <p className="text-muted" style={{ textAlign: 'center' }}>
+                오늘 요리 {todayCookingCount}번째예요.
+              </p>
+            )}
+            <button
+              className="btn primary cooking-mode-timer-btn"
+              style={{ marginTop: 8 }}
+              onClick={() => onFinish(sessionTimingsRef.current)}
+            >
+              🍳 요리책에 기록하기
             </button>
             <button className="btn" onClick={confirmExit}>
               나중에 기록할게요
@@ -262,28 +309,50 @@ export function CookingModePage({
         ) : (
           <>
             {imageUrl && <img src={imageUrl} alt={currentStep.title} className="cooking-mode-image" />}
-            <h1 className="cooking-mode-title">{currentStep.title}</h1>
+            <h2 className="cooking-mode-step-title">{currentStep.title}</h2>
             <p className="cooking-mode-content">{currentStep.content}</p>
 
             {currentStep.timerSeconds != null && (
-              <div style={{ textAlign: 'center' }}>
+              <div className="cooking-mode-timer-card">
+                <span className="cooking-mode-timer-number">
+                  {formatCountdown(timerRemaining ?? currentStep.timerSeconds)}
+                </span>
                 {timerRemaining !== null ? (
-                  <>
-                    <div className="cooking-mode-timer">{formatCountdown(timerRemaining)}</div>
-                    <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
-                      <button className="btn small" onClick={timerRunning ? pauseTimer : startTimer}>
-                        {timerRunning ? '⏸ 멈춤' : '▶ 다시 시작'}
-                      </button>
-                      <button className="btn small" onClick={resetTimer}>
-                        ↺ 초기화
-                      </button>
-                    </div>
-                  </>
+                  <div className="row" style={{ gap: 6 }}>
+                    <button className="btn small" onClick={timerRunning ? pauseTimer : startTimer}>
+                      {timerRunning ? '⏸ 멈춤' : '▶ 다시 시작'}
+                    </button>
+                    <button className="btn small" onClick={resetTimer}>
+                      ↺ 초기화
+                    </button>
+                  </div>
                 ) : (
-                  <button className="btn cooking-mode-timer-btn" onClick={startTimer}>
-                    ⏱ 타이머 시작 ({formatCountdown(currentStep.timerSeconds)})
+                  <button className="btn primary" onClick={startTimer}>
+                    타이머 시작
                   </button>
                 )}
+              </div>
+            )}
+
+            {stepIngredients.length > 0 && (
+              <>
+                <div className="cooking-mode-ingredients-title">이 단계에서 쓰는 재료</div>
+                <div className="chip-row" style={{ justifyContent: 'center' }}>
+                  {stepIngredients.map((item) => (
+                    <span key={item.ingredientId} className="chip cooking-mode-ingredient-chip">
+                      {ingredientsById.get(item.ingredientId)?.name}{' '}
+                      {scaleAmount(item.amount, recipe.servingsBase, servings)}
+                      {item.unit}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {currentStep.tip && (
+              <div className="cooking-mode-tip-box">
+                <div className="cooking-mode-tip-label">💡 팁</div>
+                <div className="cooking-mode-tip-text">{currentStep.tip}</div>
               </div>
             )}
 

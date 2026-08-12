@@ -215,6 +215,20 @@ export async function fetchMonthlyCookingCount(householdId: string): Promise<num
   return count ?? 0;
 }
 
+/** 오늘(0시~지금) household 요리 횟수 — 요리 모드 완료 화면(D-4)의 "오늘 요리 n번째" 통계용.
+ * 이 기록 자체가 방금 막 생성된 뒤 호출되므로 그 기록도 포함해서 센다. */
+export async function fetchTodayCookingCount(householdId: string): Promise<number> {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const { count, error } = await supabase
+    .from('cooking_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('household_id', householdId)
+    .gte('cooked_at', todayStart);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 const HISTORY_LIMIT = 50;
 
 export interface CookingLogEntry {

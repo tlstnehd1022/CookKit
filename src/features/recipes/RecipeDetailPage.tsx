@@ -488,6 +488,8 @@ export function RecipeDetailPage({
         <CookingModePage
           recipe={recipe}
           servings={servings}
+          ingredientsById={ingredientsById}
+          householdId={householdId}
           onExit={() => setShowCookingMode(false)}
           onFinish={(stepTimings) => {
             setPendingStepTimings(stepTimings);

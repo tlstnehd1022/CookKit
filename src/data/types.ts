@@ -35,6 +35,8 @@ export interface RecipeStep {
   timerSeconds?: number;
   /** Supabase Storage(src/data/imageStore.ts)에 저장된 이미지 경로 참조 — 실제 이미지 데이터는 별도 저장 */
   imageId?: string;
+  /** 그 단계에서 유용한 짧은 팁(선택, D-3) — 요리 모드에서 팁 박스로 표시됨 */
+  tip?: string;
 }
 
 export type Difficulty = 'easy' | 'medium' | 'hard';

@@ -440,21 +440,67 @@ h2 {
   padding: 20px;
 }
 
-.cooking-mode-progress {
-  font-size: 16px;
+/* D-1: 상단 X + 진행 바(7px, .35s ease 전환) + "n / 총" */
+.cooking-mode-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cooking-mode-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 4px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.cooking-mode-progress-bar {
+  flex: 1;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  overflow: hidden;
+}
+
+.cooking-mode-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.35s ease;
+}
+
+.cooking-mode-progress-count {
+  flex-shrink: 0;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-secondary);
 }
 
-.cooking-mode-title {
-  font-size: 28px;
+.cooking-mode-recipe-name {
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-hover);
   text-align: center;
-  margin: 12px 0;
 }
 
+.cooking-mode-step-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+  margin: 18px 0 6px;
+}
+
+/* D-1: "단계 문구"는 34px — 주방에서 폰을 세워두고 멀리서도 읽히도록 지금보다 훨씬 크게 */
 .cooking-mode-content {
-  font-size: 20px;
-  line-height: 1.6;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.4;
   text-align: center;
 }
 
@@ -464,20 +510,93 @@ h2 {
   aspect-ratio: 4 / 3;
   object-fit: cover;
   border-radius: var(--radius);
-  margin: 0 auto 16px;
+  margin: 12px auto 16px;
   display: block;
 }
 
-.cooking-mode-timer {
-  font-size: 48px;
+/* D-1: 타이머 카드(accent-200 배경, radius 28) — 숫자 38px + 시작/재개 버튼 */
+.cooking-mode-timer-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-card));
+  border-radius: 28px;
+  padding: 14px 20px;
+  margin: 22px 0;
+}
+
+.cooking-mode-timer-number {
+  font-size: 38px;
   font-weight: 700;
-  color: var(--accent);
-  margin: 12px 0;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .cooking-mode-timer-btn {
   font-size: 18px;
   padding: 14px 20px;
+}
+
+/* D-2: "이 단계에서 쓰는 재료" 칩 — 세이지(success) 톤 */
+.cooking-mode-ingredients-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-top: 6px;
+  margin-bottom: 8px;
+}
+
+.cooking-mode-ingredient-chip {
+  background: color-mix(in srgb, var(--success) 18%, var(--chip-bg));
+  color: var(--success);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* D-3: 팁 박스(accent-100 배경) */
+.cooking-mode-tip-box {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-top: 18px;
+}
+
+.cooking-mode-tip-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-hover);
+  margin-bottom: 4px;
+}
+
+.cooking-mode-tip-text {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* D-4: 완료 화면 원형 일러스트 + 타이틀 */
+.cooking-mode-done-illustration {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--success) 25%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cooking-mode-done-illustration-inner {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 70%, var(--bg-page));
+}
+
+.cooking-mode-done-title {
+  font-size: 26px;
+  text-align: center;
+  margin: 0;
 }
 
 .cooking-mode-mic {

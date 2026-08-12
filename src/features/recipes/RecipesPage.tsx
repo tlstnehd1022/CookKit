@@ -50,6 +50,12 @@ interface FilterChip {
 
 const TIME_PRESETS = [20, 40, 60];
 
+const SORT_OPTIONS: { value: SortMode; label: string }[] = [
+  { value: 'recent', label: '최근 추가순' },
+  { value: 'name', label: '이름순' },
+  { value: 'frequent', label: '자주 해먹은 순' },
+];
+
 export function RecipesPage({
   onSelectRecipe,
   onAddRecipe,
@@ -284,10 +290,11 @@ export function RecipesPage({
 
   return (
     <div>
-      {/* B-2: 단일 레시피 요리는 상세 화면 하단 고정 버튼이 주 경로라 목록의 FAB은 "여러 개
-          요리하기" 전용으로 쓴다 — 굳이 speed dial로 펼치지 않고 단일 FAB으로 충분하다고 판단. */}
+      {/* B-2: FAB → "🍳 요리하기" 선택 화면(MultiCookSelectPage)에서 레시피를 하나 고르면 그
+          레시피 요리 모드로 바로 들어가고, 여러 개 고르면 복합 요리 흐름으로 이어진다
+          (RecipesFeature의 분기 로직 참고) — 굳이 speed dial로 펼치지 않고 단일 FAB으로 처리. */}
       {recipes.length > 0 && (
-        <button type="button" className="recipe-fab" onClick={onOpenMultiCook} aria-label="여러 개 요리하기">
+        <button type="button" className="recipe-fab" onClick={onOpenMultiCook} aria-label="요리하기">
           🍳
         </button>
       )}
@@ -579,13 +586,17 @@ function RecipeFilterSheet({
           ))}
         </div>
 
-        <div className="field">
-          <label>정렬</label>
-          <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)}>
-            <option value="recent">최근 추가순</option>
-            <option value="name">이름순</option>
-            <option value="frequent">자주 해먹은 순</option>
-          </select>
+        <div className="section-title">정렬</div>
+        <div className="chip-row">
+          {SORT_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              className={`chip selectable ${sortMode === option.value ? 'active' : ''}`}
+              onClick={() => setSortMode(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
 
         <div className="row" style={{ gap: 6, marginTop: 8 }}>

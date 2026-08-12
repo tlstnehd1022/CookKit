@@ -29,7 +29,7 @@ import type { CookingLogStepTiming, Recipe, RecipeIngredient, RecipeStep } from 
 
 type View =
   | { screen: 'list' }
-  | { screen: 'detail'; recipeId: string }
+  | { screen: 'detail'; recipeId: string; autoCook?: boolean }
   | { screen: 'edit'; recipeId?: string }
   | { screen: 'discover-detail'; entry: PublicRecipeEntry; ingredientNameById: Map<string, string> }
   | { screen: 'cooking-history' }
@@ -220,6 +220,7 @@ export function RecipesFeature() {
           recipeId={view.recipeId}
           onBack={() => setView({ screen: 'list' })}
           onEdit={() => setView({ screen: 'edit', recipeId: view.recipeId })}
+          autoStartCookingMode={view.autoCook}
         />
       )}
       {view.screen === 'edit' && (
@@ -245,7 +246,15 @@ export function RecipesFeature() {
       {view.screen === 'multi-cook-select' && (
         <MultiCookSelectPage
           onCancel={() => setView({ screen: 'list' })}
-          onConfirm={(selectedRecipes) => setView({ screen: 'multi-cook-preview', recipes: selectedRecipes })}
+          onConfirm={(selectedRecipes) => {
+            // 하나만 골랐으면 복합 요리 준비 화면을 거칠 필요 없이 그 레시피의 요리 모드로 바로
+            // 들어간다(레시피 상세의 "요리 시작하기"와 같은 경로 — autoStartCookingMode).
+            if (selectedRecipes.length === 1) {
+              setView({ screen: 'detail', recipeId: selectedRecipes[0].id, autoCook: true });
+            } else {
+              setView({ screen: 'multi-cook-preview', recipes: selectedRecipes });
+            }
+          }}
         />
       )}
       {view.screen === 'multi-cook-preview' && (

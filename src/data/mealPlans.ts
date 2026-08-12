@@ -25,6 +25,7 @@ function rowToMealPlan(row: Record<string, unknown>): MealPlan {
     recipeId: row.recipe_id as string,
     mealType: row.meal_type as MealType,
     sortOrder: row.sort_order as number,
+    servings: row.servings as number,
   };
 }
 
@@ -64,23 +65,36 @@ export async function fetchMealPlans(
 }
 
 /** 원탭 배치 — 끼니 섹션의 "+ 메뉴 추가"를 누르고 레시피를 고르면 곧바로 이 함수가 호출된다.
- * sortOrder는 그 끼니의 현재 메뉴 개수를 그대로 써서 맨 뒤에 붙인다. */
+ * sortOrder는 그 끼니의 현재 메뉴 개수를 그대로 써서 맨 뒤에 붙인다. servings는 보통 가구
+ * 기본 인원(호출부가 결정)이고, 배치 후 개별 조절 가능(B-4). */
 export async function addMealPlan(
   householdId: string,
   date: string,
   mealType: MealType,
   recipeId: string,
   sortOrder: number,
+  servings: number,
 ): Promise<void> {
-  const { error } = await supabase
-    .from('meal_plans')
-    .insert({ household_id: householdId, date, meal_type: mealType, recipe_id: recipeId, sort_order: sortOrder });
+  const { error } = await supabase.from('meal_plans').insert({
+    household_id: householdId,
+    date,
+    meal_type: mealType,
+    recipe_id: recipeId,
+    sort_order: sortOrder,
+    servings,
+  });
   if (error) throw error;
 }
 
-/** "바꾸기" — 그 메뉴 카드(끼니/순서)는 그대로 두고 레시피만 교체한다. */
+/** "바꾸기" — 그 메뉴 카드(끼니/순서/인분)는 그대로 두고 레시피만 교체한다. */
 export async function updateMealPlanRecipe(id: string, recipeId: string): Promise<void> {
   const { error } = await supabase.from('meal_plans').update({ recipe_id: recipeId }).eq('id', id);
+  if (error) throw error;
+}
+
+/** 그 메뉴만 인분을 개별로 바꾼다(B-4) — 같은 끼니의 다른 메뉴, 다른 날짜에는 영향 없음. */
+export async function updateMealPlanServings(id: string, servings: number): Promise<void> {
+  const { error } = await supabase.from('meal_plans').update({ servings }).eq('id', id);
   if (error) throw error;
 }
 

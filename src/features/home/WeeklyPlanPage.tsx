@@ -11,10 +11,13 @@ import {
   fetchMealPlans,
   addMealPlan,
   updateMealPlanRecipe,
+  updateMealPlanServings,
   removeMealPlan,
   MEAL_TYPES,
   MEAL_TYPE_LABEL,
 } from '../../data/mealPlans';
+import { useHousehold } from '../../data/household';
+import { scaleAmount } from '../../data/computed';
 import { pickNextMealPlan } from '../../lib/mealTime';
 import {
   getCurrentWeekDates,
@@ -67,6 +70,7 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
   const [manuallyExpanded, setManuallyExpanded] = useState<Set<MealType>>(new Set());
 
   const householdId = getCurrentHouseholdId();
+  const { household } = useHousehold();
   const { recipes } = useRecipes();
   const ingredientsById = useIngredientsById();
   const { pantryStatus, setOwned } = usePantryStatus();
@@ -99,6 +103,18 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
     return dayPlans.map((p) => recipeById(p.recipeId)).filter((r): r is Recipe => r !== undefined);
   }
 
+  /** 그 날 계획(MealPlan)과 실제 레시피를 짝지은 목록 — 인분(plan.servings) 기준 재료량/영양
+   * 계산에 쓴다(B-4, recipe.servingsBase가 아니라 실제 배치된 인분 기준). */
+  function dayPlanRecipePairs(date: string): { plan: MealPlan; recipe: Recipe }[] {
+    const dayPlans = plans.get(date) ?? [];
+    return dayPlans
+      .map((plan) => {
+        const recipe = recipeById(plan.recipeId);
+        return recipe ? { plan, recipe } : null;
+      })
+      .filter((pair): pair is { plan: MealPlan; recipe: Recipe } => pair !== null);
+  }
+
   async function handlePickRecipe(recipeId: string) {
     if (!householdId || !pickerContext) return;
     setAssignError(null);
@@ -109,7 +125,15 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
         const existingCount = (plans.get(selectedDate) ?? []).filter(
           (p) => p.mealType === pickerContext.mealType,
         ).length;
-        await addMealPlan(householdId, selectedDate, pickerContext.mealType, recipeId, existingCount);
+        // 새로 배치할 때는 가구 기본 인원을 초기값으로 쓴다(B-4) — 배치 후 카드에서 개별 조절 가능.
+        await addMealPlan(
+          householdId,
+          selectedDate,
+          pickerContext.mealType,
+          recipeId,
+          existingCount,
+          household?.defaultServings ?? 2,
+        );
       }
       setPickerContext(null);
       await refresh();
@@ -130,6 +154,17 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
     }
   }
 
+  async function handleUpdateServings(id: string, servings: number) {
+    if (servings < 1) return;
+    try {
+      await updateMealPlanServings(id, servings);
+      await refresh();
+    } catch (err) {
+      console.error('인분 수정 실패:', err);
+      alert(getErrorMessage(err, '인분을 수정하지 못했어요.'));
+    }
+  }
+
   const today = todayDateString();
   const selectedIndex = WEEK_DATES.indexOf(selectedDate);
   const selectedDayPlans = plans.get(selectedDate) ?? [];
@@ -139,8 +174,8 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
   const bigCardPlanId = pickNextMealPlan(selectedDayPlans, selectedDate === today)?.id;
 
   const dailyNutritionTotal = useMemo(() => {
-    return dayRecipes(selectedDate).reduce(
-      (sum, recipe) => sum + (recipe.nutrition ? recipe.nutrition.calories * recipe.servingsBase : 0),
+    return dayPlanRecipePairs(selectedDate).reduce(
+      (sum, { plan, recipe }) => sum + (recipe.nutrition ? recipe.nutrition.calories * plan.servings : 0),
       0,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -175,21 +210,30 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, selectedIndex, plans, recipes, ingredientsById]);
 
+  // 재료 하나당 "처음 등장한 레시피" 기준으로 수량 하나만 보여준다(여러 레시피가 같은 재료를
+  // 쓰면 합산하지 않음 — 서로 다른 단위를 그냥 더할 수 없어서, 예전부터 있던 단순화). 다만 그
+  // 수량은 이제 recipe.servingsBase가 아니라 그 메뉴의 실제 인분(plan.servings)으로
+  // scaleAmount 재계산한다(B-4).
+  const neededIngredientDetails = useMemo(() => {
+    const map = new Map<string, { amount: number; unit: string }>();
+    for (const { plan, recipe } of dayPlanRecipePairs(selectedDate)) {
+      for (const item of recipe.ingredients) {
+        if (map.has(item.ingredientId)) continue;
+        map.set(item.ingredientId, {
+          amount: scaleAmount(item.amount, recipe.servingsBase, plan.servings),
+          unit: item.unit,
+        });
+      }
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, plans, recipes]);
+
   const neededIngredients = useMemo(() => {
-    const ids = collectIngredientIds(dayRecipes(selectedDate));
-    return Array.from(ids)
+    return Array.from(neededIngredientDetails.keys())
       .map((id) => ingredientsById.get(id))
       .filter((ing): ing is Ingredient => ing !== undefined && !ing.owned);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, plans, recipes, ingredientsById]);
-
-  function findRecipeIngredient(recipeList: Recipe[], ingredientId: string) {
-    for (const recipe of recipeList) {
-      const item = recipe.ingredients.find((i) => i.ingredientId === ingredientId);
-      if (item) return item;
-    }
-    return undefined;
-  }
+  }, [neededIngredientDetails, ingredientsById]);
 
   if (view.screen === 'detail') {
     return (
@@ -270,6 +314,7 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
             onAdd={() => setPickerContext({ mealType })}
             onReplace={(planId) => setPickerContext({ mealType, replaceId: planId })}
             onRemove={handleRemovePlan}
+            onChangeServings={handleUpdateServings}
             onViewRecipe={(recipeId) => setView({ screen: 'detail', recipeId })}
           />
         );
@@ -286,7 +331,7 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
         <p className="empty-hint">이 날은 냉장고 재료로 다 됩니다.</p>
       )}
       {neededIngredients.map((ingredient) => {
-        const item = findRecipeIngredient(dayRecipes(selectedDate), ingredient.id);
+        const item = neededIngredientDetails.get(ingredient.id);
         const owned = pantryStatus[ingredient.id] ?? false;
         return (
           <label className="weekly-buy-row" key={ingredient.id}>
@@ -335,6 +380,7 @@ function MealTypeSection({
   onAdd,
   onReplace,
   onRemove,
+  onChangeServings,
   onViewRecipe,
 }: {
   mealType: MealType;
@@ -351,6 +397,7 @@ function MealTypeSection({
   onAdd: () => void;
   onReplace: (planId: string) => void;
   onRemove: (planId: string) => void;
+  onChangeServings: (planId: string, servings: number) => void;
   onViewRecipe: (recipeId: string) => void;
 }) {
   // 메뉴가 없는 끼니는 접힘이 기본값(2번 요구사항) — 제목+화살표만 있는 조용한 한 줄로, 탭하면
@@ -387,19 +434,23 @@ function MealTypeSection({
             return isBigCard ? (
               <BigMealCard
                 key={item.id}
+                item={item}
                 recipe={recipe}
                 isToday={isToday}
                 onView={() => onViewRecipe(item.recipeId)}
                 onReplace={() => onReplace(item.id)}
                 onRemove={() => onRemove(item.id)}
+                onChangeServings={(next) => onChangeServings(item.id, next)}
               />
             ) : (
               <SmallMealRow
                 key={item.id}
+                item={item}
                 recipe={recipe}
                 onView={() => onViewRecipe(item.recipeId)}
                 onReplace={() => onReplace(item.id)}
                 onRemove={() => onRemove(item.id)}
+                onChangeServings={(next) => onChangeServings(item.id, next)}
               />
             );
           })}
@@ -413,17 +464,21 @@ function MealTypeSection({
 }
 
 function BigMealCard({
+  item,
   recipe,
   isToday,
   onView,
   onReplace,
   onRemove,
+  onChangeServings,
 }: {
+  item: MealPlan;
   recipe: Recipe | undefined;
   isToday: boolean;
   onView: () => void;
   onReplace: () => void;
   onRemove: () => void;
+  onChangeServings: (next: number) => void;
 }) {
   const coverImageId = recipe?.finalImageId ?? recipe?.steps.find((s) => s.imageId)?.imageId;
   const coverImageUrl = useStoredImage(coverImageId);
@@ -441,18 +496,27 @@ function BigMealCard({
         <div className="weekly-day-title">{recipe?.name ?? '(삭제된 레시피)'}</div>
         <div className="weekly-day-meta">
           {recipe?.estimatedMinutes != null && `${recipe.estimatedMinutes}분 · `}
-          {recipe?.servingsBase}인분{isToday ? ' · 오늘' : ''}
+          {isToday ? '오늘 · ' : ''}
+          {recipe && item.servings !== recipe.servingsBase
+            ? `${recipe.servingsBase}인분 레시피를 ${item.servings}인분으로`
+            : `${item.servings}인분`}
         </div>
-        <div className="row" style={{ justifyContent: 'flex-start', gap: 8, marginTop: 12 }}>
-          <button className="btn primary" onClick={onView}>
-            레시피 보기
-          </button>
-          <button className="btn" onClick={onReplace}>
-            바꾸기
-          </button>
-          <button className="btn danger" onClick={onRemove}>
-            빼기
-          </button>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+          <div className="row" style={{ justifyContent: 'flex-start', gap: 8 }}>
+            <button className="btn primary" onClick={onView}>
+              레시피 보기
+            </button>
+            <button className="btn" onClick={onReplace}>
+              바꾸기
+            </button>
+            <button className="btn danger" onClick={onRemove}>
+              빼기
+            </button>
+          </div>
+          <div className="stepper">
+            <button onClick={() => onChangeServings(Math.max(1, item.servings - 1))}>−</button>
+            <button onClick={() => onChangeServings(item.servings + 1)}>+</button>
+          </div>
         </div>
       </div>
     </div>
@@ -460,15 +524,19 @@ function BigMealCard({
 }
 
 function SmallMealRow({
+  item,
   recipe,
   onView,
   onReplace,
   onRemove,
+  onChangeServings,
 }: {
+  item: MealPlan;
   recipe: Recipe | undefined;
   onView: () => void;
   onReplace: () => void;
   onRemove: () => void;
+  onChangeServings: (next: number) => void;
 }) {
   return (
     <div className="meal-item-row">
@@ -476,10 +544,14 @@ function SmallMealRow({
         <strong>{recipe?.name ?? '(삭제된 레시피)'}</strong>
         <span className="text-muted" style={{ fontSize: 12 }}>
           {recipe?.estimatedMinutes != null && `${recipe.estimatedMinutes}분 · `}
-          {recipe?.servingsBase}인분
+          {item.servings}인분
         </span>
       </button>
       <div className="row" style={{ gap: 4, flexShrink: 0 }}>
+        <div className="stepper" style={{ gap: 4 }}>
+          <button onClick={() => onChangeServings(Math.max(1, item.servings - 1))}>−</button>
+          <button onClick={() => onChangeServings(item.servings + 1)}>+</button>
+        </div>
         <button className="btn small" onClick={onReplace}>
           바꾸기
         </button>

@@ -127,7 +127,7 @@ export interface CookingLogStepTiming {
 /** 끼니 구분 — 기본값은 'dinner'(주간 일정 도입 초기엔 저녁만 관리했음). */
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 
-/** 주간 일정(끼니별 메뉴 계획) — household 공유(supabase/migrations/0022, 0026).
+/** 주간 일정(끼니별 메뉴 계획) — household 공유(supabase/migrations/0022, 0026, 0029).
  * 같은 (householdId, date, mealType)에도 여러 행이 들어갈 수 있다(한 끼에 여러 메뉴).
  * sortOrder는 같은 끼니 안에서의 표시 순서. src/data/mealPlans.ts에서 조회/저장한다. */
 export interface MealPlan {
@@ -138,6 +138,9 @@ export interface MealPlan {
   recipeId: string;
   mealType: MealType;
   sortOrder: number;
+  /** 이 항목의 인분 — recipe.servingsBase(레시피 원본 기준)와 달리 "실제로 몇 인분 만들
+   * 계획인지". 배치 시 가구 기본 인원이 초기값이고 항목별로 개별 조절 가능(B-4). */
+  servings: number;
 }
 
 // 향후 확장 대비 스텁 — 아직 UI/저장 로직 미구현

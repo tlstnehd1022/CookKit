@@ -610,10 +610,11 @@ $$;
 revoke all on function public.mark_pantry_cleaned(uuid) from public;
 grant execute on function public.mark_pantry_cleaned(uuid) to authenticated;
 
--- ---- meal_plans (0022, 0026) — 주간 일정(끼니별 메뉴 계획) ------------------------------------
+-- ---- meal_plans (0022, 0026, 0029) — 주간 일정(끼니별 메뉴 계획) ------------------------------
 -- household 공유. meal_type(아침/점심/저녁/간식, 기본 dinner)과 sort_order(같은 끼니 안에서의
 -- 순서)를 0026에서 추가 — 같은 (household_id, date, meal_type)에도 여러 행이 들어갈 수 있어
--- (한 끼에 여러 메뉴) 유니크 제약을 두지 않는다.
+-- (한 끼에 여러 메뉴) 유니크 제약을 두지 않는다. servings(0029)는 recipe.servingsBase가 아니라
+-- 실제 배치된 인분 — "이 날 살 것"/영양 정보 하루 합계가 이 값 기준으로 계산된다.
 create table public.meal_plans (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
@@ -621,7 +622,8 @@ create table public.meal_plans (
   recipe_id uuid not null references public.recipes(id) on delete cascade,
   created_at timestamptz not null default now(),
   meal_type text not null default 'dinner' check (meal_type in ('breakfast', 'lunch', 'dinner', 'snack')),
-  sort_order integer not null default 0
+  sort_order integer not null default 0,
+  servings integer not null default 2 check (servings > 0)
 );
 
 create index meal_plans_household_id_idx on public.meal_plans (household_id);

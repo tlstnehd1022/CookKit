@@ -20,7 +20,10 @@ export function MultiCookSelectPage({
   function toggle(id: string) {
     setSelectedIds((prev) => {
       if (prev.includes(id)) return prev.filter((i) => i !== id);
-      if (prev.length >= MAX_RECIPES) return prev;
+      if (prev.length >= MAX_RECIPES) {
+        alert(`한 번에 ${MAX_RECIPES}개까지 함께 요리할 수 있어요.`);
+        return prev;
+      }
       return [...prev, id];
     });
   }
@@ -34,21 +37,17 @@ export function MultiCookSelectPage({
         <h1 style={{ margin: 0 }}>🍳 요리하기</h1>
         <span />
       </div>
-      <p className="text-muted">하나 또는 여러 개 레시피를 골라주세요.</p>
+      <p className="text-muted">하나 또는 여러 개 레시피를 골라주세요. (최대 {MAX_RECIPES}개)</p>
 
       {recipes.length === 0 && <div className="empty-hint">등록된 레시피가 없습니다.</div>}
       {recipes.map((recipe) => {
         const checked = selectedIds.includes(recipe.id);
+        const atLimit = !checked && selectedIds.length >= MAX_RECIPES;
         return (
-          <div className="card" key={recipe.id} style={{ marginBottom: 8 }}>
+          <div className="card" key={recipe.id} style={{ marginBottom: 8, opacity: atLimit ? 0.5 : 1 }}>
             <label className="row" style={{ cursor: 'pointer' }}>
               <span>{recipe.name}</span>
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => toggle(recipe.id)}
-                disabled={!checked && selectedIds.length >= MAX_RECIPES}
-              />
+              <input type="checkbox" checked={checked} onChange={() => toggle(recipe.id)} />
             </label>
           </div>
         );

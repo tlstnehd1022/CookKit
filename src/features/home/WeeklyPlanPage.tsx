@@ -15,6 +15,7 @@ import {
   MEAL_TYPES,
   MEAL_TYPE_LABEL,
 } from '../../data/mealPlans';
+import { pickNextMealPlan } from '../../lib/mealTime';
 import {
   getCurrentWeekDates,
   formatWeekdayShort,
@@ -133,6 +134,9 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
   const selectedIndex = WEEK_DATES.indexOf(selectedDate);
   const selectedDayPlans = plans.get(selectedDate) ?? [];
   const totalPlannedCount = Array.from(plans.values()).reduce((sum, list) => sum + list.length, 0);
+  // "다음 끼니"(오늘이면 아직 안 지난 끼니, 아니면 그 날 첫 메뉴)를 큰 카드로 보여준다 — 어떤
+  // 끼니 조합이든(저녁을 안 쓰는 가구 포함) 항상 이미지가 하나는 나오도록.
+  const bigCardPlanId = pickNextMealPlan(selectedDayPlans, selectedDate === today)?.id;
 
   const dailyNutritionTotal = useMemo(() => {
     return dayRecipes(selectedDate).reduce(
@@ -248,6 +252,7 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
             expanded={isExpanded}
             collapsible={!isAlwaysExpanded}
             isToday={selectedDate === today}
+            bigCardPlanId={bigCardPlanId}
             onExpand={() =>
               setManuallyExpanded((prev) => {
                 const next = new Set(prev);
@@ -324,6 +329,7 @@ function MealTypeSection({
   expanded,
   collapsible,
   isToday,
+  bigCardPlanId,
   onExpand,
   onCollapse,
   onAdd,
@@ -337,6 +343,9 @@ function MealTypeSection({
   expanded: boolean;
   collapsible: boolean;
   isToday: boolean;
+  /** "다음 끼니"로 판정된 메뉴의 id — 이 항목만 큰 카드로 렌더링한다(1번 요구사항, mealTime.ts
+   * pickNextMealPlan 기준). undefined면(그 날 메뉴가 아예 없음) 아무 항목도 큰 카드가 안 됨. */
+  bigCardPlanId: string | undefined;
   onExpand: () => void;
   onCollapse: () => void;
   onAdd: () => void;
@@ -372,9 +381,9 @@ function MealTypeSection({
         </button>
       ) : (
         <>
-          {items.map((item, index) => {
+          {items.map((item) => {
             const recipe = recipeById(item.recipeId);
-            const isBigCard = mealType === 'dinner' && index === 0;
+            const isBigCard = item.id === bigCardPlanId;
             return isBigCard ? (
               <BigMealCard
                 key={item.id}

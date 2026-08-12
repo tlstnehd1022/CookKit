@@ -63,15 +63,6 @@ export async function fetchMealPlans(
   return map;
 }
 
-/** 그 날의 대표 메뉴 하나를 고른다 — 저녁이 있으면 저녁 첫 번째 메뉴, 없으면 가장 이른 끼니의
- * 첫 번째 메뉴(홈 인사말/주간 스트립이 "오늘은 OO예요"/요일 칸 메뉴명 표시에 공유해서 쓴다). */
-export function pickRepresentativeMealPlan(dayPlans: MealPlan[]): MealPlan | undefined {
-  if (dayPlans.length === 0) return undefined;
-  const dinner = dayPlans.find((p) => p.mealType === 'dinner');
-  if (dinner) return dinner;
-  return sortDayPlans(dayPlans)[0];
-}
-
 /** 원탭 배치 — 끼니 섹션의 "+ 메뉴 추가"를 누르고 레시피를 고르면 곧바로 이 함수가 호출된다.
  * sortOrder는 그 끼니의 현재 메뉴 개수를 그대로 써서 맨 뒤에 붙인다. */
 export async function addMealPlan(

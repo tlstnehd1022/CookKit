@@ -1,3 +1,7 @@
+import { currentMealPeriod } from './mealTime';
+import { MEAL_TYPE_LABEL } from '../data/mealPlans';
+import type { MealType } from '../data/types';
+
 export type GreetingTimeSlot = 'morning' | 'day' | 'evening';
 
 export const TIME_SLOT_LABEL: Record<GreetingTimeSlot, string> = {
@@ -11,10 +15,16 @@ const DAY_POOL = ['점심 뭐 먹지?', '오늘 뭐 만들어볼까요?'];
 const EVENING_POOL = ['오늘 뭐 먹지?', '저녁 뭐 해먹지?'];
 const WEEKEND_POOL = ['느긋하게 뭐 해먹을까요?', '주말엔 뭐 만들어볼까요?'];
 
-function getTimeSlot(hour: number): GreetingTimeSlot {
-  if (hour < 10) return 'morning';
-  if (hour < 17) return 'day';
-  return 'evening';
+const MEAL_PERIOD_TO_TIME_SLOT: Record<'breakfast' | 'lunch' | 'dinner', GreetingTimeSlot> = {
+  breakfast: 'morning',
+  lunch: 'day',
+  dinner: 'evening',
+};
+
+// src/lib/mealTime.ts의 "다음 끼니" 판정과 같은 시간 기준(아침~10시/점심~15시/저녁)을 그대로
+// 써서, 홈 화면 상단 인사 줄(시간대 표시)과 "오늘은 OO예요" 메뉴 안내가 서로 어긋나지 않게 한다.
+function getTimeSlot(now: Date): GreetingTimeSlot {
+  return MEAL_PERIOD_TO_TIME_SLOT[currentMealPeriod(now)];
 }
 
 // 문구 풀에서 "같은 날엔 같은 문구" 유지용 — 날짜(+선택적 추가 시드) 문자열을 해시해서 항상
@@ -34,8 +44,9 @@ export interface GreetingContext {
   dateStr: string;
   /** 오늘 이미 요리 기록이 있으면 그 레시피 이름(household 공유 — 누가 만들었든 인정) */
   cookedTodayRecipeName?: string;
-  /** 오늘 주간 일정에 배치된 레시피 이름 */
-  todayMealRecipeName?: string;
+  /** 오늘 "다음 끼니"(mealTime.ts pickNextMealPlan 기준)에 배치된 메뉴 — 그 끼니에 메뉴가
+   * 여러 개면 menuLabel이 이미 "OO 외 n개" 형태로 요약돼 들어온다. */
+  todayNextMeal?: { mealType: MealType; menuLabel: string };
   /** 유통기한 임박(3일 이내) 재료 중 가장 급한 것의 이름 */
   expiringIngredientName?: string;
   /** 장보기에 담긴 레시피가 하나라도 있는지 */
@@ -53,15 +64,18 @@ export interface GreetingResult {
  * 전부 규칙 기반 — 홈은 가장 자주 열리는 화면이라 비용·지연 부담을 피한다.
  */
 export function pickGreeting(ctx: GreetingContext): GreetingResult {
-  const timeSlot = getTimeSlot(ctx.now.getHours());
+  const timeSlot = getTimeSlot(ctx.now);
   const isWeekend = ctx.now.getDay() === 0 || ctx.now.getDay() === 6;
 
   if (ctx.cookedTodayRecipeName) {
     const pool = ['오늘도 수고하셨어요', '잘 드셨어요?', `오늘 ${ctx.cookedTodayRecipeName} 어떠셨어요?`];
     return { text: pool[stableIndex(ctx.dateStr + 'cooked', pool.length)], timeSlot };
   }
-  if (ctx.todayMealRecipeName) {
-    return { text: `오늘은 ${ctx.todayMealRecipeName}예요`, timeSlot };
+  if (ctx.todayNextMeal) {
+    return {
+      text: `오늘 ${MEAL_TYPE_LABEL[ctx.todayNextMeal.mealType]}은 ${ctx.todayNextMeal.menuLabel}예요`,
+      timeSlot,
+    };
   }
   if (ctx.expiringIngredientName) {
     return { text: `${ctx.expiringIngredientName}, 오늘 쓰기 좋아요`, timeSlot };

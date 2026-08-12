@@ -14,6 +14,7 @@ import {
   resetShoppingSelection,
   useShoppingNeededCount,
 } from './data/shoppingSelection';
+import { initializeShoppingExtraItems, resetShoppingExtraItems } from './data/shoppingExtraItems';
 import { initializeNotifications, resetNotifications } from './data/notifications';
 import { useImageGenerationCompletionMessage, useImageGenerationStatus } from './data/imageGenerationStatus';
 import { setActiveTab, useActiveTab, type Tab } from './data/activeTab';
@@ -41,6 +42,7 @@ function App() {
     if (!user) {
       resetDataLayer();
       resetShoppingSelection();
+      resetShoppingExtraItems();
       resetNotifications();
       return;
     }
@@ -52,6 +54,7 @@ function App() {
         setDataLoadError('데이터를 불러오지 못했어요. 새로고침해주세요.');
       });
       initializeShoppingSelection(household.id);
+      initializeShoppingExtraItems(household.id);
     }
   }, [user, household]);
 

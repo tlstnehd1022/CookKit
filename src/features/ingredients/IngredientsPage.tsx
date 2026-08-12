@@ -456,14 +456,18 @@ function IngredientDetailModal({
   );
 }
 
-function AddIngredientModal({
+export function AddIngredientModal({
   onClose,
   onSave,
   existingNames,
+  defaultOwned = true,
 }: {
   onClose: () => void;
   onSave: (ingredient: Ingredient) => Promise<void>;
   existingNames: string[];
+  /** 냉장고의 "직접 추가"는 지금 채워 넣는 의미라 기본 true, 장보기의 "직접 추가"(E-2/E-3)는
+   * 아직 안 산 항목을 등록하는 의미라 false로 호출한다. */
+  defaultOwned?: boolean;
 }) {
   const { categories } = useCategories();
   const [name, setName] = useState('');
@@ -488,9 +492,7 @@ function AddIngredientModal({
         categoryId,
         defaultBuyUnit: defaultBuyUnit.trim() || '1개',
         allergens: [],
-        // "냉장고 채우기" 흐름의 두 액션 중 하나라 지금 보유 중인 것으로 바로 등록한다
-        // (예전엔 "재료 관리" 화면의 일반 등록 기능이라 owned:false가 기본이었음).
-        owned: true,
+        owned: defaultOwned,
       });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : '저장에 실패했어요. 다시 시도해주세요.');

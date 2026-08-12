@@ -233,6 +233,20 @@ create table public.shopping_selection (
   primary key (household_id, recipe_id)
 );
 
+-- ---- shopping_extra_items (0025) — 레시피를 거치지 않고 장보기 화면에서 직접 추가한 항목 -------
+-- household 공유, shopping_selection과 같은 패턴. 재료 하나당 household에 한 행만(unique).
+create table public.shopping_extra_items (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references public.households(id) on delete cascade,
+  ingredient_id uuid not null references public.ingredients(id) on delete cascade,
+  amount numeric,
+  unit text,
+  created_at timestamptz not null default now(),
+  unique (household_id, ingredient_id)
+);
+
+create index shopping_extra_items_household_id_idx on public.shopping_extra_items (household_id);
+
 -- ============================================================================
 -- 9) recipe_likes — 공개 레시피 좋아요(하트). user_id+recipe_id 복합 PK라 중복 좋아요 방지
 -- ============================================================================
@@ -262,6 +276,7 @@ alter table public.tags enable row level security;
 alter table public.recipes enable row level security;
 alter table public.recipe_tags enable row level security;
 alter table public.shopping_selection enable row level security;
+alter table public.shopping_extra_items enable row level security;
 
 -- ---- profiles ---------------------------------------------------------
 -- 본인 프로필 + 같은 household 구성원 프로필(이름 표시용)까지 조회 가능
@@ -399,6 +414,11 @@ create policy "recipe_tags_modify_via_recipe_owner" on public.recipe_tags
 
 -- ---- shopping_selection ---------------------------------------------------------
 create policy "shopping_selection_all_household_member" on public.shopping_selection
+  for all using (public.is_household_member(household_id))
+  with check (public.is_household_member(household_id));
+
+-- ---- shopping_extra_items (0025) ---------------------------------------------------------
+create policy "shopping_extra_items_all_household_member" on public.shopping_extra_items
   for all using (public.is_household_member(household_id))
   with check (public.is_household_member(household_id));
 

@@ -1454,6 +1454,62 @@ select:focus {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   장보기 화면 — src/features/shopping-list/ShoppingListPage.tsx
+   ══════════════════════════════════════════════════════════════════════ */
+
+.shopping-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.shopping-item-check {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: none;
+  color: var(--accent-contrast);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.shopping-item-check.checked {
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.shopping-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.shopping-item-name {
+  font-size: 14.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shopping-item-name.checked {
+  text-decoration: line-through;
+}
+
+.shopping-move-bar {
+  position: sticky;
+  bottom: 12px;
+  margin-top: 16px;
+  padding-top: 8px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    알림함 — 프로필 바텀시트 "알림" 메뉴 (src/features/settings/ProfileSheet.tsx)
    ══════════════════════════════════════════════════════════════════════ */
 

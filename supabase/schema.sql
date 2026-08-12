@@ -564,7 +564,9 @@ create table public.cooking_log (
   -- 제외한다(0019).
   is_multi_recipe boolean not null default false,
   -- 요리 완료 후 냉장고 정리를 했는지 — null이면 아직 정리 안 함(0024, 홈 화면 안내 대상)
-  pantry_cleaned_at timestamptz
+  pantry_cleaned_at timestamptz,
+  -- 실제로 만든 인분(0030) — 재료 차감(owned=false)이 이 인분 기준이었다는 기록
+  servings integer not null default 2 check (servings > 0)
 );
 
 create index cooking_log_recipe_id_idx on public.cooking_log (recipe_id);

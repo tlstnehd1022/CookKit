@@ -46,6 +46,9 @@ export async function logCooking(params: {
   recipeId: string;
   householdId: string;
   userId: string;
+  /** 실제로 만든 인분(B-6) — 재료 차감(owned=false)이 이 인분 기준이었다는 기록. 호출부가
+   * 그 순간 화면에서 보고 있던(또는 요리 모드에 넘겼던) 인분을 그대로 넘긴다. */
+  servings: number;
   memo?: string;
   stepTimings?: CookingLogStepTiming[];
   isMultiRecipe?: boolean;
@@ -56,6 +59,7 @@ export async function logCooking(params: {
       recipe_id: params.recipeId,
       household_id: params.householdId,
       user_id: params.userId,
+      servings: params.servings,
       memo: params.memo?.trim() || null,
       step_timings: params.stepTimings && params.stepTimings.length > 0 ? params.stepTimings : null,
       is_multi_recipe: params.isMultiRecipe ?? false,

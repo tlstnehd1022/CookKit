@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Ingredient, Recipe } from '../../data/types';
 import { getErrorMessage } from '../../lib/errorMessage';
+import { scaleAmount } from '../../data/computed';
 import { buildImagePath, saveImage, useStoredImage } from '../../data/imageStore';
 
 /**
@@ -14,6 +15,7 @@ import { buildImagePath, saveImage, useStoredImage } from '../../data/imageStore
  */
 export function CookingLogModal({
   recipe,
+  servings,
   ingredientsById,
   householdId,
   onClose,
@@ -23,6 +25,8 @@ export function CookingLogModal({
   onOpenPantryTidy,
 }: {
   recipe: Recipe;
+  /** 실제로 만든 인분(B-6) — 체크리스트 재료 수량을 이 기준으로 보여준다. */
+  servings: number;
   ingredientsById: Map<string, Ingredient>;
   householdId: string | null;
   onClose: () => void;
@@ -213,9 +217,18 @@ export function CookingLogModal({
         )}
         {uniqueIngredientIds.map((id) => {
           const ingredient = ingredientsById.get(id);
+          const item = recipe.ingredients.find((i) => i.ingredientId === id);
           return (
             <label className="row" key={id} style={{ padding: '6px 0' }}>
-              <span>{ingredient?.name ?? '(삭제된 재료)'}</span>
+              <span>
+                {ingredient?.name ?? '(삭제된 재료)'}
+                {item && (
+                  <span className="text-muted" style={{ marginLeft: 6 }}>
+                    {scaleAmount(item.amount, recipe.servingsBase, servings)}
+                    {item.unit}
+                  </span>
+                )}
+              </span>
               <input type="checkbox" checked={selected.has(id)} onChange={() => toggle(id)} />
             </label>
           );

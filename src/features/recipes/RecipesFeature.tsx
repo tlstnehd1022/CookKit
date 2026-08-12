@@ -74,6 +74,9 @@ export function RecipesFeature() {
         recipeId: recipe.id,
         householdId,
         userId: user.id,
+        // 복합 요리 흐름엔 아직 레시피별 인분 조절 UI가 없어 레시피 원본 기준(servingsBase)을
+        // 그대로 기록한다 — B-6 이후 필요해지면 확장할 여지.
+        servings: recipe.servingsBase,
         memo,
         stepTimings,
         isMultiRecipe: true,

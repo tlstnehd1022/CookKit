@@ -158,6 +158,7 @@ export function RecipeDetailPage({
       recipeId: recipe.id,
       householdId,
       userId: user.id,
+      servings,
       memo,
       stepTimings: pendingStepTimings,
     });
@@ -461,6 +462,7 @@ export function RecipeDetailPage({
       {showCookingLogModal && (
         <CookingLogModal
           recipe={recipe}
+          servings={servings}
           ingredientsById={ingredientsById}
           householdId={householdId}
           onClose={() => setShowCookingLogModal(false)}

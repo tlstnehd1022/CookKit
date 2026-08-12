@@ -16,7 +16,7 @@ import { useProfileSheetRequested, clearProfileSheetRequest } from '../../data/p
 import { useNotifications } from '../../data/notifications';
 import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
 import { pickTodayRecommendation, pickBestRecipeUsingIngredient } from '../../lib/recipeRecommendation';
-import { fetchMealPlans } from '../../data/mealPlans';
+import { fetchMealPlans, pickRepresentativeMealPlan } from '../../data/mealPlans';
 import {
   fetchTodayCookingLog,
   fetchMonthlyCookingCount,
@@ -50,7 +50,7 @@ const WEEK_DATES = getCurrentWeekDates();
 export function HomePage() {
   const [view, setView] = useState<View>({ screen: 'feed' });
   const [showProfileSheet, setShowProfileSheet] = useState(false);
-  const [weekPlans, setWeekPlans] = useState<Map<string, MealPlan>>(new Map());
+  const [weekPlans, setWeekPlans] = useState<Map<string, MealPlan[]>>(new Map());
   const [cookedTodayRecipeName, setCookedTodayRecipeName] = useState<string | undefined>(undefined);
   const [monthlyCookingCount, setMonthlyCookingCount] = useState<number | null>(null);
   const [uncleanedLog, setUncleanedLog] = useState<UncleanedCookingLog | null>(null);
@@ -150,7 +150,17 @@ export function HomePage() {
   const today = todayDateString();
   const greetingName = profile?.displayName ? `${profile.displayName}님` : '';
 
-  const todayPlanRecipeName = recipes.find((r) => r.id === weekPlans.get(today)?.recipeId)?.name;
+  // 오늘 계획된 메뉴가 여러 개면(끼니 구분/한 끼 여러 메뉴) 대표 하나(저녁 우선) + "외 n개"로
+  // 요약한다 — mealPlans.ts의 pickRepresentativeMealPlan을 주간 스트립과 공유.
+  const todayPlans = weekPlans.get(today) ?? [];
+  const todayRepresentativePlan = pickRepresentativeMealPlan(todayPlans);
+  const todayRepresentativeName = todayRepresentativePlan
+    ? recipes.find((r) => r.id === todayRepresentativePlan.recipeId)?.name
+    : undefined;
+  const todayPlanRecipeName =
+    todayRepresentativeName && todayPlans.length > 1
+      ? `${todayRepresentativeName} 외 ${todayPlans.length - 1}개`
+      : todayRepresentativeName;
   // 우선순위 3번은 "임박(3일 이내)"만 대상 — expiringSoon은 soon(4~7일)까지 포함하므로 따로 좁힌다.
   const urgentIngredientName = expiringSoon.find(({ info }) => info.level === 'urgent')?.ingredient.name;
   const greeting = pickGreeting({
@@ -324,8 +334,15 @@ export function HomePage() {
         </div>
         <div className="home-week-strip">
           {WEEK_DATES.map((date) => {
-            const plan = weekPlans.get(date);
-            const planRecipe = plan ? recipes.find((r: Recipe) => r.id === plan.recipeId) : undefined;
+            // 요일 칸엔 대표 메뉴 하나(저녁 우선)만 넣고, 그 날 계획이 여러 개면 "외 n개"로
+            // 요약한다(4번 요구사항) — 다 못 넣는 문제를 이렇게 해결.
+            const dayPlans = weekPlans.get(date) ?? [];
+            const representativePlan = pickRepresentativeMealPlan(dayPlans);
+            const representativeName = representativePlan
+              ? recipes.find((r: Recipe) => r.id === representativePlan.recipeId)?.name
+              : undefined;
+            const menuLabel =
+              representativeName && dayPlans.length > 1 ? `${representativeName} 외 ${dayPlans.length - 1}개` : representativeName;
             const isToday = date === today;
             return (
               <button
@@ -336,7 +353,7 @@ export function HomePage() {
               >
                 <div className="home-week-day">{formatWeekdayShort(date)}</div>
                 <div className="home-week-date">{formatDayOfMonth(date)}</div>
-                <div className="home-week-menu">{planRecipe ? planRecipe.name : ''}</div>
+                <div className="home-week-menu">{menuLabel ?? ''}</div>
               </button>
             );
           })}

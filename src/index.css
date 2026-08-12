@@ -1361,13 +1361,6 @@ select:focus {
   padding: 16px 18px 20px;
 }
 
-.weekly-day-kicker {
-  font-size: 12px;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
-}
-
 .weekly-day-title {
   font-family: var(--font-heading);
   font-size: 24px;
@@ -1377,6 +1370,78 @@ select:focus {
 .weekly-day-meta {
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+/* 끼니 구분(아침/점심/저녁/간식) 섹션 — 저녁은 항상 펼침, 나머지는 메뉴가 있으면 자동으로
+   펼쳐지고 없으면 조용한 한 줄(.meal-section-collapsed)로 접혀 화면을 덜 차지한다. */
+.meal-section {
+  margin-bottom: 20px;
+}
+
+.meal-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.meal-section-title {
+  font-family: var(--font-heading);
+  font-size: 16px;
+}
+
+.meal-section-collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 8px 2px;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.meal-add-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.meal-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.meal-item-info {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .weekly-continuation-box {

@@ -604,19 +604,22 @@ $$;
 revoke all on function public.mark_pantry_cleaned(uuid) from public;
 grant execute on function public.mark_pantry_cleaned(uuid) to authenticated;
 
--- ---- meal_plans (0022) — 주간 일정(저녁 메뉴 계획) -------------------------------------------
--- household 공유. 지금은 저녁 한 끼만 관리(아침/점심 구분 없음) — 나중에 meal_type을 추가할 수
--- 있게 (household_id, date) 유니크로 하루 한 행만 허용한다.
+-- ---- meal_plans (0022, 0026) — 주간 일정(끼니별 메뉴 계획) ------------------------------------
+-- household 공유. meal_type(아침/점심/저녁/간식, 기본 dinner)과 sort_order(같은 끼니 안에서의
+-- 순서)를 0026에서 추가 — 같은 (household_id, date, meal_type)에도 여러 행이 들어갈 수 있어
+-- (한 끼에 여러 메뉴) 유니크 제약을 두지 않는다.
 create table public.meal_plans (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   date date not null,
   recipe_id uuid not null references public.recipes(id) on delete cascade,
   created_at timestamptz not null default now(),
-  unique (household_id, date)
+  meal_type text not null default 'dinner' check (meal_type in ('breakfast', 'lunch', 'dinner', 'snack')),
+  sort_order integer not null default 0
 );
 
 create index meal_plans_household_id_idx on public.meal_plans (household_id);
+create index meal_plans_date_mealtype_idx on public.meal_plans (household_id, date, meal_type);
 
 alter table public.meal_plans enable row level security;
 

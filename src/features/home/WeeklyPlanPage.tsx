@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   useRecipes,
   useIngredientsById,
@@ -7,11 +7,17 @@ import {
   getCurrentHouseholdId,
 } from '../../data/store';
 import { useStoredImage } from '../../data/imageStore';
-import { fetchMealPlans, setMealPlan } from '../../data/mealPlans';
+import {
+  fetchMealPlans,
+  addMealPlan,
+  updateMealPlanRecipe,
+  removeMealPlan,
+  MEAL_TYPES,
+  MEAL_TYPE_LABEL,
+} from '../../data/mealPlans';
 import {
   getCurrentWeekDates,
   formatWeekdayShort,
-  formatWeekdayLong,
   formatDayOfMonth,
   todayDateString,
 } from '../../lib/weekDates';
@@ -19,36 +25,45 @@ import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { RecipeDetailPage } from '../recipes/RecipeDetailPage';
 import { RecipeEditor } from '../recipes/RecipeEditor';
-import type { Ingredient, MealPlan, Recipe } from '../../data/types';
+import type { Ingredient, MealPlan, MealType, Recipe } from '../../data/types';
 
 type View = { screen: 'week' } | { screen: 'detail'; recipeId: string } | { screen: 'edit'; recipeId: string };
 
+/** "+ 메뉴 정하기"(신규)와 "바꾸기"(기존 메뉴 레시피 교체)가 같은 선택 모달을 공유한다 —
+ * replaceId가 있으면 교체, 없으면 새 메뉴 추가. */
+type PickerContext = { mealType: MealType; replaceId?: string };
+
 const WEEK_DATES = getCurrentWeekDates();
 
-function findRecipeIngredient(recipe: Recipe | undefined, ingredientId: string) {
-  return recipe?.ingredients.find((i) => i.ingredientId === ingredientId);
+function collectIngredientIds(recipeList: Recipe[]): Set<string> {
+  const ids = new Set<string>();
+  for (const recipe of recipeList) {
+    for (const item of recipe.ingredients) ids.add(item.ingredientId);
+  }
+  return ids;
 }
 
-/** 두 레시피가 같이 쓰는 재료 이름 목록(중복 제거) — "이어 쓰기" 안내의 재료 겹침 판단 근거. */
-function sharedIngredientNames(a: Recipe | undefined, b: Recipe | undefined, ingredientsById: Map<string, Ingredient>) {
-  if (!a || !b) return [];
-  const bIds = new Set(b.ingredients.map((i) => i.ingredientId));
-  const names = new Set<string>();
-  for (const item of a.ingredients) {
-    if (bIds.has(item.ingredientId)) {
-      const name = ingredientsById.get(item.ingredientId)?.name;
-      if (name) names.add(name);
-    }
+/** 두 날의 레시피 목록이 같이 쓰는 재료 id(중복 제거) — "이어 쓰기" 안내의 재료 겹침 판단 근거.
+ * 끼니 구분 없이 그 날 전체 메뉴의 재료를 합쳐서 비교한다. */
+function sharedIngredientIds(aList: Recipe[], bList: Recipe[]): Set<string> {
+  const aIds = collectIngredientIds(aList);
+  const bIds = collectIngredientIds(bList);
+  const shared = new Set<string>();
+  for (const id of aIds) {
+    if (bIds.has(id)) shared.add(id);
   }
-  return Array.from(names);
+  return shared;
 }
 
 export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
   const [view, setView] = useState<View>({ screen: 'week' });
   const [selectedDate, setSelectedDate] = useState(todayDateString());
-  const [plans, setPlans] = useState<Map<string, MealPlan>>(new Map());
-  const [showPicker, setShowPicker] = useState(false);
+  const [plans, setPlans] = useState<Map<string, MealPlan[]>>(new Map());
+  const [pickerContext, setPickerContext] = useState<PickerContext | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
+  // 끼니 섹션 펼침 상태는 저장하지 않고(2번 요구사항), 이 화면에 머무는 동안만 사용자가 직접
+  // 펼친 끼니를 기억한다 — 날짜를 바꾸면 초기화된다(아래 useEffect).
+  const [manuallyExpanded, setManuallyExpanded] = useState<Set<MealType>>(new Set());
 
   const householdId = getCurrentHouseholdId();
   const { recipes } = useRecipes();
@@ -70,17 +85,32 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [householdId]);
 
-  function recipeForDate(date: string): Recipe | undefined {
-    const plan = plans.get(date);
-    return plan ? recipes.find((r) => r.id === plan.recipeId) : undefined;
+  useEffect(() => {
+    setManuallyExpanded(new Set());
+  }, [selectedDate]);
+
+  function recipeById(id: string): Recipe | undefined {
+    return recipes.find((r) => r.id === id);
+  }
+
+  function dayRecipes(date: string): Recipe[] {
+    const dayPlans = plans.get(date) ?? [];
+    return dayPlans.map((p) => recipeById(p.recipeId)).filter((r): r is Recipe => r !== undefined);
   }
 
   async function handlePickRecipe(recipeId: string) {
-    if (!householdId) return;
+    if (!householdId || !pickerContext) return;
     setAssignError(null);
     try {
-      await setMealPlan(householdId, selectedDate, recipeId);
-      setShowPicker(false);
+      if (pickerContext.replaceId) {
+        await updateMealPlanRecipe(pickerContext.replaceId, recipeId);
+      } else {
+        const existingCount = (plans.get(selectedDate) ?? []).filter(
+          (p) => p.mealType === pickerContext.mealType,
+        ).length;
+        await addMealPlan(householdId, selectedDate, pickerContext.mealType, recipeId, existingCount);
+      }
+      setPickerContext(null);
       await refresh();
     } catch (err) {
       console.error('일정 배치 실패:', err);
@@ -88,49 +118,74 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
     }
   }
 
+  async function handleRemovePlan(id: string) {
+    if (!confirm('이 메뉴를 뺄까요?')) return;
+    try {
+      await removeMealPlan(id);
+      await refresh();
+    } catch (err) {
+      console.error('메뉴 삭제 실패:', err);
+      alert(getErrorMessage(err, '메뉴를 빼지 못했어요.'));
+    }
+  }
+
   const today = todayDateString();
   const selectedIndex = WEEK_DATES.indexOf(selectedDate);
-  const selectedRecipe = recipeForDate(selectedDate);
-  const plannedCount = plans.size;
+  const selectedDayPlans = plans.get(selectedDate) ?? [];
+  const totalPlannedCount = Array.from(plans.values()).reduce((sum, list) => sum + list.length, 0);
+
+  const dailyNutritionTotal = useMemo(() => {
+    return dayRecipes(selectedDate).reduce(
+      (sum, recipe) => sum + (recipe.nutrition ? recipe.nutrition.calories * recipe.servingsBase : 0),
+      0,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, plans, recipes]);
 
   // 아래 조건부 return(view.screen !== 'week')보다 반드시 위에 있어야 한다 — 훅은 매 렌더
   // 동일한 순서로 호출돼야 하는데, 조건부 return 뒤에 두면 view가 바뀔 때 호출 순서가 달라져
   // "Rules of Hooks" 위반이 된다.
-  const coverImageId = selectedRecipe?.finalImageId ?? selectedRecipe?.steps.find((s) => s.imageId)?.imageId;
-  const coverImageUrl = useStoredImage(coverImageId);
-
   const continuationMessage = useMemo(() => {
-    if (!selectedRecipe) return null;
-    const prevDate = selectedIndex > 0 ? WEEK_DATES[selectedIndex - 1] : null;
-    const nextDate = selectedIndex < WEEK_DATES.length - 1 ? WEEK_DATES[selectedIndex + 1] : null;
-    const prevRecipe = prevDate ? recipeForDate(prevDate) : undefined;
-    const nextRecipe = nextDate ? recipeForDate(nextDate) : undefined;
-    const shared = Array.from(
-      new Set([
-        ...sharedIngredientNames(selectedRecipe, prevRecipe, ingredientsById),
-        ...sharedIngredientNames(selectedRecipe, nextRecipe, ingredientsById),
-      ]),
-    );
-    if (shared.length === 0) return '이 날 재료는 앞뒤 요일과 겹치지 않아요.';
+    const todaysRecipes = dayRecipes(selectedDate);
+    if (todaysRecipes.length === 0) return null;
+    const prevRecipes = selectedIndex > 0 ? dayRecipes(WEEK_DATES[selectedIndex - 1]) : [];
+    const nextRecipes = selectedIndex < WEEK_DATES.length - 1 ? dayRecipes(WEEK_DATES[selectedIndex + 1]) : [];
+    const sharedIds = new Set([
+      ...sharedIngredientIds(todaysRecipes, prevRecipes),
+      ...sharedIngredientIds(todaysRecipes, nextRecipes),
+    ]);
+    if (sharedIds.size === 0) return '이 날 재료는 앞뒤 요일과 겹치지 않아요.';
 
     // 겹치는 재료 중 유통기한이 임박/경과한 게 있으면 그걸 우선 안내
-    for (const name of shared) {
-      const ingredientId = selectedRecipe.ingredients.find((i) => ingredientsById.get(i.ingredientId)?.name === name)
-        ?.ingredientId;
-      const info = ingredientId ? getExpirationInfo(ingredientsById.get(ingredientId)?.expirationDate) : null;
+    for (const id of sharedIds) {
+      const info = getExpirationInfo(ingredientsById.get(id)?.expirationDate);
       if (info) {
+        const name = ingredientsById.get(id)?.name;
         return `${name}을(를) 앞뒤 요일과 같이 써요. ${formatExpirationBadge(info)}예요.`;
       }
     }
-    return `${shared.join(', ')}을(를) 앞뒤 요일과 같이 써요.`;
+    const names = Array.from(sharedIds)
+      .map((id) => ingredientsById.get(id)?.name)
+      .filter((name): name is string => Boolean(name));
+    return `${names.join(', ')}을(를) 앞뒤 요일과 같이 써요.`;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRecipe, selectedIndex, plans, ingredientsById]);
+  }, [selectedDate, selectedIndex, plans, recipes, ingredientsById]);
 
-  const neededIngredients = selectedRecipe
-    ? Array.from(new Set(selectedRecipe.ingredients.map((i) => i.ingredientId)))
-        .map((id) => ingredientsById.get(id))
-        .filter((ing): ing is Ingredient => ing !== undefined && !ing.owned)
-    : [];
+  const neededIngredients = useMemo(() => {
+    const ids = collectIngredientIds(dayRecipes(selectedDate));
+    return Array.from(ids)
+      .map((id) => ingredientsById.get(id))
+      .filter((ing): ing is Ingredient => ing !== undefined && !ing.owned);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, plans, recipes, ingredientsById]);
+
+  function findRecipeIngredient(recipeList: Recipe[], ingredientId: string) {
+    for (const recipe of recipeList) {
+      const item = recipe.ingredients.find((i) => i.ingredientId === ingredientId);
+      if (item) return item;
+    }
+    return undefined;
+  }
 
   if (view.screen === 'detail') {
     return (
@@ -152,12 +207,12 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
       </button>
       <h1 style={{ marginBottom: 2 }}>주간 일정</h1>
       <p className="text-muted" style={{ marginBottom: 20 }}>
-        {formatDayOfMonth(WEEK_DATES[0])}일 – {formatDayOfMonth(WEEK_DATES[6])}일 · {plannedCount}끼 계획됨
+        {formatDayOfMonth(WEEK_DATES[0])}일 – {formatDayOfMonth(WEEK_DATES[6])}일 · 메뉴 {totalPlannedCount}개 계획됨
       </p>
 
       <div className="week-day-strip">
         {WEEK_DATES.map((date) => {
-          const hasPlan = plans.has(date);
+          const hasPlan = (plans.get(date)?.length ?? 0) > 0;
           const isSelected = date === selectedDate;
           return (
             <button
@@ -174,49 +229,46 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
         })}
       </div>
 
-      <div className="weekly-day-card">
-        <div className="weekly-day-image">
-          {selectedRecipe ? (
-            coverImageUrl ? (
-              <img src={coverImageUrl} alt="" />
-            ) : (
-              <span className="weekly-day-image-placeholder">🍽️</span>
-            )
-          ) : null}
-        </div>
-        <div className="weekly-day-body">
-          <div className="weekly-day-kicker">{formatWeekdayLong(selectedDate)} 저녁</div>
-          <div className="weekly-day-title">{selectedRecipe ? selectedRecipe.name : '아직 정하지 않았어요'}</div>
-          <div className="weekly-day-meta">
-            {selectedRecipe ? (
-              <>
-                {selectedRecipe.estimatedMinutes != null && `${selectedRecipe.estimatedMinutes}분 · `}
-                {selectedRecipe.servingsBase}인분{selectedDate === today ? ' · 오늘' : ''}
-                {selectedRecipe.nutrition &&
-                  ` · 이 날 합계 약 ${Math.round(selectedRecipe.nutrition.calories * selectedRecipe.servingsBase)}kcal`}
-              </>
-            ) : (
-              '냉장고 재료로 만들 레시피를 골라보세요'
-            )}
-          </div>
-          <div className="row" style={{ justifyContent: 'flex-start', gap: 8, marginTop: 12 }}>
-            {selectedRecipe ? (
-              <>
-                <button className="btn primary" onClick={() => setView({ screen: 'detail', recipeId: selectedRecipe.id })}>
-                  레시피 보기
-                </button>
-                <button className="btn" onClick={() => setShowPicker(true)}>
-                  바꾸기
-                </button>
-              </>
-            ) : (
-              <button className="btn primary" onClick={() => setShowPicker(true)}>
-                메뉴 정하기
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      {dailyNutritionTotal > 0 && (
+        <p className="text-muted" style={{ marginTop: -12, marginBottom: 16 }}>
+          이 날 합계 약 {Math.round(dailyNutritionTotal)}kcal
+        </p>
+      )}
+
+      {MEAL_TYPES.map((mealType) => {
+        const items = selectedDayPlans.filter((p) => p.mealType === mealType);
+        const isAlwaysExpanded = mealType === 'dinner';
+        const isExpanded = isAlwaysExpanded || items.length > 0 || manuallyExpanded.has(mealType);
+        return (
+          <MealTypeSection
+            key={mealType}
+            mealType={mealType}
+            items={items}
+            recipeById={recipeById}
+            expanded={isExpanded}
+            collapsible={!isAlwaysExpanded}
+            isToday={selectedDate === today}
+            onExpand={() =>
+              setManuallyExpanded((prev) => {
+                const next = new Set(prev);
+                next.add(mealType);
+                return next;
+              })
+            }
+            onCollapse={() =>
+              setManuallyExpanded((prev) => {
+                const next = new Set(prev);
+                next.delete(mealType);
+                return next;
+              })
+            }
+            onAdd={() => setPickerContext({ mealType })}
+            onReplace={(planId) => setPickerContext({ mealType, replaceId: planId })}
+            onRemove={handleRemovePlan}
+            onViewRecipe={(recipeId) => setView({ screen: 'detail', recipeId })}
+          />
+        );
+      })}
 
       <div className="weekly-continuation-box">
         <div className="weekly-continuation-kicker">이어 쓰기</div>
@@ -224,12 +276,12 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="section-title">이 날 살 것</div>
-      {!selectedRecipe && <p className="empty-hint">레시피를 먼저 배치해주세요.</p>}
-      {selectedRecipe && neededIngredients.length === 0 && (
+      {selectedDayPlans.length === 0 && <p className="empty-hint">레시피를 먼저 배치해주세요.</p>}
+      {selectedDayPlans.length > 0 && neededIngredients.length === 0 && (
         <p className="empty-hint">이 날은 냉장고 재료로 다 됩니다.</p>
       )}
       {neededIngredients.map((ingredient) => {
-        const item = findRecipeIngredient(selectedRecipe, ingredient.id);
+        const item = findRecipeIngredient(dayRecipes(selectedDate), ingredient.id);
         const owned = pantryStatus[ingredient.id] ?? false;
         return (
           <label className="weekly-buy-row" key={ingredient.id}>
@@ -252,24 +304,192 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
         );
       })}
 
-      {showPicker && (
+      {pickerContext && (
         <MealPlanRecipePicker
+          title={pickerContext.replaceId ? `${MEAL_TYPE_LABEL[pickerContext.mealType]} 메뉴 바꾸기` : `${MEAL_TYPE_LABEL[pickerContext.mealType]} 메뉴 정하기`}
           recipes={recipes}
           error={assignError}
           onPick={handlePickRecipe}
-          onClose={() => setShowPicker(false)}
+          onClose={() => setPickerContext(null)}
         />
       )}
     </div>
   );
 }
 
+function MealTypeSection({
+  mealType,
+  items,
+  recipeById,
+  expanded,
+  collapsible,
+  isToday,
+  onExpand,
+  onCollapse,
+  onAdd,
+  onReplace,
+  onRemove,
+  onViewRecipe,
+}: {
+  mealType: MealType;
+  items: MealPlan[];
+  recipeById: (id: string) => Recipe | undefined;
+  expanded: boolean;
+  collapsible: boolean;
+  isToday: boolean;
+  onExpand: () => void;
+  onCollapse: () => void;
+  onAdd: () => void;
+  onReplace: (planId: string) => void;
+  onRemove: (planId: string) => void;
+  onViewRecipe: (recipeId: string) => void;
+}) {
+  // 메뉴가 없는 끼니는 접힘이 기본값(2번 요구사항) — 제목+화살표만 있는 조용한 한 줄로, 탭하면
+  // 펼쳐진다. 저녁은 항상 펼쳐져 있어 이 분기를 타지 않는다.
+  if (collapsible && !expanded) {
+    return (
+      <button type="button" className="meal-section-collapsed" onClick={onExpand}>
+        <span>{MEAL_TYPE_LABEL[mealType]}</span>
+        <ChevronRight size={14} strokeWidth={2.75} />
+      </button>
+    );
+  }
+
+  return (
+    <div className="meal-section">
+      <div className="meal-section-head">
+        <span className="meal-section-title">{MEAL_TYPE_LABEL[mealType]}</span>
+        {collapsible && items.length === 0 && (
+          <button type="button" className="home-link" onClick={onCollapse}>
+            접기
+          </button>
+        )}
+      </div>
+
+      {items.length === 0 ? (
+        <button type="button" className="meal-add-box" onClick={onAdd}>
+          + 메뉴 정하기
+        </button>
+      ) : (
+        <>
+          {items.map((item, index) => {
+            const recipe = recipeById(item.recipeId);
+            const isBigCard = mealType === 'dinner' && index === 0;
+            return isBigCard ? (
+              <BigMealCard
+                key={item.id}
+                recipe={recipe}
+                isToday={isToday}
+                onView={() => onViewRecipe(item.recipeId)}
+                onReplace={() => onReplace(item.id)}
+                onRemove={() => onRemove(item.id)}
+              />
+            ) : (
+              <SmallMealRow
+                key={item.id}
+                recipe={recipe}
+                onView={() => onViewRecipe(item.recipeId)}
+                onReplace={() => onReplace(item.id)}
+                onRemove={() => onRemove(item.id)}
+              />
+            );
+          })}
+          <button type="button" className="btn small" onClick={onAdd}>
+            + 메뉴 추가
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BigMealCard({
+  recipe,
+  isToday,
+  onView,
+  onReplace,
+  onRemove,
+}: {
+  recipe: Recipe | undefined;
+  isToday: boolean;
+  onView: () => void;
+  onReplace: () => void;
+  onRemove: () => void;
+}) {
+  const coverImageId = recipe?.finalImageId ?? recipe?.steps.find((s) => s.imageId)?.imageId;
+  const coverImageUrl = useStoredImage(coverImageId);
+
+  return (
+    <div className="weekly-day-card">
+      <div className="weekly-day-image">
+        {coverImageUrl ? (
+          <img src={coverImageUrl} alt="" />
+        ) : (
+          <span className="weekly-day-image-placeholder">🍽️</span>
+        )}
+      </div>
+      <div className="weekly-day-body">
+        <div className="weekly-day-title">{recipe?.name ?? '(삭제된 레시피)'}</div>
+        <div className="weekly-day-meta">
+          {recipe?.estimatedMinutes != null && `${recipe.estimatedMinutes}분 · `}
+          {recipe?.servingsBase}인분{isToday ? ' · 오늘' : ''}
+        </div>
+        <div className="row" style={{ justifyContent: 'flex-start', gap: 8, marginTop: 12 }}>
+          <button className="btn primary" onClick={onView}>
+            레시피 보기
+          </button>
+          <button className="btn" onClick={onReplace}>
+            바꾸기
+          </button>
+          <button className="btn danger" onClick={onRemove}>
+            빼기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SmallMealRow({
+  recipe,
+  onView,
+  onReplace,
+  onRemove,
+}: {
+  recipe: Recipe | undefined;
+  onView: () => void;
+  onReplace: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="meal-item-row">
+      <button type="button" className="meal-item-info" onClick={onView}>
+        <strong>{recipe?.name ?? '(삭제된 레시피)'}</strong>
+        <span className="text-muted" style={{ fontSize: 12 }}>
+          {recipe?.estimatedMinutes != null && `${recipe.estimatedMinutes}분 · `}
+          {recipe?.servingsBase}인분
+        </span>
+      </button>
+      <div className="row" style={{ gap: 4, flexShrink: 0 }}>
+        <button className="btn small" onClick={onReplace}>
+          바꾸기
+        </button>
+        <button className="btn small danger" onClick={onRemove}>
+          빼기
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MealPlanRecipePicker({
+  title,
   recipes,
   error,
   onPick,
   onClose,
 }: {
+  title: string;
   recipes: Recipe[];
   error: string | null;
   onPick: (recipeId: string) => void;
@@ -283,7 +503,7 @@ function MealPlanRecipePicker({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-        <h2>메뉴 정하기</h2>
+        <h2>{title}</h2>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}

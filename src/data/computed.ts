@@ -1,4 +1,5 @@
 import type { Ingredient, Recipe } from './types';
+import { isPantryUsable } from '../lib/pantryAvailability';
 
 /** 레시피가 사용하는 재료들의 allergens를 모아 중복 제거한 값을 계산한다. */
 export function computeRecipeAllergens(
@@ -33,9 +34,10 @@ export function computeTotalCookMinutes(recipe: Recipe): number {
   return Math.round(totalSeconds / 60);
 }
 
-/** 레시피가 쓰는 재료 전부가 owned=true인지 — "🧺 보유 재료로 가능" 필터/배너(RecipesPage,
- * IngredientsPage)가 공유하는 판단 기준. 재료가 하나도 없는 레시피는 대상에서 제외한다. */
+/** 레시피가 쓰는 재료 전부가 usable(보유 + 유통기한 안 지남)인지 — "🧺 보유 재료로 가능"
+ * 필터/배너(RecipesPage, IngredientsPage)가 공유하는 판단 기준. 유통기한이 지나 확인이 필요한
+ * 재료(expired_unconfirmed)는 있다고 치지 않는다. 재료가 하나도 없는 레시피는 대상에서 제외한다. */
 export function isRecipeMakeableWithPantry(recipe: Recipe, ingredientsById: Map<string, Ingredient>): boolean {
   if (recipe.ingredients.length === 0) return false;
-  return recipe.ingredients.every((item) => ingredientsById.get(item.ingredientId)?.owned === true);
+  return recipe.ingredients.every((item) => isPantryUsable(ingredientsById.get(item.ingredientId)));
 }

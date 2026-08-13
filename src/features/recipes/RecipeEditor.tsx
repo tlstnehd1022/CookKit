@@ -139,6 +139,9 @@ export function RecipeEditor({
         preferredUnit: ingredient.preferredUnit,
         preferredMethod: ingredient.preferredMethod,
       })),
+    allergenIngredients: ingredients
+      .filter((ingredient) => ingredient.allergens.length > 0)
+      .map((ingredient) => ({ name: ingredient.name, allergens: ingredient.allergens })),
   };
 
   const currentRecipeSnapshot: RecipeSnapshot = {

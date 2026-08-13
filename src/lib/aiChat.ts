@@ -17,12 +17,19 @@ export interface IngredientPreference {
   preferredMethod?: string;
 }
 
+export interface AllergenIngredient {
+  name: string;
+  allergens: string[];
+}
+
 export interface ExistingContext {
   tags: string[];
   categories: string[];
   ingredients: string[];
   /** preferredUnit/preferredMethod 중 하나라도 설정된 재료만 담김 — 프롬프트에 참고 정보로 전달 */
   ingredientPreferences?: IngredientPreference[];
+  /** allergens가 하나라도 등록된 재료만 담김 — AI가 레시피 제안 전에 확인 질문을 할지 판단하는 근거 */
+  allergenIngredients?: AllergenIngredient[];
 }
 
 export const RECIPE_CHAT_SYSTEM_PROMPT =
@@ -44,7 +51,12 @@ export const RECIPE_CHAT_SYSTEM_PROMPT =
   '단계에 억지로 채우지 마세요).\n' +
   '- 사용자가 "지금 있는 재료는 ~야, 이걸로 뭘 만들 수 있을까?"처럼 보유 재료 목록을 주면, 그 재료를 ' +
   '최대한 활용하는 레시피를 제안하세요. 소금·기름·물처럼 흔한 기본 재료는 당연히 있다고 가정해도 되지만, ' +
-  '목록에 없는 주재료가 꼭 필요하면 숨기지 말고 "~는 없어서 사야 할 수도 있어요" 정도로 짧게 언급하세요.\n\n' +
+  '목록에 없는 주재료가 꼭 필요하면 숨기지 말고 "~는 없어서 사야 할 수도 있어요" 정도로 짧게 언급하세요.\n' +
+  '- [알러지 주의]로 전달된 재료가 있으면 눈여겨보세요. 지금 만들려는 레시피에 그중 하나가 실제로 ' +
+  '필요해질 것 같으면(사용자가 직접 그 재료를 요청한 경우 포함) propose_recipe를 바로 호출하지 말고 ' +
+  '먼저 짧게 확인하세요(예: "마늘 알러지가 등록되어 있는데, 마늘 없이 만들까요 아니면 그래도 넣을까요?"). ' +
+  '레시피와 무관한 알러지 재료는 언급하지 마세요. 이 대화에서 이미 답이 정해졌다면(예: 앞서 "마늘 빼줘"라고 ' +
+  '했다면) 같은 걸 다시 묻지 말고 그 결정을 반영해서 진행하세요.\n\n' +
   '[대화 방식 예시]\n' +
   '사용자: "김치찌개 만들고 싶어, 돼지고기 넣고"\n' +
   '나쁜 예(하지 말 것): "돼지고기는 앞다리살인가요 삼겹살인가요? 두부는 넣으시나요? 김치는 얼마나 ' +
@@ -101,6 +113,12 @@ export function buildExistingContextNote(context: ExistingContext): string {
           .join('\n')
       : null;
 
+  const allergenIngredients = context.allergenIngredients ?? [];
+  const allergenText =
+    allergenIngredients.length > 0
+      ? allergenIngredients.map((a) => `${a.name} (${a.allergens.join(', ')})`).join(', ')
+      : null;
+
   return (
     `[참고 정보]\n` +
     `이미 등록된 레시피 태그: ${tagsText}\n` +
@@ -113,6 +131,7 @@ export function buildExistingContextNote(context: ExistingContext): string {
       ? `\n\n[재료별 개인 선호]\n${preferencesText}\n` +
         `위 재료가 레시피에 들어갈 때는 가능하면 이 선호 단위/방식을 반영하세요(예: 선호 단위가 있으면 그 ` +
         `단위로 수량을 표기, 메모가 있으면 조리순서에서 그 방식을 사용).`
-      : '')
+      : '') +
+    (allergenText ? `\n\n[알러지 주의]\n${allergenText}` : '')
   );
 }

@@ -33,7 +33,16 @@ import {
   updateImageGenerationProgress,
 } from '../../data/imageGenerationStatus';
 
-export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: () => void }) {
+export function RecipeEditor({
+  recipeId,
+  onDone,
+  initialChatPrompt,
+}: {
+  recipeId?: string;
+  onDone: () => void;
+  /** 홈 "있는 재료로 만들기"처럼 바로 대화를 시작시키고 싶을 때 첫 메시지를 미리 지정 */
+  initialChatPrompt?: string;
+}) {
   const { recipes, saveRecipe } = useRecipes();
   const { ingredients, saveIngredient } = useIngredients();
   const { categories, saveCategory } = useCategories();
@@ -790,11 +799,11 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         <h1 style={{ margin: 0 }}>{existing ? '레시피 수정' : '레시피 추가'}</h1>
       </div>
 
-      <div className="section-title">AI로 레시피 만들기/수정하기</div>
       <RecipeChatPanel
         onApply={applyExtractedResult}
         existingContext={existingContext}
         currentRecipe={currentRecipeSnapshot}
+        autoSendText={initialChatPrompt}
       />
       {undoStack.length > 0 && (
         <button className="btn small" style={{ marginBottom: 12 }} onClick={undoLastApply}>
@@ -805,20 +814,27 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
       <div className="section-title">또는 유튜브 링크로 변환</div>
       <div className="card">
         <p className="text-muted" style={{ marginBottom: 8 }}>
-          영상 자막을 자동으로 가져와 분석해요(한국어 자막 우선, 없으면 영어, 그래도 없으면 자동생성 자막
-          순으로 시도). 자막이 아예 없는 영상은 서버에 설정된 경우 AI 음성 인식으로 한 번 더 시도하고, 그마저
-          안 되면 위쪽 대화창에서 텍스트로 직접 설명해서 만들어주세요.
+          링크만 넣으면 자막을 읽고 레시피로 정리해요.
         </p>
-        <div className="field">
-          <label>유튜브 링크</label>
-          <input
-            value={youtubeUrl}
-            onChange={(e) => setYoutubeUrl(e.target.value)}
-            placeholder="https://www.youtube.com/watch?v=..."
-          />
+        <div className="row" style={{ gap: 6, alignItems: 'flex-end' }}>
+          <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+            <label>유튜브 링크</label>
+            <input
+              value={youtubeUrl}
+              onChange={(e) => setYoutubeUrl(e.target.value)}
+              placeholder="https://www.youtube.com/watch?v=..."
+            />
+          </div>
+          <button className="btn primary" onClick={runYoutubeConversion} disabled={aiLoading}>
+            {aiLoading
+              ? youtubeStage === 'extracting'
+                ? '자막 추출 중...'
+                : '레시피 분석 중...'
+              : '유튜브 변환'}
+          </button>
         </div>
         {isGemini && (
-          <div className="field">
+          <div className="field" style={{ marginTop: 8 }}>
             <label>영상 자막/설명 직접 붙여넣기 (선택, 자동 추출 실패 시 대체용)</label>
             <textarea
               rows={4}
@@ -828,13 +844,6 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
             />
           </div>
         )}
-        <button className="btn" onClick={runYoutubeConversion} disabled={aiLoading}>
-          {aiLoading
-            ? youtubeStage === 'extracting'
-              ? '자막 추출 중...'
-              : '레시피 분석 중...'
-            : '유튜브에서 변환'}
-        </button>
 
         {pendingYoutubeResult && (
           <div className="card" style={{ background: 'var(--chip-bg)', marginTop: 8 }}>
@@ -887,6 +896,13 @@ export function RecipeEditor({ recipeId, onDone }: { recipeId?: string; onDone: 
         )}
         {aiWarning && <p className="text-muted" style={{ marginTop: 8 }}>⚠️ {aiWarning}</p>}
       </div>
+
+      <div className="recipe-editor-divider">
+        <h2>✏️ 레시피 내용</h2>
+      </div>
+      <p className="text-muted" style={{ marginTop: -2, marginBottom: 4 }}>
+        여기부터 실제로 저장되는 내용이에요. 위에서 AI로 채웠다면 한 번 확인해주세요.
+      </p>
 
       <div className="section-title">기본 정보</div>
       <div className="field">

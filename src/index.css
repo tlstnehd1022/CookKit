@@ -946,6 +946,20 @@ select:focus {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23c0b6a5' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
 }
 
+/* 레시피 편집 화면 — AI 도구(대화/유튜브 변환) 영역과 실제 저장되는 폼 영역의 경계를
+   .section-title보다 눈에 띄게 표시한다("기본 정보"부터가 진짜 레시피 내용이라는 걸 알려주기 위함). */
+.recipe-editor-divider {
+  border-top: 2px solid var(--border);
+  padding-top: 20px;
+  margin: 28px 0 4px;
+}
+
+.recipe-editor-divider h2 {
+  margin: 0;
+  font-size: 17px;
+  color: var(--accent);
+}
+
 .section-title {
   font-size: 13px;
   font-weight: 600;

@@ -12,10 +12,14 @@ export function RecipeChatPanel({
   onApply,
   existingContext,
   currentRecipe,
+  autoSendText,
 }: {
   onApply: (result: ExtractedRecipe) => Promise<void>;
   existingContext: ExistingContext;
   currentRecipe: RecipeSnapshot;
+  /** 홈 화면 "있는 재료로 만들기" 같은 진입점에서, 채팅을 열자마자 이 텍스트를 첫 사용자 메시지로
+   * 자동 전송한다. */
+  autoSendText?: string;
 }) {
   const { settings } = useSettings();
   const isGemini = settings.aiProvider === 'gemini';
@@ -34,6 +38,16 @@ export function RecipeChatPanel({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, loading]);
+
+  // 마운트 시 한 번만 자동 전송(ref로 StrictMode 이중 실행 방지) — send()는 함수 선언이라
+  // 호이스팅되므로 아래에서 정의돼도 여기서 참조 가능.
+  const autoSentRef = useRef(false);
+  useEffect(() => {
+    if (!autoSendText || autoSentRef.current) return;
+    autoSentRef.current = true;
+    send(autoSendText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const PRESET_REQUESTS = [
     { label: '더 맵게', text: '이 레시피를 더 맵게 수정해줘' },
@@ -108,11 +122,7 @@ export function RecipeChatPanel({
     <div className="card">
       <h2 style={{ fontSize: 14, marginBottom: 4 }}>💬 대화로 레시피 만들기/수정하기</h2>
       <p className="text-muted" style={{ marginBottom: 8 }}>
-        처음 만드는 레시피든 이미 채워진 초안을 고치는 것이든 여기서 대화로 하시면 돼요. 애매한 부분(예:
-        재료를 사서 쓰는지 직접 만드는지)은 먼저 물어볼 수 있고, 태그·재료 카테고리도 기존 목록 중에서
-        알아서 골라 반영해요(마땅한 게 없으면 새로 만들고 알려드려요). AI가 변경안을 제안하면 바로 반영되지
-        않고 아래에서 확인 후 반영할 수 있어요. "웹 검색"을 켜면 실제 표준 레시피를 찾아보고 참고합니다
-        (조금 느려짐, 기본은 학습된 일반 지식으로만 답함).
+        만들고 싶거나 고치고 싶은 걸 편하게 말해보세요. 반영 전에 항상 미리 보여드려요.
       </p>
 
       {(currentRecipe.name.trim() || currentRecipe.ingredients.length > 0) && (

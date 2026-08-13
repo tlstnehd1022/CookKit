@@ -16,6 +16,7 @@ import { requestMaxMinutesFilter } from '../../data/recipeTimeFilterRequest';
 import { useProfileSheetRequested, clearProfileSheetRequest } from '../../data/profileSheet';
 import { useNotifications } from '../../data/notifications';
 import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
+import { isPantryUsable } from '../../lib/pantryAvailability';
 import { pickTodayRecommendation, pickBestRecipeUsingIngredient } from '../../lib/recipeRecommendation';
 import { fetchMealPlans } from '../../data/mealPlans';
 import { pickNextMealPlan } from '../../lib/mealTime';
@@ -39,7 +40,7 @@ import type { MealPlan, Recipe } from '../../data/types';
 type View =
   | { screen: 'feed' }
   | { screen: 'detail'; recipeId: string; autoCook?: boolean; initialServings?: number }
-  | { screen: 'edit'; recipeId: string }
+  | { screen: 'edit'; recipeId?: string; initialChatPrompt?: string }
   | { screen: 'weekly-plan' }
   | { screen: 'cooking-history' };
 
@@ -126,6 +127,8 @@ export function HomePage() {
   }, [householdId, activeTab, view.screen]);
 
   const ownedIngredients = useMemo(() => ingredients.filter((i) => i.owned), [ingredients]);
+  // "있는 재료로 만들기"용 — 유통기한 지나 확인이 필요한 재료는 제안 재료 목록에서 제외한다.
+  const usableIngredients = useMemo(() => ownedIngredients.filter((i) => isPantryUsable(i)), [ownedIngredients]);
 
   // A-1: 예상 조리시간이 짧은 순으로, 최소 3개 이상일 때만 섹션 노출(빈약해 보이지 않게)
   const quickRecipes = useMemo(() => {
@@ -208,7 +211,13 @@ export function HomePage() {
   }
 
   if (view.screen === 'edit') {
-    return <RecipeEditor recipeId={view.recipeId} onDone={() => setView({ screen: 'detail', recipeId: view.recipeId })} />;
+    return (
+      <RecipeEditor
+        recipeId={view.recipeId}
+        initialChatPrompt={view.initialChatPrompt}
+        onDone={() => setView(view.recipeId ? { screen: 'detail', recipeId: view.recipeId } : { screen: 'feed' })}
+      />
+    );
   }
 
   if (view.screen === 'weekly-plan') {
@@ -271,6 +280,21 @@ export function HomePage() {
               <span className="chip home-chip-more">+ {ownedIngredients.length - OWNED_CHIP_LIMIT}개 더</span>
             )}
           </div>
+        )}
+        {usableIngredients.length > 0 && (
+          <button
+            type="button"
+            className="btn primary"
+            style={{ width: '100%', marginTop: 10 }}
+            onClick={() =>
+              setView({
+                screen: 'edit',
+                initialChatPrompt: `지금 있는 재료는 ${usableIngredients.map((i) => i.name).join(', ')}이야. 이걸로 뭘 만들 수 있을까?`,
+              })
+            }
+          >
+            🍳 있는 재료로 만들기
+          </button>
         )}
       </div>
 

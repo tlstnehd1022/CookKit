@@ -14,8 +14,9 @@ export interface ApiKeyStatus {
 
 /**
  * 설정 화면에서 Anthropic/Gemini/YouTube API 키의 저장 여부(마스킹된 값)를 조회하고 새 키를
- * 저장한다. 실제 평문 키는 클라이언트에 전혀 내려오지 않음 — 저장은 api/save-api-key.ts, 조회는
- * api/get-api-key.ts(마스킹된 값만 반환)를 거친다. household.ts/profile.ts와 같은 패턴.
+ * 저장한다. 실제 평문 키는 클라이언트에 전혀 내려오지 않음 — GET/POST 둘 다 api/api-key.ts
+ * (마스킹된 값만 반환하는 조회 + Vault 저장을 method로 분기)를 거친다. household.ts/profile.ts와
+ * 같은 패턴.
  */
 export function useApiKeyStatus(provider: ApiKeyProvider) {
   const { user } = useSession();
@@ -40,7 +41,7 @@ export function useApiKeyStatus(provider: ApiKeyProvider) {
         setStatus(null);
         return;
       }
-      const res = await fetch(`/api/get-api-key?provider=${provider}`, {
+      const res = await fetch(`/api/api-key?provider=${provider}`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const data = await res.json().catch(() => null);
@@ -62,7 +63,7 @@ export function useApiKeyStatus(provider: ApiKeyProvider) {
       data: { session },
     } = await supabase.auth.getSession();
     if (!session) throw new Error('로그인이 필요합니다.');
-    const res = await fetch('/api/save-api-key', {
+    const res = await fetch('/api/api-key', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({ provider, apiKey }),

@@ -1,12 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser, AuthError } from './_lib/auth.js';
 import { getUserApiKey } from './_lib/apiKeyStore.js';
+import { extractRecipeFromTranscript } from '../src/lib/claudeClient.js';
 import { extractRecipeFromYoutubeMeta } from '../src/lib/geminiClient.js';
 
-// 유튜브 영상 제목/설명란(+자막) → 레시피 구조화(Gemini 전용). 영상 제목/설명란 자체는
-// YouTube Data API(settings.youtubeApiKey)로 클라이언트에서 이미 가져온 뒤 여기로 넘어옴 —
-// 이 키는 이번 Vault 전환 대상이 아님(민감도가 낮은 읽기 전용 공개 데이터 조회용이라 범위 밖으로
-// 남겨둠, CLAUDE.md 참고).
+// 유튜브 자막/메타 → 레시피 구조화 — 제공자별로 입력 형태가 달라(Claude는 자막 텍스트만,
+// Gemini는 영상 메타+자막) 하나의 함수로 합치지 않고 provider로 분기한다. 원래
+// ai-extract-transcript.ts(Claude)/ai-extract-youtube-meta.ts(Gemini) 두 함수였는데, Vercel
+// Hobby 플랜의 서버리스 함수 12개 제한 때문에 하나로 합침(api-key.ts 통합과 같은 이유).
 export const config = { maxDuration: 60 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -22,24 +23,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const user = await requireUser(req);
-    const { model, meta, manualTranscript, existing } = (req.body ?? {}) as {
+    const { provider, model, transcriptText, meta, manualTranscript, existing } = (req.body ?? {}) as {
+      provider?: unknown;
       model?: unknown;
+      transcriptText?: unknown;
       meta?: unknown;
       manualTranscript?: unknown;
       existing?: unknown;
     };
 
+    if (provider !== 'anthropic' && provider !== 'gemini') {
+      res.status(400).json({ error: 'invalid_provider', message: 'provider는 anthropic 또는 gemini여야 합니다.' });
+      return;
+    }
     if (typeof model !== 'string' || !model) {
       res.status(400).json({ error: 'invalid_model', message: '모델 ID가 필요합니다.' });
       return;
     }
 
-    const apiKey = await getUserApiKey(user.id, 'gemini');
+    const apiKey = await getUserApiKey(user.id, provider);
     if (!apiKey) {
       res.status(400).json({
         error: 'no_api_key',
-        message: 'Gemini API 키가 없어요. 설정 화면에서 먼저 등록해주세요.',
+        message: `${provider === 'gemini' ? 'Gemini' : 'Anthropic'} API 키가 없어요. 설정 화면에서 먼저 등록해주세요.`,
       });
+      return;
+    }
+
+    if (provider === 'anthropic') {
+      if (typeof transcriptText !== 'string' || !transcriptText.trim()) {
+        res.status(400).json({ error: 'invalid_transcript', message: '자막 텍스트가 필요합니다.' });
+        return;
+      }
+      const result = await extractRecipeFromTranscript(
+        apiKey,
+        model,
+        transcriptText,
+        existing as Parameters<typeof extractRecipeFromTranscript>[3],
+      );
+      res.status(200).json(result);
       return;
     }
 

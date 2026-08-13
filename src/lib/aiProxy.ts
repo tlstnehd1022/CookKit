@@ -68,12 +68,19 @@ export async function chatAboutRecipe(
   return callAiApi<ChatResult>('/api/ai-chat', { provider, model, history, useWebSearch, existing, currentRecipe });
 }
 
+// 원래 별도 엔드포인트(ai-extract-transcript.ts/ai-extract-youtube-meta.ts)였는데, Vercel Hobby
+// 플랜의 서버리스 함수 12개 제한 때문에 api/ai-extract-youtube.ts 하나로 합쳐 provider로 분기함.
 export async function extractRecipeFromTranscript(
   model: string,
   transcriptText: string,
   existing: ExistingContext,
 ): Promise<ExtractedRecipe> {
-  return callAiApi<ExtractedRecipe>('/api/ai-extract-transcript', { model, transcriptText, existing });
+  return callAiApi<ExtractedRecipe>('/api/ai-extract-youtube', {
+    provider: 'anthropic',
+    model,
+    transcriptText,
+    existing,
+  });
 }
 
 export async function extractRecipeFromYoutubeMeta(
@@ -82,7 +89,13 @@ export async function extractRecipeFromYoutubeMeta(
   manualTranscript: string,
   existing: ExistingContext,
 ): Promise<ExtractedRecipe> {
-  return callAiApi<ExtractedRecipe>('/api/ai-extract-youtube-meta', { model, meta, manualTranscript, existing });
+  return callAiApi<ExtractedRecipe>('/api/ai-extract-youtube', {
+    provider: 'gemini',
+    model,
+    meta,
+    manualTranscript,
+    existing,
+  });
 }
 
 export async function generateImage(model: string, prompt: string): Promise<string> {

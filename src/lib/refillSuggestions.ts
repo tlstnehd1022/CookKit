@@ -1,5 +1,6 @@
 import type { Ingredient } from '../data/types';
 import type { FillFrequencyInfo } from '../data/ingredientFillLog';
+import { isPantryUsable } from './pantryAvailability';
 
 // "최근 90일간 3회 이상 채워짐"을 자주 쓰는 재료로 보는 최소 기준 — 이력이 부족하면(3회 미만)
 // 판단 근거가 약해서 제안하지 않는다. 평소 재구매 간격(avgIntervalDays)의 1.5배가 지나도록 다시
@@ -14,7 +15,9 @@ export function computeRefillSuggestions(
 ): Ingredient[] {
   const now = Date.now();
   return ingredients.filter((ingredient) => {
-    if (ingredient.owned) return false;
+    // usable(보유 + 유통기한 안 지남)이면 제안하지 않음 — 유통기한이 지나 확인이 필요한 재료는
+    // 실질적으로 "없는" 상태에 가까우므로 usable이 아니면 계속 후보로 남긴다.
+    if (isPantryUsable(ingredient)) return false;
     if (!ingredient.lastFilledAt) return false;
     const freq = frequencies.get(ingredient.id);
     if (!freq || freq.count < FREQUENT_FILL_THRESHOLD || freq.avgIntervalDays == null) return false;

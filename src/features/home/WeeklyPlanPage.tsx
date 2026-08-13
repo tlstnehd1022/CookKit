@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import {
   useRecipes,
+  useIngredients,
   useIngredientsById,
   usePantryStatus,
   useTags,
@@ -29,10 +30,12 @@ import {
   todayDateString,
 } from '../../lib/weekDates';
 import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
+import { getPantryAvailability } from '../../lib/pantryAvailability';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { RecipeDetailPage } from '../recipes/RecipeDetailPage';
 import { RecipeEditor } from '../recipes/RecipeEditor';
 import { RecipeCard, RecipeListItem, resolveRecipeTagNames } from '../recipes/RecipesPage';
+import { ExpiredConfirmModal } from '../ingredients/IngredientsPage';
 import type { Ingredient, MealPlan, MealType, Recipe } from '../../data/types';
 
 type View =
@@ -72,6 +75,7 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
   const [plans, setPlans] = useState<Map<string, MealPlan[]>>(new Map());
   const [pickerContext, setPickerContext] = useState<PickerContext | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
+  const [expiredConfirmId, setExpiredConfirmId] = useState<string | null>(null);
   // 끼니 섹션 펼침 상태는 저장하지 않고(2번 요구사항), 이 화면에 머무는 동안만 사용자가 직접
   // 펼친 끼니를 기억한다 — 날짜를 바꾸면 초기화된다(아래 useEffect).
   const [manuallyExpanded, setManuallyExpanded] = useState<Set<MealType>>(new Set());
@@ -81,6 +85,7 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
   const { recipes } = useRecipes();
   const ingredientsById = useIngredientsById();
   const { pantryStatus, setOwned } = usePantryStatus();
+  const { saveIngredient } = useIngredients();
 
   async function refresh() {
     if (!householdId) return;
@@ -262,12 +267,23 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
     ]);
     if (sharedIds.size === 0) return '이 날 재료는 앞뒤 요일과 겹치지 않아요.';
 
-    // 겹치는 재료 중 유통기한이 임박/경과한 게 있으면 그걸 우선 안내
+    // A-6: 유통기한이 지나 확인이 필요한 재료는 "이어 쓰기" 대상에서 제외한다 — 이미 상한 걸
+    // 이어서 쓸 수는 없으므로, 대신 확인이 필요하다는 사실을 최우선으로 안내한다.
     for (const id of sharedIds) {
-      const info = getExpirationInfo(ingredientsById.get(id)?.expirationDate);
+      const ingredient = ingredientsById.get(id);
+      if (ingredient && getPantryAvailability(ingredient) === 'expired_unconfirmed') {
+        return `${ingredient.name}은(는) 유통기한이 지났어요. 상태를 확인해주세요.`;
+      }
+    }
+
+    // 겹치는 재료 중 (아직 안 지났지만) 유통기한이 임박한 게 있으면 그걸 우선 안내 — "빨리 써야
+    // 하니 이어서 쓰자"는 이어 쓰기 취지에 부합. owned가 아닌 재료는 실제 유통기한 개념이 없다.
+    for (const id of sharedIds) {
+      const ingredient = ingredientsById.get(id);
+      if (!ingredient?.owned) continue;
+      const info = getExpirationInfo(ingredient.expirationDate);
       if (info) {
-        const name = ingredientsById.get(id)?.name;
-        return `${name}을(를) 앞뒤 요일과 같이 써요. ${formatExpirationBadge(info)}예요.`;
+        return `${ingredient.name}을(를) 앞뒤 요일과 같이 써요. ${formatExpirationBadge(info)}예요.`;
       }
     }
     const names = Array.from(sharedIds)
@@ -296,10 +312,12 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, plans, recipes]);
 
+  // A-5: usable이 아닌 것(없음 + 유통기한 지나 확인 필요)을 전부 포함하되, 완전히 없는 것과
+  // 지나서 확인이 필요한 것을 행 렌더링에서 구분 표시한다(getPantryAvailability로 판단).
   const neededIngredients = useMemo(() => {
     return Array.from(neededIngredientDetails.keys())
       .map((id) => ingredientsById.get(id))
-      .filter((ing): ing is Ingredient => ing !== undefined && !ing.owned);
+      .filter((ing): ing is Ingredient => ing !== undefined && getPantryAvailability(ing) !== 'usable');
   }, [neededIngredientDetails, ingredientsById]);
 
   if (view.screen === 'detail') {
@@ -418,17 +436,21 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
       {neededIngredients.map((ingredient) => {
         const item = neededIngredientDetails.get(ingredient.id);
         const owned = pantryStatus[ingredient.id] ?? false;
+        const isExpired = getPantryAvailability(ingredient) === 'expired_unconfirmed';
         return (
           <label className="weekly-buy-row" key={ingredient.id}>
             <button
               type="button"
-              className={`weekly-buy-check ${owned ? 'checked' : ''}`}
-              onClick={() => setOwned(ingredient.id, !owned)}
-              aria-label={`${ingredient.name} 구매 체크`}
+              className={`weekly-buy-check ${owned ? 'checked' : ''} ${isExpired ? 'expired' : ''}`}
+              onClick={() => (isExpired ? setExpiredConfirmId(ingredient.id) : setOwned(ingredient.id, !owned))}
+              aria-label={isExpired ? `${ingredient.name} 유통기한 확인` : `${ingredient.name} 구매 체크`}
             >
-              {owned && '✓'}
+              {isExpired ? '!' : owned && '✓'}
             </button>
-            <span className="weekly-buy-name">{ingredient.name}</span>
+            <span className="weekly-buy-body">
+              <span className="weekly-buy-name">{ingredient.name}</span>
+              {isExpired && <span className="weekly-buy-note">유통기한 지남 — 확인 필요</span>}
+            </span>
             {item && (
               <span className="text-muted">
                 {item.amount}
@@ -460,6 +482,22 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
           onCancel={() => {
             setAutoFillPreview(null);
             setAutoFillError(null);
+          }}
+        />
+      )}
+
+      {expiredConfirmId && (
+        <ExpiredConfirmModal
+          ingredient={ingredientsById.get(expiredConfirmId)!}
+          onClose={() => setExpiredConfirmId(null)}
+          onResolve={async (stillGood) => {
+            const target = ingredientsById.get(expiredConfirmId);
+            if (!target) return;
+            if (stillGood) {
+              await saveIngredient({ ...target, expirationDate: undefined });
+            } else {
+              await saveIngredient({ ...target, owned: false });
+            }
           }}
         />
       )}

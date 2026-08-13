@@ -1,6 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useIngredientsById, useRecipes } from './store';
+import { isPantryUsable } from '../lib/pantryAvailability';
 
 /** "장보기에 담은 레시피" 목록 — household 공유 테이블(shopping_selection)이라 가족 중 누가
  * 담아도 서로에게 바로 보인다. App.tsx가 로그인+household 확정 후 initializeShoppingSelection()
@@ -102,7 +103,8 @@ export function useShoppingSelection() {
 }
 
 /** 탭바의 장보기 배지용 — 담긴 레시피들의 재료를 집계해서(ShoppingListPage.tsx와 같은 방식)
- * 아직 안 산(owned=false) 항목 개수를 센다(수량이 아니라 존재 여부만 보므로 인분과는 무관). */
+ * 아직 usable하지 않은(없음 + 유통기한 지나 확인 필요) 항목 개수를 센다(수량이 아니라 존재
+ * 여부만 보므로 인분과는 무관). */
 export function useShoppingNeededCount(): number {
   const { selection } = useShoppingSelection();
   const { recipes } = useRecipes();
@@ -114,7 +116,7 @@ export function useShoppingNeededCount(): number {
       const recipe = recipes.find((r) => r.id === entry.recipeId);
       if (!recipe) continue;
       for (const item of recipe.ingredients) {
-        if (!ingredientsById.get(item.ingredientId)?.owned) {
+        if (!isPantryUsable(ingredientsById.get(item.ingredientId))) {
           needed.add(`${item.ingredientId}__${item.unit}`);
         }
       }

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useCategories, useIngredients } from '../../data/store';
 import { getErrorMessage } from '../../lib/errorMessage';
+import { getPantryAvailability } from '../../lib/pantryAvailability';
 import { markPantryCleaned } from '../../data/cookingLog';
 import { showUndoToast } from '../../data/undoToast';
 import type { Category, Ingredient } from '../../data/types';
@@ -52,6 +53,15 @@ export function PantryTidyModal({
   const [justMoved, setJustMoved] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showExpiredReview, setShowExpiredReview] = useState(false);
+
+  // A-4: 유통기한이 지나 확인이 필요한 재료 개수 — 있으면 "확인하기" 액션을 노출한다. 이 목록은
+  // 있어요/없어요 박스의 로컬 드래프트(localOwned)와 무관하게 실제 DB 상태(ingredients) 기준으로
+  // 판단한다(확인 흐름 자체가 즉시 저장되는 별도 액션이라 — 아래 ExpiredReviewModal 참고).
+  const expiredUnconfirmedCount = useMemo(
+    () => ingredients.filter((i) => getPantryAvailability(i) === 'expired_unconfirmed').length,
+    [ingredients],
+  );
 
   function toggle(id: string) {
     setLocalOwned((prev) => {
@@ -146,6 +156,17 @@ export function PantryTidyModal({
           재료를 탭하면 반대편 박스로 옮겨져요. 적용을 눌러야 실제로 저장돼요.
         </p>
 
+        {expiredUnconfirmedCount > 0 && (
+          <button
+            type="button"
+            className="btn"
+            style={{ width: '100%', marginBottom: 12 }}
+            onClick={() => setShowExpiredReview(true)}
+          >
+            ⏰ 유통기한 지난 재료 확인하기 ({expiredUnconfirmedCount}개)
+          </button>
+        )}
+
         {renderBox('✅ 있어요', ownedGroups)}
         {renderBox('🛒 없어요', notOwnedGroups)}
 
@@ -159,6 +180,82 @@ export function PantryTidyModal({
             {applying ? '적용하는 중...' : `적용 (${changedCount}개 변경)`}
           </button>
         </div>
+      </div>
+
+      {showExpiredReview && <ExpiredReviewModal onClose={() => setShowExpiredReview(false)} />}
+    </div>
+  );
+}
+
+/** A-4: 유통기한 지난 재료를 한 번에 훑으며 처리하는 빠른 리뷰 목록 — 위 있어요/없어요 박스의
+ * "적용 눌러야 저장" 드래프트 방식과 달리, 여기는 각 재료를 탭할 때마다 바로 저장한다(재료마다
+ * "괜찮음"/"버림"을 즉시 확정하는 게 목적이라 되돌릴 것을 모아뒀다가 한꺼번에 적용할 이유가 없음).
+ * ExpiredConfirmModal(IngredientsPage.tsx)과 같은 판단(괜찮으면 유통기한 비우기, 버리면
+ * owned:false)을 목록 형태로 빠르게 반복한다. */
+function ExpiredReviewModal({ onClose }: { onClose: () => void }) {
+  const { ingredients, saveIngredient } = useIngredients();
+  const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set());
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const remaining = ingredients.filter(
+    (i) => getPantryAvailability(i) === 'expired_unconfirmed' && !resolvedIds.has(i.id),
+  );
+
+  async function handle(ingredient: Ingredient, stillGood: boolean) {
+    setBusyId(ingredient.id);
+    setError(null);
+    try {
+      if (stillGood) {
+        await saveIngredient({ ...ingredient, expirationDate: undefined });
+      } else {
+        await saveIngredient({ ...ingredient, owned: false });
+      }
+      setResolvedIds((prev) => new Set(prev).add(ingredient.id));
+    } catch (err) {
+      setError(getErrorMessage(err, '처리 중 오류가 발생했어요. 다시 시도해주세요.'));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <h2>유통기한 지난 재료 확인하기</h2>
+        {remaining.length === 0 ? (
+          <p className="empty-hint">확인할 재료가 없어요.</p>
+        ) : (
+          remaining.map((ingredient) => (
+            <div
+              className="row"
+              key={ingredient.id}
+              style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}
+            >
+              <span>{ingredient.name}</span>
+              <div className="row" style={{ gap: 4, flexShrink: 0, justifyContent: 'flex-end' }}>
+                <button
+                  className="btn small"
+                  disabled={busyId === ingredient.id}
+                  onClick={() => handle(ingredient, true)}
+                >
+                  아직 괜찮아요
+                </button>
+                <button
+                  className="btn small danger"
+                  disabled={busyId === ingredient.id}
+                  onClick={() => handle(ingredient, false)}
+                >
+                  버렸어요
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+        {error && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{error}</p>}
+        <button className="btn" style={{ width: '100%', marginTop: 16 }} onClick={onClose}>
+          닫기
+        </button>
       </div>
     </div>
   );

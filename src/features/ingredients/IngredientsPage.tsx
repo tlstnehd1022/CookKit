@@ -9,6 +9,8 @@ import { ReceiptScanModal } from './ReceiptScanModal';
 import { PantryTidyModal } from './PantryTidyModal';
 import { COMMON_UNITS } from '../../data/units';
 import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
+import { getPantryAvailability } from '../../lib/pantryAvailability';
+import { getErrorMessage } from '../../lib/errorMessage';
 import { useHighlightIngredientIds, clearHighlightIngredientIds } from '../../data/highlightIngredients';
 import type { Ingredient } from '../../data/types';
 
@@ -18,6 +20,7 @@ export function IngredientsPage() {
   const { recipes } = useRecipes();
   const ingredientsById = useIngredientsById();
   const [editingDetailsId, setEditingDetailsId] = useState<string | null>(null);
+  const [expiredConfirmId, setExpiredConfirmId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showReceiptScan, setShowReceiptScan] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
@@ -62,9 +65,12 @@ export function IngredientsPage() {
   }));
   const uncategorizedOwned = ownedIngredients.filter((i) => !categories.some((c) => c.id === i.categoryId));
 
-  // 유통기한 임박/경과 재료 요약 — 카테고리와 무관하게 전체 재료 중에서 뽑아 가장 급한 순으로 보여줌
+  // 유통기한 임박/경과 재료 요약 — 카테고리와 무관하게 보유 중인 재료 중에서만 뽑아 가장 급한
+  // 순으로 보여줌(daysLeft 오름차순 정렬이 지남(음수)을 자연히 맨 앞에 둠, B-5). owned=false인
+  // 재료는 유통기한이 설정돼 있어도 애초에 냉장고에 없는 것이라 대상에서 제외한다.
   const expiringSoon = useMemo(() => {
     return ingredients
+      .filter((ingredient) => ingredient.owned)
       .map((ingredient) => ({ ingredient, info: getExpirationInfo(ingredient.expirationDate) }))
       .filter((entry): entry is { ingredient: Ingredient; info: NonNullable<typeof entry.info> } =>
         Boolean(entry.info),
@@ -78,6 +84,16 @@ export function IngredientsPage() {
     () => recipes.filter((recipe) => isRecipeMakeableWithPantry(recipe, ingredientsById)).length,
     [recipes, ingredientsById],
   );
+
+  // 유통기한이 지나 확인이 필요한 재료는 탭하면 상세 설정 대신 확인 모달(A-4)이 먼저 뜬다 —
+  // "괜찮음/버림"을 정하기 전까지는 다른 설정(알러지 등)을 만지는 게 우선순위가 아니라서.
+  function openIngredient(ingredient: Ingredient) {
+    if (getPantryAvailability(ingredient) === 'expired_unconfirmed') {
+      setExpiredConfirmId(ingredient.id);
+    } else {
+      setEditingDetailsId(ingredient.id);
+    }
+  }
 
   function renderCategoryGroups(groups: { category: { id: string; name: string }; items: Ingredient[] }[], uncategorized: Ingredient[]) {
     return (
@@ -108,7 +124,7 @@ export function IngredientsPage() {
                     <IngredientChip
                       key={ingredient.id}
                       ingredient={ingredient}
-                      onClick={() => setEditingDetailsId(ingredient.id)}
+                      onClick={() => openIngredient(ingredient)}
                       highlighted={highlightIds.includes(ingredient.id)}
                     />
                   ))}
@@ -182,7 +198,7 @@ export function IngredientsPage() {
                 <button
                   key={ingredient.id}
                   className={`chip expiration-${info.level}`}
-                  onClick={() => setEditingDetailsId(ingredient.id)}
+                  onClick={() => openIngredient(ingredient)}
                 >
                   {ingredient.name} · {formatExpirationBadge(info)}
                 </button>
@@ -215,6 +231,26 @@ export function IngredientsPage() {
             if (target) {
               showUndoToast(`'${target.name}' 재료를 지웠어요`, () => saveIngredient(target));
             }
+          }}
+        />
+      )}
+
+      {expiredConfirmId && (
+        <ExpiredConfirmModal
+          ingredient={ingredients.find((i) => i.id === expiredConfirmId)!}
+          onClose={() => setExpiredConfirmId(null)}
+          onResolve={async (stillGood) => {
+            const target = ingredients.find((i) => i.id === expiredConfirmId);
+            if (!target) return;
+            if (stillGood) {
+              await saveIngredient({ ...target, expirationDate: undefined });
+            } else {
+              await saveIngredient({ ...target, owned: false });
+            }
+          }}
+          onEditDetails={() => {
+            setExpiredConfirmId(null);
+            setEditingDetailsId(expiredConfirmId);
           }}
         />
       )}
@@ -272,6 +308,65 @@ function IngredientChip({
       {expirationInfo ? ` · ${formatExpirationBadge(expirationInfo)}` : ''}
       {ingredient.allergens.length > 0 ? ' · ⚠' : ''}
     </button>
+  );
+}
+
+/**
+ * A-4: 유통기한이 지난 재료를 탭했을 때 먼저 뜨는 확인 모달 — 앱이 식품 안전을 판단하지 않고
+ * 사용자에게 직접 묻는다. "아직 괜찮아요"는 유통기한을 비워 usable로 되돌리고(정확한 새 날짜를
+ * 알고 있으면 "자세히 수정하기"로 상세 편집에서 다시 입력 가능), "버렸어요"는 owned:false로
+ * 뺀다. IngredientsPage 외에 ShoppingListPage/WeeklyPlanPage도 재사용한다(각자의 saveIngredient로
+ * onResolve를 구현).
+ */
+export function ExpiredConfirmModal({
+  ingredient,
+  onClose,
+  onResolve,
+  onEditDetails,
+}: {
+  ingredient: Ingredient;
+  onClose: () => void;
+  onResolve: (stillGood: boolean) => Promise<void>;
+  onEditDetails?: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handle(stillGood: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      await onResolve(stillGood);
+      onClose();
+    } catch (err) {
+      setError(getErrorMessage(err, '처리 중 오류가 발생했어요. 다시 시도해주세요.'));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <h2>{ingredient.name}</h2>
+        <p className="text-muted" style={{ marginTop: -4 }}>
+          유통기한이 지났어요. 상태를 확인해주세요.
+        </p>
+        <div className="row" style={{ gap: 8, marginTop: 12 }}>
+          <button className="btn" style={{ flex: 1 }} disabled={busy} onClick={() => handle(true)}>
+            아직 괜찮아요
+          </button>
+          <button className="btn danger" style={{ flex: 1 }} disabled={busy} onClick={() => handle(false)}>
+            버렸어요
+          </button>
+        </div>
+        {onEditDetails && (
+          <button className="btn small" style={{ marginTop: 12, width: '100%' }} onClick={onEditDetails} disabled={busy}>
+            자세히 수정하기(유통기한 새로 입력 등)
+          </button>
+        )}
+        {error && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{error}</p>}
+      </div>
+    </div>
   );
 }
 

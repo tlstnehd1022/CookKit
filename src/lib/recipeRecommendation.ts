@@ -1,16 +1,29 @@
 import type { Ingredient, Recipe } from '../data/types';
+import { getPantryAvailability } from './pantryAvailability';
 
 export interface RecommendationResult {
   recipe: Recipe;
+  /** usable(보유 + 유통기한 안 지남) 재료 개수 — A-5: 유통기한 지나 확인이 필요한 재료는 있다고
+   * 치지 않는다. */
   ownedCount: number;
   totalCount: number;
+  /** 유통기한이 지나 확인이 필요한(expired_unconfirmed) 재료 개수 — "확인 필요 N개"로 별도 표기 */
+  unconfirmedCount: number;
 }
 
 function scoreRecipe(recipe: Recipe, ingredientsById: Map<string, Ingredient>): RecommendationResult | null {
   const uniqueIds = Array.from(new Set(recipe.ingredients.map((i) => i.ingredientId)));
   if (uniqueIds.length === 0) return null;
-  const ownedCount = uniqueIds.filter((id) => ingredientsById.get(id)?.owned).length;
-  return { recipe, ownedCount, totalCount: uniqueIds.length };
+  let ownedCount = 0;
+  let unconfirmedCount = 0;
+  for (const id of uniqueIds) {
+    const ingredient = ingredientsById.get(id);
+    if (!ingredient) continue;
+    const availability = getPantryAvailability(ingredient);
+    if (availability === 'usable') ownedCount += 1;
+    else if (availability === 'expired_unconfirmed') unconfirmedCount += 1;
+  }
+  return { recipe, ownedCount, totalCount: uniqueIds.length, unconfirmedCount };
 }
 
 /** 보유 재료 매칭률(owned/total)이 가장 높은 레시피 하나를 고른다 — 홈 화면 "오늘의 추천"용.

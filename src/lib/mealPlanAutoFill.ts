@@ -1,20 +1,22 @@
 import type { Ingredient, Recipe } from '../data/types';
 import type { CookingStats } from '../data/cookingLog';
 import { getExpirationInfo } from './expiration';
+import { isPantryUsable } from './pantryAvailability';
 
 function pantryRatio(recipe: Recipe, ingredientsById: Map<string, Ingredient>): number {
   const uniqueIds = Array.from(new Set(recipe.ingredients.map((i) => i.ingredientId)));
   if (uniqueIds.length === 0) return 0;
-  const ownedCount = uniqueIds.filter((id) => ingredientsById.get(id)?.owned).length;
+  const ownedCount = uniqueIds.filter((id) => isPantryUsable(ingredientsById.get(id))).length;
   return ownedCount / uniqueIds.length;
 }
 
-/** "유통기한 임박"만 대상으로 한다(soon 4~7일은 제외) — 홈 인사말(homeGreeting.ts)의 기준과
- * 같은 판단 기준을 재사용. */
+/** "유통기한 임박(D-2 이내)"만 대상으로 한다(soon D-3~7은 제외) — 홈 인사말(homeGreeting.ts)의
+ * 기준과 같은 판단 기준을 재사용. 이미 지난(expired) 재료는 제외한다 — 앱이 "이 재료로 요리해도
+ * 된다"고 판단하는 것처럼 보이면 안 되므로, 임박(아직 안 지남)에만 반응해 배치를 앞당긴다. */
 function hasExpiringIngredient(recipe: Recipe, ingredientsById: Map<string, Ingredient>): boolean {
   return recipe.ingredients.some((item) => {
     const info = getExpirationInfo(ingredientsById.get(item.ingredientId)?.expirationDate);
-    return info?.level === 'expired' || info?.level === 'urgent';
+    return info?.level === 'urgent';
   });
 }
 

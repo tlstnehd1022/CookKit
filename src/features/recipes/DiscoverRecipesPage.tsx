@@ -10,6 +10,7 @@ import {
 } from '../../data/publicRecipes';
 import { fetchLikeInfo, type LikeInfo } from '../../data/recipeLikes';
 import { getErrorMessage } from '../../lib/errorMessage';
+import { isPantryUsable } from '../../lib/pantryAvailability';
 import { RecipeCard, RecipeListItem } from './RecipesPage';
 import {
   RecipeCategoryDetailPage,
@@ -133,7 +134,7 @@ export function DiscoverRecipesPage({
   // 판단해야 한다(요구사항 8) — 레시피의 ingredientId는 원본 household 소유라 나와 id가 다르므로,
   // 이름으로 매칭한다(RecipesFeature.tsx의 "내 레시피로 복사하기"와 같은 이름 매칭 패턴).
   const myOwnedNames = useMemo(
-    () => new Set(myIngredients.filter((i) => i.owned).map((i) => i.name.trim())),
+    () => new Set(myIngredients.filter((i) => isPantryUsable(i)).map((i) => i.name.trim())),
     [myIngredients],
   );
   function isMakeableWithMyPantry(entry: PublicRecipeEntry): boolean {

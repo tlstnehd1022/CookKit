@@ -135,8 +135,11 @@ export function HomePage() {
     return candidates.length >= QUICK_RECIPE_MIN_COUNT ? candidates : [];
   }, [recipes]);
 
+  // owned=false인 재료는 유통기한이 설정돼 있어도 애초에 냉장고에 없는 것이라 대상에서 제외한다
+  // (IngredientsPage.tsx와 같은 기준).
   const expiringSoon = useMemo(() => {
     return ingredients
+      .filter((ingredient) => ingredient.owned)
       .map((ingredient) => ({ ingredient, info: getExpirationInfo(ingredient.expirationDate) }))
       .filter((entry): entry is { ingredient: (typeof ingredients)[number]; info: NonNullable<typeof entry.info> } =>
         Boolean(entry.info),
@@ -168,11 +171,14 @@ export function HomePage() {
     todayNextRecipeName && todayNextMealCount > 1
       ? `${todayNextRecipeName} 외 ${todayNextMealCount - 1}개`
       : todayNextRecipeName;
-  // 우선순위 3번은 "임박(3일 이내)"만 대상 — expiringSoon은 soon(4~7일)까지 포함하므로 따로 좁힌다.
+  // "임박(D-2 이내)"만 대상 — expiringSoon은 soon(D-3~7)까지 포함하므로 따로 좁힌다.
   const urgentIngredientName = expiringSoon.find(({ info }) => info.level === 'urgent')?.ingredient.name;
+  // A-7: "지남"은 다른 모든 안내보다 먼저 보여준다(사용자 확인이 필요한 상태라서).
+  const expiredIngredientName = expiringSoon.find(({ info }) => info.level === 'expired')?.ingredient.name;
   const greeting = pickGreeting({
     now: new Date(),
     dateStr: today,
+    expiredIngredientName,
     cookedTodayRecipeName: cookedTodayRecipeName,
     todayNextMeal:
       todayNextPlan && todayNextMealLabel ? { mealType: todayNextPlan.mealType, menuLabel: todayNextMealLabel } : undefined,
@@ -284,6 +290,7 @@ export function HomePage() {
                 )}
                 <span className="home-recommend-badge">
                   재료 {recommendation.totalCount}개 중 {recommendation.ownedCount}개 있어요
+                  {recommendation.unconfirmedCount > 0 && ` · 확인 필요 ${recommendation.unconfirmedCount}개`}
                 </span>
               </div>
               <div className="home-recommend-body">
@@ -391,7 +398,7 @@ export function HomePage() {
                 <span className="home-expiring-thumb">🥕</span>
                 <div className="home-expiring-info">
                   <div className="home-expiring-name">{ingredient.name}</div>
-                  <div className="home-expiring-days">{formatExpirationBadge(info)}</div>
+                  <div className={`home-expiring-days level-${info.level}`}>{formatExpirationBadge(info)}</div>
                 </div>
                 {matchedRecipe && (
                   <button type="button" className="chip selectable home-expiring-pill" onClick={() => openRecipe(matchedRecipe.id)}>

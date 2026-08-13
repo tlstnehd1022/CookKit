@@ -47,7 +47,10 @@ export interface GreetingContext {
   /** 오늘 "다음 끼니"(mealTime.ts pickNextMealPlan 기준)에 배치된 메뉴 — 그 끼니에 메뉴가
    * 여러 개면 menuLabel이 이미 "OO 외 n개" 형태로 요약돼 들어온다. */
   todayNextMeal?: { mealType: MealType; menuLabel: string };
-  /** 유통기한 임박(3일 이내) 재료 중 가장 급한 것의 이름 */
+  /** A-7: 유통기한이 지나 확인이 필요한(expired_unconfirmed) 재료 중 하나의 이름 — 다른 모든
+   * 우선순위보다 먼저 안내한다("D-2 이내"보다도 급함, 확인이 필요한 상태이므로). */
+  expiredIngredientName?: string;
+  /** 유통기한 임박(D-2 이내) 재료 중 가장 급한 것의 이름 */
   expiringIngredientName?: string;
   /** 장보기에 담긴 레시피가 하나라도 있는지 */
   hasShoppingSelection?: boolean;
@@ -59,14 +62,20 @@ export interface GreetingResult {
 }
 
 /**
- * 우선순위 1~4(오늘 요리함 → 오늘 식단 계획 → 유통기한 임박 → 장보기 담김) 중 조건에 맞는 첫
- * 번째를 쓰고, 전부 해당 없으면 시간대·요일 기반 기본 문구 풀에서 하나를 고른다. AI 호출 없이
- * 전부 규칙 기반 — 홈은 가장 자주 열리는 화면이라 비용·지연 부담을 피한다.
+ * 우선순위 0~4(유통기한 지남 → 오늘 요리함 → 오늘 식단 계획 → 유통기한 임박 → 장보기 담김) 중
+ * 조건에 맞는 첫 번째를 쓰고, 전부 해당 없으면 시간대·요일 기반 기본 문구 풀에서 하나를 고른다.
+ * AI 호출 없이 전부 규칙 기반 — 홈은 가장 자주 열리는 화면이라 비용·지연 부담을 피한다.
+ *
+ * "유통기한 지남"(A-7)은 사용자 확인이 필요한 상태라 다른 어떤 안내보다도 먼저 보여준다 — 앱이
+ * 판단을 대신하지 않는 대신, 확인이 필요하다는 사실만큼은 가장 먼저 알린다.
  */
 export function pickGreeting(ctx: GreetingContext): GreetingResult {
   const timeSlot = getTimeSlot(ctx.now);
   const isWeekend = ctx.now.getDay() === 0 || ctx.now.getDay() === 6;
 
+  if (ctx.expiredIngredientName) {
+    return { text: `${ctx.expiredIngredientName}, 유통기한이 지났어요. 확인해보세요`, timeSlot };
+  }
   if (ctx.cookedTodayRecipeName) {
     const pool = ['오늘도 수고하셨어요', '잘 드셨어요?', `오늘 ${ctx.cookedTodayRecipeName} 어떠셨어요?`];
     return { text: pool[stableIndex(ctx.dateStr + 'cooked', pool.length)], timeSlot };

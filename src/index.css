@@ -1291,7 +1291,18 @@ select:focus {
 
 .home-expiring-days {
   font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+/* B: 이 행도 재료 목록의 .chip.expiration-* 배지와 같은 3단계 위계를 따른다(지남이 가장 급함) */
+.home-expiring-days.level-expired {
   color: var(--danger);
+  font-weight: 700;
+}
+
+.home-expiring-days.level-urgent {
+  color: var(--warning);
+  font-weight: 600;
 }
 
 /* A-2: 요리 기록 진입점 — 다른 홈 섹션들과 달리 그 자체가 하나의 탭 가능한 요약 카드 */

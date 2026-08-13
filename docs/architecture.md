@@ -1,0 +1,914 @@
+# CookKit 아키텍처 / 기술 결정 노트
+
+`CLAUDE.md`에서 분리된 상세 문서입니다. **이 파일은 세션 시작 시 자동으로 로드되지 않습니다** —
+아래 목차를 보고 지금 다루는 기능/버그와 관련 있어 보이면 이 파일을 직접 Read할 것. `CLAUDE.md`의
+"진행 상황"(연대순 확장 이력)과 이 파일(주제별 아키텍처 결정)은 같은 내용을 다른 각도로 담고
+있어서 서로 겹치는 부분이 있음 — 짧은 요약이 필요하면 `CLAUDE.md`, 구현 세부사항/버그 원인이
+필요하면 이 파일.
+
+## 목차
+- 프론트엔드 구조 / 탭 전환(hidden 속성, 언마운트 방지)
+- 저장 방식(localStorage → Supabase 전환 배경)
+- 사용자/로그인
+- AI 연동(Claude/Gemini, 대화형 레시피 생성)
+- 서버 도입 1호 — 유튜브 자막 추출 Vercel 함수
+- 이미지 저장(Supabase Storage) — 조리 단계/완성 사진
+- DB 전환(Supabase) — 스키마/RLS/Phase별 진행
+- 레시피 관리 화면(모바일 개편)
+- 레시피 탐색/복사(다른 가구 공개 레시피)
+- 작성자 표시/프로필(닉네임/사진)
+- API 키 Vault 전환
+- 유통기한 관리 + PWA/웹 푸시 알림
+- 난이도/조리시간 자동 판단
+- 태그 국가/스타일 축
+- 공공데이터 기반 대량 레시피 시딩
+- 레시피 가로 스크롤 행 구조
+- 영수증 스캔 재료 등록
+- 요리 완료 기록(CookingLog)
+- 요리 모드(핸즈프리 안내 + 음성 명령)
+- 요리 모드 실제 소요시간 기록
+- 복합 요리(여러 레시피 동시 진행)
+- 유튜브 자막 추출 관련 TODO(Supadata 폴백)
+
+---
+
+## 기술 스택 / 아키텍처 결정
+- **프론트엔드**: React + Vite + TypeScript, 탭 기반 네비게이션(별도 라우터 없음)
+- **탭 전환은 언마운트가 아니라 hidden 속성으로 감추기만 함(`App.tsx`)**: 예전엔 `{tab === 'recipes' &&
+  <RecipesFeature />}` 식 조건부 렌더링이라 다른 탭(재료/장보기 등)에 갔다 오면 레시피 탭이 통째로
+  언마운트→재마운트돼서, 대화형 AI 채팅 중이던 메시지, 편집 중이던 폼 내용, 진행 중이던 이미지 생성
+  작업 등이 전부 날아갔음(언마운트된 컴포넌트로의 `setState`는 조용히 무시되므로, 응답이 늦게 와도
+  결과가 반영 안 됨). 4개 탭을 항상 동시에 마운트해두고 `hidden` 속성으로 안 보이는 탭만 화면에서
+  감추는 방식으로 바꿔서 해결 — 각 탭은 이미 로드된 공유 store(`store.ts`)를 구독만 하므로 동시에
+  마운트해둬도 추가 네트워크 요청이 없어 비용이 거의 없음. 레시피 탭 안에서 목록→상세→편집처럼
+  스스로 화면을 전환하는 것(`RecipesFeature.tsx`의 `view` state)은 여전히 조건부 렌더링이라 그대로
+  언마운트됨 — 이건 사용자가 명시적으로 "뒤로가기"/"취소"한 것이라 의도된 동작(다른 최상위 탭으로
+  갔다 오는 것과는 다른 케이스).
+  - **버그(수정 완료) — 브라우저 탭/다른 앱 갔다 오면 화면이 초기화됨**: 위 hidden 방식으로 바꾼
+    뒤에도, 앱 내부 탭이 아니라 **브라우저 탭 자체를 벗어났다가(다른 브라우저 탭, 다른 프로그램)
+    돌아오면** 여전히 레시피 편집/채팅 화면이 목록으로 초기화되는 문제가 남아있었음. 원인은 다른
+    곳 — 브라우저 탭이 다시 포커스를 받으면 Supabase가 세션을 재확인하면서 `session.ts`의
+    `onAuthStateChange`가 (같은 계정인데도) `user`를 매번 새 객체 참조로 갱신했고, `household.ts`의
+    `useHousehold()`가 `refresh` 콜백을 `user` 객체 전체에 의존시키고 있어서 이 참조 변화만으로도
+    `useEffect`가 다시 실행돼 `loading`을 `true`로 되돌렸음. `App.tsx`는 `householdLoading`일 때
+    전체 트리를 `null`로 반환(사실상 전체 언마운트)하므로, 그 직후 다시 `false`가 되면서 앱 전체가
+    처음부터 재마운트 → 탭 선택도 `view` state도 전부 초기값으로 리셋됐던 것. `refresh`의 의존성을
+    `user`(객체) 대신 `user?.id`(문자열)로 좁혀서, 실제 로그인 계정이 바뀔 때만 다시 조회하도록
+    수정. 앞으로 `useSession()`의 `user`를 훅 의존성 배열에 넣을 때는 객체 참조가 아니라 `user?.id`
+    처럼 원시값으로 좁혀 쓸 것 — Supabase 세션 갱신 이벤트는 실제 로그인 상태가 안 바뀌어도 새
+    객체를 만들어낼 수 있어서, 객체 참조 전체에 의존하면 이런 종류의 불필요한 재실행이 재발함.
+- **저장 방식**: 브라우저 localStorage. `src/data/repository.ts`의 `CrudRepository<T>` 인터페이스로 추상화되어 있어
+  나중에 실제 DB(Supabase 등)로 전환 시 `src/data/localStorageAdapter.ts`만 다른 어댑터로 교체하면 됨
+- **사용자/로그인**: 지금은 실제 인증 없이 고정 사용자(`수동`)로 버튼 클릭 로그인만 존재 (`src/data/session.ts`).
+  나중에 실제 로그인(Supabase Auth 등)을 붙일 때는 `login()` 내부 구현만 교체.
+  storage key는 `cookkit:{userId}:...` 형태로 이미 사용자 네임스페이스가 걸려 있음(`src/data/repos.ts`) —
+  지금은 사용자가 하나뿐이라 동적 재키잉은 하지 않고 고정 접두사만 사용, 실제 다중 사용자 전환 시 이 부분만 일반화하면 됨
+- **AI 연동(자연어/유튜브/대화 → 레시피 변환)**: 두 개 제공자를 설정 화면에서 선택 가능(`aiProvider: 'anthropic'|'gemini'`, 기본값 Gemini — 무료 쿼터 때문에 추천).
+  - **Anthropic**: `@anthropic-ai/sdk`로 호출 (`src/lib/claudeClient.ts`)
+  - **Gemini**: SDK 없이 REST 엔드포인트(`generativelanguage.googleapis.com`)를 fetch로 직접 호출 (`src/lib/geminiClient.ts`).
+    유튜브 변환은 YouTube Data API(선택, 무료)로 제목/설명란만 가져오고, 자막은 공식 API로 못 가져오므로 사용자가 직접 붙여넣는 방식으로 보완
+  - **API 키는 Supabase Vault에 암호화 저장 + 실제 호출은 서버 경유(13차 확장, 아래 "API 키 Vault
+    전환" 항목 참고)** — `claudeClient.ts`/`geminiClient.ts`의 함수들(`chatAboutRecipe`,
+    `extractRecipeFromTranscript` 등)은 원래도 apiKey를 인자로 받는 순수 함수라 브라우저/서버
+    양쪽에서 동일하게 재사용됨. 이 문단의 나머지 설명(모델 ID 관리 등)은 여전히 유효.
+  - Gemini 모델명은 제공자가 자주 구세대 모델을 신규 키에 차단하므로(예: 2026-07-09부터 `gemini-2.5-flash` 차단),
+    설정 화면에서 직접 모델 ID를 입력받게 되어 있음 — 오류 시 최신 모델 ID로 교체 필요
+  - **이미지 생성 모델도 설정에서 교체 가능**(`settings.geminiImageModel`, 기본값 `GEMINI_IMAGE_MODEL`
+    상수와 동일한 `gemini-3.1-flash-image`) — 텍스트 모델과 같은 이유(모델 세대별 접근 제한)로
+    하드코딩 대신 사용자 입력을 받도록 함. 실사용 중 발견: `gemini-3.1-flash-image`는 **무료
+    티어에 아예 없는 유료 전용 모델**이라(2026-07 기준), 무료로 이미지 생성을 테스트하려는
+    사용자는 `gemini-2.5-flash-image`("Nano Banana" 1세대, 무료 티어 하루 약 500장, 1024x1024)로
+    바꿔볼 수 있음 — 다만 신규 발급 API 키는 2.x 세대 모델 자체가 막혀있을 수 있어 계정/키 발급
+    시점에 따라 될 수도 안 될 수도 있음. Google이 모델별 고정 rate limit 표를 더 이상 공개하지
+    않아(계정별로 AI Studio 콘솔에서만 확인 가능) 정확한 한도는 사용자가 직접 확인해야 함.
+- **서버 도입(1호) — 유튜브 자막 추출용 Vercel Serverless Function**: 원칙적으로 클라이언트 단독 구조를
+  유지하되, "유튜브 자막을 브라우저에서 직접 긁어오는 것"만은 예외로 최소 서버를 도입함. 이유: 자막
+  추출에 쓰는 `youtube-transcript` 패키지는 유튜브의 비공식 엔드포인트에 직접 `fetch`하는데, 유튜브가
+  CORS를 허용하지 않아 브라우저에서 실행하면 무조건 막힘(Node/서버 환경에서만 동작). 그래서 이 부분만
+  `api/youtube-transcript.ts`(Vercel Serverless Function)로 분리해 서버에서 실행하고, 프론트는
+  `/api/youtube-transcript?url=...`를 호출해 이미 추출된 자막 텍스트만 받아옴(`src/lib/youtubeTranscript.ts`).
+  (13차 확장에서 AI 호출 자체도 서버 경유로 전환됨 — 아래 "API 키 Vault 전환" 항목 참고.)
+  - 로컬 개발 시 `npm run dev`(순수 Vite)로는 `/api/*`가 안 뜸 — `npm run dev:full`(`vercel dev`)로 실행해야
+    프론트+서버리스 함수가 같이 뜸. 배포는 GitHub 저장소를 Vercel 프로젝트에 연결해두면 push할 때마다
+    자동 빌드/배포됨(이미 기기 간 코드 동기화를 GitHub로 하고 있어서 자연스럽게 이어짐)
+  - 다중 사용자 등으로 "진짜" 백엔드를 붙이게 되면, 이 서버리스 함수가 있던 자리(`api/`)를 그대로 확장해도
+    되고 별도 백엔드로 흡수해도 됨 — 지금은 이 기능 하나만을 위한 최소 범위로 한정함
+  - **서버 도입(2호) — 유튜브 썸네일 프록시**: 유튜브 변환 시 영상 썸네일을 완성 사진(`finalImageId`)
+    후보로 자동 제안하는 기능을 추가하면서, 같은 CORS 문제를 한 번 더 만남 — `img.youtube.com` 썸네일은
+    `<img>` 태그로 화면에 보여주는 건 되지만(CORS 무관), Supabase Storage에 업로드하려면 실제 바이트를
+    `fetch`로 읽어야 하는데 그건 CORS가 막음. `api/youtube-thumbnail.ts`를 추가해 서버에서 대신
+    받아오고(`maxresdefault.jpg` 우선 시도, 없는 영상은 유튜브가 120x90 더미 이미지를 200 OK로
+    내려주므로 `content-length`가 작으면 `hqdefault.jpg`로 폴백 — 모든 영상에 항상 존재), 그 바이트를
+    그대로 응답에 실어 내려줌(`Access-Control-Allow-Origin: *`). 프론트는 유튜브 변환 결과 미리보기에
+    `<img src="https://img.youtube.com/vi/{id}/hqdefault.jpg">`로 직접 표시(미리보기는 CORS 문제
+    없음)하고, 사용자가 체크박스로 "완성 사진으로 사용" 선택 후 반영을 누르면 그때 `/api/youtube-thumbnail`
+    프록시를 거쳐 받은 바이트를 `imageStore.ts`의 `saveImageFromUrl`로 우리 household Storage 경로에
+    저장(외부 URL을 그대로 저장하지 않음 — 나중에 유튜브 쪽 URL이 깨지거나 바뀌어도 우리 복사본은
+    안전). 조리 단계별 이미지는 여전히 AI 생성/직접 업로드만 지원(영상에서 자동 추출은 신뢰도가 낮다고
+    이미 판단해서 범위 밖 — "유튜브 자막 추출 관련 TODO" 항목의 STT 관련 판단과 같은 맥락).
+- **이미지 저장(Supabase Storage) — 조리 단계별 + 완성 사진 AI 이미지 생성용**: Gemini
+  (`gemini-3.1-flash-image`, "Nano Banana" 계열)로 이미지를 생성하는 기능은 Claude가 이미지 생성을
+  지원하지 않아 **Gemini 전용**임(`src/lib/geminiClient.ts`의 `generateStepImage`/`generateFinalDishImage`
+  — 둘 다 같은 재시도 로직을 공유하는 `generateImageWithRetry`의 별칭, `buildStepImagePrompt`/
+  `buildFinalDishImagePrompt`). 레시피 편집 화면에서 단계별로 "🎨 이미지 생성" 버튼을 눌러 온디맨드로만
+  생성함(저장 시 전체 자동 생성 안 함 — 속도/비용 고려).
+  - **저장 위치(8차 확장에서 IndexedDB → Supabase Storage로 전환)**: 예전엔 기기 로컬 IndexedDB에
+    저장해서 다른 기기/다른 household 구성원이 볼 수 없었음(개인 앱일 땐 문제없었지만 다중 사용자
+    전환 후엔 한계). `recipe-images` 버킷(비공개, RLS로 household 멤버만 접근 — `supabase/migrations/
+    0006_recipe_images_storage.sql`)으로 옮김. 경로 규칙은 `{household_id}/{recipe_id}/{step|final}/
+    {임의 파일명}` — `RecipeStep.imageId`/`Recipe.finalImageId`는 이제 이 Storage 경로(문자열)를
+    가리킨다(`src/data/imageStore.ts`). `saveImage(path, dataUrl)`은 그 경로에 업로드(같은 경로면
+    upsert로 덮어씀 — 재생성 시), `useStoredImage(imageId)` 훅은 비공개 버킷이라 `createSignedUrl`로
+    1시간 유효한 signed URL을 비동기로 발급받아 반환. `deleteImage`/`buildImagePath` 등 함수 시그니처는
+    예전 IndexedDB 버전과 최대한 비슷하게 유지해서 호출부(`RecipeEditor.tsx` 등) 변경을 최소화함.
+    기존 IndexedDB에 있던 이미지는 마이그레이션하지 않음(다시 생성하거나 "이미지 없음"으로 자연스럽게
+    표시 — 개인 사용 규모라 감수 가능한 손실로 판단).
+    - **버그(수정 완료) — 낡은 imageId 재사용 시 RLS 거부**: 실사용 테스트에서 "다시 생성"을 누르면
+      계속 `new row violates row-level security policy` 에러가 났음. 원인은 이 마이그레이션 이전에
+      만들어진 `imageId`(IndexedDB 시절, 폴더 구조 없는 단일 UUID)가 스텝에 이미 남아있는 상태에서
+      `step.imageId ?? buildImagePath(...)` 패턴이 그 낡은 값을 "이미 있는 이미지"로 착각해 그대로
+      재사용했기 때문 — household_id 폴더가 없는 경로라 RLS의 `is_household_member` 체크를 통과할
+      수 없어 업로드 자체가 거부됨. `isStorageImagePath(imageId)`(슬래시 포함 여부로 새 형식인지
+      판별)로 낡은 형식이면 재사용하지 않고 새 경로를 만들도록 수정(`saveImage`/`useStoredImage`
+      호출부 전체). 디버깅은 브라우저 개발자도구 Network 탭에서 실패한 `storage/v1/object/...`
+      요청의 실제 경로를 직접 확인해서 찾음(폴더 구조가 아예 없는 것을 보고 원인 특정) — 이번에도
+      Supabase 관련 버그는 "화면 에러 메시지"보다 "실제 요청/응답"을 봐야 진짜 원인이 나온다는
+      패턴이 반복됨.
+    - **버그(수정 완료) — 이미지 배치 생성 시 60초 타임아웃 다발**: "전체 이미지 생성"으로 여러 장을
+      `Promise.all`로 동시 요청하면 개별 요청이 평소보다 느려져(동시 부하) 원래도 넉넉하지 않던
+      60초 타임아웃을 넘기는 경우가 실사용에서 빈번히 발생(7개 중 5개 타임아웃). 타임아웃(AbortError)은
+      기존엔 429/503과 달리 재시도 대상이 아니었어서 즉시 실패 처리됐던 게 원인 — `geminiClient.ts`의
+      `requestImageOnce`가 타임아웃 시 `GeminiImageError(..., 408)`(408은 실제 HTTP 응답이 아니라
+      우리가 붙이는 sentinel 상태코드)를 던지도록 바꾸고 `RETRYABLE_STATUS_CODES`에 408 추가 —
+      이제 타임아웃도 429/503과 같은 지수 백오프(2초→4초)로 자동 재시도됨.
+    - Storage 경로에 새 레시피(아직 한 번도 저장 안 한 초안)의 이미지를 미리 생성/업로드할 수 있어야
+      해서, `RecipeEditor.tsx`가 편집 화면에 들어오는 시점에 `recipe.id`를 미리 고정해둠(`stableRecipeId`
+      — 예전엔 "저장" 버튼을 눌러야 `existing?.id ?? makeId()`로 그때 정해졌음). household id는
+      `store.ts`의 `getCurrentHouseholdId()`(훅이 아닌 일반 함수, `initializeDataLayer`가 기억해둔 값을
+      그대로 반환)로 다시 네트워크 조회 없이 가져옴.
+  - 이미지 생성 요청은 60초 타임아웃(`AbortController`)을 걸어둠 — 원래도 이미지 생성은 텍스트보다 느려서
+    (수십 초 단위) 정상 범위이지만, 응답이 안 오고 무한 대기하는 상황은 막기 위함
+  - 429(요청 제한)/503(`이미지 생성 모델이 현재 수요가 많습니다` 같은 일시적 과부하)는 흔히 발생하는
+    일시적 오류라 지수 백오프(2초→4초)로 최대 3회까지 자동 재시도함(`generateImageWithRetry`). 그 외
+    오류는 바로 실패 처리. 배치 생성 중 실패한 항목은 어떤 에러였는지 화면과 콘솔에 그대로 표시됨
+  - "🎨 이미지 생성"(AI, Gemini 전용) 옆에 "📁 사진 업로드" 버튼도 있어 사용자가 직접 찍은 사진으로 즉시
+    교체 가능(AI 키 불필요, 어떤 AI 제공자를 쓰든 항상 노출). `FileReader.readAsDataURL`로 읽어서 동일하게
+    Storage에 저장 — AI 생성이든 업로드든 저장 경로는 같음
+  - **스타일 일관성**: `geminiClient.ts`의 `IMAGE_STYLE_GUIDE` 상수(따뜻한 톤 자연광, 나무 도마/대리석
+    조리대, 무광 블랙/스테인리스 조리도구, 자연스러운 홈쿠킹 느낌)를 `buildStepImagePrompt`/
+    `buildFinalDishImagePrompt` 둘 다 공유해서, 조리 단계 이미지와 완성 사진이 서로 다른 화풍으로 튀지
+    않게 함.
+  - **완성 사진**(`Recipe.finalImageId`): 레시피 편집 화면 상단(기본 정보 아래)에 "완성 사진" 섹션이
+    별도로 있어 조리 단계와 무관하게 1장 생성/업로드 가능. `buildFinalDishImagePrompt`는 레시피 이름 +
+    현재 폼의 재료 이름 목록 + 태그 이름 목록을 참고해서 프롬프트를 만듦. 레시피 상세 화면
+    (`RecipeDetailPage.tsx`, 제목 아래)과 목록 카드(`RecipesPage.tsx`)의 대표 이미지 우선순위는
+    **완성 사진 > 첫 조리 단계 이미지 > (목록만) 태그 기반 플레이스홀더 이모지** — 상세 화면은 둘 다
+    없으면 그냥 이미지 영역을 안 보여줌(플레이스홀더 없음).
+  - **일괄 생성**: "조리 순서" 섹션 제목 옆 "🖼 전체 이미지 생성" 버튼(Gemini 전용)으로 현재 폼의 모든
+    단계 이미지 + 완성 사진 1장을 한 번에 생성 가능(`runBatchImageGeneration`). 이미 이미지가 있는
+    항목(단계+완성 사진 포함)이 있으면 먼저 "기존 이미지도 다시 만들까요?" 확인(아니오 선택 시 이미지
+    없는 항목만 대상), 이후 "시간이 조금 걸릴 수 있어요" 안내와 함께 진행 여부 확인(`confirm()`). 단계
+    이미지는 내부적으로 7개씩 묶어 `Promise.all`로 병렬 처리하고 배치 사이는 순차 진행(Gemini 무료
+    티어 분당 요청 제한 고려), 완성 사진은 그 뒤에 별도로 1장 순차 생성. 대상이 7개 이상이면 "시간이
+    좀 더 걸릴 수 있다"는 문구 추가, 진행 중에는 "이미지 생성 중... (n/총)" 진행률 표시(총 개수에
+    완성 사진 1개도 포함).
+  - **채팅/유튜브로 레시피 반영 시에도 동일 플로우 제안**: `applyExtractedResult`(대화 "이대로 반영하기"와
+    유튜브 "이대로 반영하기"가 공유하는 단일 함수)에서 반영 직후 Gemini 사용 중이면 "조리 단계 이미지와
+    완성 사진도 자동으로 생성할까요?" 확인 후 위와 같은 방식으로 전체 생성 진행(이 경우는 방금 막
+    채워진 새 단계라 기존 이미지 개념이 없어 덮어쓰기 질문은 생략, 완성 사진은 항상 새로 생성 대상)
+  - **다른 화면으로 이동해도 배경에서 계속 진행 + 전역 진행 배너/완료 토스트**: 생성 작업
+    자체(`runBatchImageGeneration`)는 이미 시작된 `async` 함수라 컴포넌트가 화면에서 hidden
+    처리돼도(위 "탭 전환은 언마운트가 아니라 hidden" 항목 참고) 계속 실행됨 — React state
+    업데이트는 언마운트된 컴포넌트에만 무시되지 grid hidden은 무관. 여기에 더해
+    `src/data/imageGenerationStatus.ts`(전역 store, `store.ts`와 같은 `useSyncExternalStore`
+    패턴)에 진행률(`done`/`total`/`recipeName`)을 같이 기록해서, `App.tsx`가 어떤 탭을 보고
+    있어도 상단에 "🖼 이미지 생성 중... (n/총)" 배너를 띄우고, 끝나면 하단에 "이미지 생성이
+    완료됐어요 🎉"(실패가 있었으면 "n/총개 성공") 토스트를 5초간 보여줌. **범위 제한**: 이건
+    최상위 탭(재료/장보기 등) 전환에는 완전히 대응하지만, 레시피 탭 안에서 지금 편집 중인
+    레시피를 벗어나 다른 레시피를 보거나 목록으로 돌아가는 것(`RecipesFeature.tsx`의 `view`
+    전환)은 여전히 `RecipeEditor`를 언마운트시킴 — 이 경우 진행 중이던 이미지는 Storage에는
+    정상 업로드되지만(업로드 자체는 컴포넌트 상태와 무관), 그 결과를 레시피의 `steps[].imageId`에
+    연결하는 작업은 로컬 폼 상태 갱신이라 무시되어 이미지가 고아로 남을 수 있음. 이미 저장된
+    레시피의 이미지를 DB에 바로 반영하는 read-modify-write 방식까지는 이번에 구현하지 않음(동시
+    편집 시 충돌 위험 등 고려할 게 늘어나서) — 필요해지면 다음 확장 지점으로 남겨둠.
+  - **배치 크기(`BATCH_SIZE`, 현재 10, 예전 7)**: Google이 모델별 고정 RPM/IPM 표를 더 이상
+    공개하지 않고(계정/프로젝트별로 AI Studio 콘솔에서만 확인 가능) `gemini-3.1-flash-image`는
+    무료 티어에 아예 없는 유료 전용 모델이라, "검증된 여유"를 근거로 크게 올릴 수 없었음 — 대기
+    시간을 조금 줄이는 선에서 소폭만(7→10) 조정. 실제 계정의 한도를 더 확인하고 싶으면 AI Studio
+    콘솔의 Rate Limits 페이지에서 이 모델 기준 값을 볼 것.
+- **DB 전환(Supabase) — 진행 중**: localStorage 단독 구조를 다중 사용자가 가능한 진짜 백엔드로
+  옮기는 작업. 배경: User-Household는 N:1(가족 여러 명이 하나의 household 공유), 재료(ingredients)는
+  household 단위로 공유, 레시피(recipes)는 user 단위 소유하되 `visibility`로 3단계 공개범위(개인
+  소유/가구 공유(기본)/전체 공개 — 10차 확장에서 `is_public` boolean을 대체함, 아래 "레시피 탐색/복사"
+  항목 참고), 로그인은 **구글 소셜 로그인이 메인 + 이메일/비밀번호가 정식
+  보조 수단**(`src/features/auth/LoginPage.tsx`). 이메일 로그인은 개발 편의용이 아니라 정식 기능 —
+  구글 계정이 없거나 네트워크 제약으로 구글 접속이 막힌 환경(예: 특정 회사 네트워크)에서도 로그인할 수
+  있어야 한다는 요구사항. Supabase Auth 내장 기능이라 별도 콘솔 설정 없이 동작하고, `profiles` 자동
+  생성 트리거도 로그인 방식과 무관하게 `auth.users` insert 시 공통으로 걸려있어 그대로 재사용됨.
+  회원가입 시 프로젝트의 "Confirm email" 설정이 켜져 있으면 이메일 인증 링크를 눌러야 로그인 가능
+  (꺼져있으면 가입 즉시 로그인) — 둘 다 자동으로 처리되게 구현(세션 유무로 분기).
+  - **현재 상태**: 스키마 설계 + 설정 가이드만 완료, 실제 코드(로그인 화면, 데이터 레이어, 마이그레이션
+    스크립트)는 아직 손대지 않음. `@supabase/supabase-js` 설치 완료, `.env.example`(→ 로컬에서 `.env`로
+    복사해 실제 키 채워넣는 방식, `VITE_` 접두사 필요 — Vite는 이 접두사 붙은 변수만 클라이언트에 노출),
+    `.env`는 `.gitignore`에 이미 포함됨
+  - **스키마**: `supabase/schema.sql`에 전체 SQL 있음 — `profiles`(auth.users와 1:1, 별도 users 테이블
+    대신 Supabase 공식 권장 패턴대로 auth.users를 참조), `households`, `household_members`(N:1 매핑,
+    유저당 household 1개로 제한하는 unique index 포함), `categories`/`ingredients`/`tags`(모두 household
+    단위), `recipes`(user 소유 + `content` jsonb에 인분/재료/조리순서 중첩 저장 — 개인/가구 규모라 별도
+    테이블로 정규화하지 않음), `recipe_tags`, `shopping_selection`(household 공유)
+  - **RLS**: household 소속 여부 체크는 `household_members` 테이블을 자기 자신이 참조하면 무한 재귀
+    에러가 나서, `is_household_member`/`shares_household_with` 같은 `SECURITY DEFINER` 헬퍼 함수로
+    우회함(Supabase 공식 권장 패턴). recipes는 `is_public=true`거나 본인 것만 조회 가능하도록 정책 설정
+  - **Phase 2 완료 — 로그인/가구 온보딩**: `src/lib/supabaseClient.ts`(클라이언트 초기화, `VITE_SUPABASE_URL`/
+    `VITE_SUPABASE_ANON_KEY` 환경변수 필요 — 없으면 명확한 에러로 즉시 실패), `src/data/session.ts`를
+    Supabase Auth 기반으로 재작성(`signInWithOAuth({provider:'google'})`, `onAuthStateChange`로 세션
+    반영 — `login`/`logout`은 이제 비동기, `useSession()`이 반환하는 `loaded` 플래그로 새로고침 직후
+    깜빡임 방지). `src/data/household.ts`(`useHousehold()` — 로그인 사용자가 속한 household 조회),
+    `src/features/auth/HouseholdOnboarding.tsx`(household 없는 신규 유저에게 "가구 만들기"/"초대코드로
+    참여하기" 선택 화면), `App.tsx`가 로그인→household 유무에 따라 로그인 화면/온보딩/본화면을 분기.
+    설정 화면에 가구 이름 + 초대코드 표시 추가(가족에게 공유용). 구글 로그인 리다이렉트까지 자동
+    확인 완료(Playwright로 실제 구글 로그인 화면 도달 확인, 실제 로그인 자체는 사용자가 직접 테스트 필요)
+  - **household 초대코드 검증 RPC**: 원래 5번째 단계로 예정했던 것을 Phase 2에서 앞당겨 구현함(초대코드로
+    가입하는 기능 자체가 이게 없으면 동작할 수 없어서) — `supabase/migrations/0002_household_rpc.sql`의
+    `create_household`/`join_household_by_invite_code` (둘 다 SECURITY DEFINER, 한 계정당 household
+    1개 제한을 함수 안에서도 체크). **`schema.sql`을 다시 실행하지 말고 이 마이그레이션 파일만 추가로
+    SQL Editor에서 실행할 것**(이미 존재하는 테이블/정책이라 전체 재실행하면 에러남 — 앞으로 스키마가
+    바뀔 때마다 `supabase/migrations/000N_*.sql` 형태로 계속 이어붙이는 방식으로 관리)
+  - **Phase 2 실사용 테스트 완료**: 리다이렉트 URL 등록(로컬+Vercel 배포 주소 둘 다), 구글 로그인,
+    가구 만들기까지 실제로 확인함. 중간에 겪은 이슈 2개는 재발 방지용으로 기록: (1) Vercel에
+    `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`를 안 넣어서 배포본이 완전히 빈 화면으로만 떴던 문제 —
+    `main.tsx`가 이제 `theme`/`App`을 정적 import 대신 동적 import로 불러오게 고쳐서, 앱 시작 중 에러가
+    나도 최소한 에러 메시지는 뜨도록 함(빈 화면 방지). (2) 구글 로그인 시
+    `error=server_error&error_code=unexpected_failure&"Unable to exchange external code"` —
+    Supabase의 Google Provider에 등록된 Client Secret이 잘못돼서(복사 시 공백 등) 발생, Google Cloud
+    Console에서 Client Secret을 다시 발급/복사해 재등록하니 해결됨. Supabase Auth Logs에서 `/callback`
+    요청의 상세(JSON) 안 `msg`/`error` 필드를 봐야 진짜 원인이 나옴(요약 로그의 status 302만으로는
+    성공/실패 구분 불가)
+  - **Phase 3 완료 — 데이터 레이어 Supabase 전환**: `CrudRepository<T>`를 동기(`getAll(): T[]`)에서
+    비동기(`getAll(): Promise<T[]>`)로 변경(Supabase는 네트워크 호출이라 태생적으로 동기 구현이 불가능
+    — localStorage 시절과의 근본적인 차이). `src/data/supabaseAdapter.ts`(신규)가 실제 구현체:
+    categories/tags/ingredients는 household 단위 공용 팩토리(`createHouseholdRepository`)로, recipes는
+    `recipe_tags` 조인 + `is_public` 로직 때문에 별도 구현. `src/data/store.ts`를 전면 재작성해서
+    `initializeDataLayer(householdId, userId)`를 로그인+household 확정 후 `App.tsx`에서 한 번 호출 —
+    그 전까지는 각 스토어가 빈 배열+로딩 상태. `useIngredients()`/`useRecipes()` 등 훅 시그니처는 그대로라
+    features 쪽 컴포넌트는 대부분 안 건드림(단, `saveX`/`deleteX`가 이제 Promise를 반환하므로 결과를
+    기다려야 하는 곳 — `RecipeEditor.tsx`의 태그/재료 자동 생성 후 레시피 저장 흐름 — 은 async/await로
+    수정함, 안 그러면 방금 만든 재료/태그가 DB에 실제로 커밋되기 전에 레시피가 그걸 참조하려다 FK
+    위반이 날 수 있음). `src/data/repos.ts`는 완전히 안 쓰게 돼서 삭제.
+    - **PantryStatus 통합**: 예전엔 별도 `PantryStatus` 맵(ingredientId→boolean)이었는데, household 공유
+      스키마에서는 `ingredients.owned` 컬럼 하나로 통합(`supabase/migrations/0003_ingredients_owned.sql`).
+      `usePantryStatus()`는 이제 `ingredients` 목록에서 파생시키는 방식으로 내부 구현만 바뀌고 반환 타입은
+      그대로라 `IngredientsPage.tsx`/`ShoppingListPage.tsx`는 무수정.
+    - **shopping_selection**: household 공유 테이블이라 `src/data/shoppingSelection.ts`도 Supabase 직접
+      호출로 재작성, `initializeShoppingSelection(householdId)`를 `App.tsx`에서 데이터 레이어와 함께 초기화.
+    - **백업(JSON 내보내기/가져오기)**: `backup.ts`가 이제 스토어의 캐시 스냅샷(`getIngredientsSnapshot()`
+      등, React 훅이 아닌 일반 함수)을 읽고, 가져오기는 각 `replaceAllX`를 await하도록 변경. pantryStatus는
+      가져올 때 각 재료의 `owned` 필드로 다시 접어넣음(백업 JSON 포맷 자체는 안 바꿈).
+      **(13차 확장에서 이 기능 자체를 제거함 — "데이터 백업" 항목 참고, `backup.ts`는 더 이상 없음.)**
+    - **버그(수정 완료) — ID를 uuid로 변경**: `makeId(prefix)`가 localStorage 시절 그대로 `cat-xxx`/
+      `recipe-xxx` 형태의 문자열을 만들고 있어서, Supabase의 모든 `id` 컬럼이 `uuid` 타입인 것과 충돌 —
+      새 재료/태그/카테고리/레시피를 만들 때마다 `invalid input syntax for type uuid` 400 에러로 저장이
+      실패했음(Supabase 대시보드 **Logs → Postgres**에서 발견). `makeId()`를 인자 없이 `crypto.randomUUID()`를
+      반환하도록 변경, 모든 호출부(`makeId('cat')` 등)에서 인자 제거. 앞으로 새 테이블/엔티티를 추가할 때도
+      클라이언트에서 id를 직접 만든다면 반드시 `makeId()`(진짜 UUID)를 쓸 것 — 다른 형식의 문자열 id를
+      쓰면 같은 에러가 재발함.
+    - **에러 메시지 처리 버그(수정 완료)**: Supabase 에러(PostgrestError)는 `Error` 인스턴스가 아니라
+      `message` 속성만 있는 일반 객체라서, `err instanceof Error ? err.message : fallback` 패턴을 쓰면
+      항상 fallback으로 빠져 실제 에러 내용이 안 보임. `src/lib/errorMessage.ts`의 `getErrorMessage()`로
+      통일(Error 인스턴스와 `{message}` 객체 둘 다 처리) — Supabase 호출을 감싸는 catch 블록은 항상 이
+      헬퍼를 쓸 것. 겸사겸사 `console.error`도 같이 남겨서 화면 문구와 별개로 콘솔에서 원본 에러 확인 가능.
+    - **Phase 4 완료 — API 키 Vault 전환**: 13차 확장에서 완료. 아래 "API 키 Vault 전환" 항목 참고.
+      household 신규 데이터 없음(새 household는 빈 상태로 시작 — 기존 로컬 데이터를 옮기는 마이그레이션
+      스크립트는 별도로 요청 시 진행)는 여전히 미착수.
+    - **버그(수정 완료) — 카테고리 중복 생성 레이스 컨디션**: 재료 관리 화면에서 같은 이름 카테고리인데도
+      그루핑이 안 되는 문제 발견 — 그루핑 로직(`categoryId` 정확 비교) 자체는 문제 없었고, 원인은
+      `RecipeEditor.tsx`의 `applyExtractedResult`(AI 대화/유튜브 반영 공통 경로)가 새 재료들을
+      `Promise.all`로 동시에 처리하던 것. 아직 없는 새 카테고리를 두 재료가 동시에 필요로 하면 둘 다
+      리액트 state의 같은(오래된) `categories` 스냅샷만 보고 있어서 서로의 생성 결과를 못 보고, 같은
+      이름의 카테고리를 서로 다른 id로 두 번 만들어버림 — 화면에는 이름이 같아 안 구별되지만 실제로는
+      `categoryId`가 갈려 그루핑이 깨진 것처럼 보였음. 새 재료/태그를 순차 처리(`for...of` + `await`)로
+      바꾸고, 배치 안에서 방금 만든 카테고리/태그를 바로 찾을 수 있는 로컬 캐시(`Map`)를 둬서 해결
+      (`createIngredientFromAi`/`resolveOrCreateTag`가 이제 이 캐시를 받아서 씀). 이미 이 버그로
+      생성된 중복 카테고리는 `supabase/migrations/0004_merge_duplicate_categories.sql`로 병합
+      (household 단위로 이름이 같은 카테고리를 대표 하나로 합치고 재료의 `category_id`를 옮긴 뒤
+      나머지 삭제 — SQL Editor에서 1회 실행, 여러 번 실행해도 안전). 앞으로 AI가 여러 개의 새
+      엔티티(카테고리/태그/재료)를 한 응답에서 만들 때는 항상 이 패턴(순차 처리 + 배치 내 캐시)을
+      따를 것 — `Promise.all`로 동시에 새로 만들면 같은 버그가 재발함.
+- **레시피 관리 화면(모바일 개편)**: `RecipesPage.tsx`가 기본으로 2열 그리드 카드 뷰를 보여줌
+  (`.recipe-grid`/`.recipe-card`, 기존 "따뜻한 아날로그 + Soft UI" 변수 재사용). 카드 = 대표 이미지
+  (첫 조리 단계 이미지 → 없으면 태그 기반 이모지 플레이스홀더, 완성 사진 필드가 나중에 생기면 그게
+  우선하도록 설계) + 이름 + 태그 최대 2개 + 인분/총 조리시간(타이머 있는 단계 합산, `computeTotalCookMinutes`).
+  화면 우측 상단 아이콘 버튼(☰/▦)으로 리스트 뷰(`.recipe-list`, 작은 썸네일 + 정보 한 줄, 더 조밀함)로
+  전환 가능 — 선택은 `src/data/viewMode.ts`(localStorage, theme.ts와 같은 패턴)에 기기별로 저장됨.
+  **(16차 확장에서 검색/필터가 없는 기본 진입 화면만 가로 스크롤 행 구조로 개편됨 — 이 그리드/리스트
+  자체는 검색·필터 결과 화면과 "더보기" 카테고리 상세 화면에서 여전히 그대로 쓰임. 아래 "레시피
+  가로 스크롤 행 구조" 항목 참고.)**
+  - **검색+필터**: 검색은 레시피 이름과 재료 이름 둘 다 매칭, 300ms 디바운스. 필터(태그/카테고리, 알러지
+    제외, 신규 "🧺 보유 재료로 가능한 것만" — 레시피가 쓰는 재료 전부가 `owned=true`인 경우만 통과)는
+    가로 스크롤 가능한 한 줄(`.chip-row-scroll`)로 통합, 전부 AND 조건으로 동시 적용 가능
+  - **정렬**: 최근 추가순(기본, `Recipe.createdAt` 기준 — DB의 `recipes.created_at`을
+    `supabaseAdapter.ts`에서 매핑) / 이름순(`localeCompare('ko')`) / 자주 해먹은 순(17차 확장에서
+    추가 — 아래 "요리 완료 기록(CookingLog)" 항목 참고, `cooking_log` 집계 횟수 내림차순, 동률이면
+    최근 추가순으로 보조 정렬)
+  - **빈 상태**: 필터 결과가 없으면 "조건에 맞는 레시피가 없어요" + 필터 초기화 버튼, 레시피가 아예
+    없으면 "첫 레시피를 만들어보세요" + 추가 버튼
+  - **성능**: 지금은 전부 클라이언트 사이드 필터링/정렬(레시피 몇십 개 규모에서는 충분히 빠름).
+    레시피가 수백 개 이상으로 늘어나면 서버 사이드 필터링/정렬 + 페이지네이션으로 옮기는 걸 고려할 것
+    (RecipesPage.tsx에도 같은 주석 남겨둠)
+  - **레시피 카드에서 뺀 것**: 기존 목록 카드에 있던 "🛒 담기"/"삭제" 버튼은 그리드에서 실수로 누르는
+    걸 방지하려고 뺐음 — 담기는 상세 화면에 이미 있고, 삭제는 상세 화면(`RecipeDetailPage.tsx`)의
+    "수정" 옆으로 옮김. 알러지 배지도 카드에서는 뺐음(이미 알러지 제외 필터가 있어 중복 판단) — 필요해지면
+    다시 넣을 수 있음
+- **레시피 탐색/복사(다른 가구 공개 레시피 둘러보기)**: `RecipesFeature.tsx`에 "우리집 레시피"/"🔎 둘러보기"
+  칩 토글 추가(별도 하단 탭 대신 기존 레시피 탭 안에서 전환 — 탐색은 가끔 쓰는 보조 기능이라 4개
+  네비게이션 탭에 자리를 더 안 씀). 그리드/리스트 카드(`RecipeCard`/`RecipeListItem`)는 `RecipesPage.tsx`
+  것을 그대로 재사용하되, `tags: Tag[]` 대신 `tagNames: string[]`을 받도록 리팩터링(다른 household의
+  태그는 로컬 `useTags()` 목록에 없어서 이름을 미리 문자열로 뽑아 넘겨야 함), `ownerLabel`/`cornerBadge`
+  prop을 추가해 "OO님의 레시피"/"이미 있음" 표시를 지원. **(16차 확장에서 이 화면도 기본 진입 시
+  가로 스크롤 행 구조로 개편되고, 공공데이터 시드 레시피(시스템 계정 소유)는 일반 사용자 레시피와
+  분리된 접기/펼치기 섹션으로 빠졌음 — 아래 "레시피 가로 스크롤 행 구조" 항목 참고.)**
+  - **공개 범위 3단계로 확장(`visibility`) — 처음엔 boolean `is_public`으로 시작했다가 곧바로 개편함**:
+    실사용해보니 "레시피는 user 소유, is_public 켜면 전체공개"만으로는 **같은 가구 식구끼리도 서로의
+    레시피가 자동으로 안 보이는** 문제가 있었음(가족 앱인데 정작 가족끼리 공유가 안 되는 구조). 그래서
+    `is_public boolean`을 `visibility text`(`'private'` 개인 소유 / `'household'` 가구 공유(**기본값**)
+    / `'public'` 전체 공개) 3단계로 교체(`supabase/migrations/0010_recipe_visibility_household_sharing.sql`,
+    `schema.sql` 동기화, 기존 `is_public=false` 행은 전부 `household`로 마이그레이션됨 — 1인 가구는
+    체감 차이 없지만 진짜 비공개를 원했다면 편집 화면에서 다시 "개인 소유"로 바꿔야 함).
+    `recipes_select_visibility` RLS는 `visibility='public' or user_id=auth.uid() or (visibility=
+    'household' and shares_household_with(user_id))` — `household_members` 재귀 방지용으로 이미
+    만들어둔 `shares_household_with()` 헬퍼 함수를 그대로 재사용. `recipe_tags`/`recipe_likes` 등
+    파생 정책들도 전부 같은 3항 조건으로 갱신.
+    - **"우리집 레시피" 목록 재정의**: 이제 단순 "내 것"이 아니라 **내 것(등급 무관) + 우리 가구원이
+      만든 household/public 등급 레시피**(가구원의 private는 안 보임)를 보여줌. RLS만으로는 "다른
+      가구의 public 레시피"까지 다 통과되므로(둘러보기 전용 범위), `createRecipesRepository.getAll()`이
+      먼저 `fetchHouseholdMemberIds(householdId)`(`household.ts`, `household_members` 조회)로 우리
+      가구원 id 목록을 구한 뒤 `.in('user_id', memberIds).or('visibility.neq.private,user_id.eq.'+
+      userId)`로 좁힘 — RLS가 허용하는 범위 중에서도 "이 화면에 필요한 만큼만" 클라이언트가 한 번 더
+      제한하는 패턴(바로 아래 "내 레시피에 남의 공개 레시피가 섞여 나오던" 버그와 같은 종류의 교훈).
+    - **둘러보기도 가구원 제외**: `fetchPublicRecipes(userId, householdId, myRecipes)`가 우리 가구원
+      (나 포함)의 public 레시피는 이미 "우리집 레시피"에 나오므로 제외하고, 진짜 다른 가구의 public만
+      보여줌.
+  - **RLS 보완이 핵심 작업이었음(0007)**: `recipes` 테이블 자체의 RLS는 이미 Phase 1 설계 때부터
+    있었어서 손댈 게 없었음(이후 위 visibility 개편에서 조건만 확장됨). 진짜 문제는 공개 레시피가
+    "참조하는" 다른 테이블들 — `tags`/`ingredients`/`profiles`는 전부 household(또는 본인) 단위로만
+    보이게 막혀있어서, 다른 household의 공개 레시피를 열어도 그 레시피가 쓰는 태그 이름/재료 이름/
+    작성자 이름을 하나도 못 읽어오는 문제가 있었음(레시피 행 자체는 보이는데 참조된 이름들이 비어보임).
+    `supabase/migrations/0007_public_recipe_browsing.sql`(+ `schema.sql` 동기화)로 세 테이블에
+    "공개 레시피가 참조하는 경우에 한해 SELECT만 허용"하는 정책을 추가 — `tags`/`profiles`는 실제 조인
+    테이블(`recipe_tags`)/FK(`recipes.user_id`)가 있어 깔끔하게 작성 가능했지만, `ingredients`는 정식
+    조인 테이블이 없고(`recipes.content` jsonb 배열 안에 `ingredientId`만 있음) `jsonb_array_elements`로
+    모든 공개 레시피의 재료 배열을 훑어서 판단하는 정책을 씀(개인 앱 규모에서는 성능 문제 없음). 이
+    정책들은 전부 SELECT 전용이라 수정/삭제 권한은 원래대로 소유 household/본인으로 제한됨.
+  - **버그(발견 및 수정) — "내 레시피"에 남의 공개 레시피가 섞여 나오고 있었음**: `createRecipesRepository`의
+    `getAll()`이 원래 `user_id` 필터 없이 그냥 `recipes` 테이블을 조회했는데, RLS가 이미 "본인 것 +
+    is_public=true"를 다 통과시켜주기 때문에 이 필터 없는 조회가 실제로는 **다른 사람의 공개 레시피까지
+    "내 레시피" 목록에 섞어서 반환하고 있었음**(둘러보기 기능을 만들면서 발견 — 이전까지는 공개 레시피가
+    하나도 없어서 드러나지 않았던 버그). `.eq('user_id', userId)`를 명시적으로 추가해서 "내 레시피"는
+    소유권 기준으로만 걸러지도록 수정. 앞으로 RLS가 여러 조건을 OR로 통과시키는 테이블은, 클라이언트
+    쪽에서 "지금 이 화면에 필요한 조건"을 별도로 명시하는 걸 잊지 말 것 — RLS 통과 ≠ 화면에 보여줘야 할
+    범위.
+  - **공개 레시피 조회는 `src/data/publicRecipes.ts`의 `fetchPublicRecipes(currentUserId, myRecipes)`** —
+    household 공유 store(`store.ts`)처럼 계속 구독하는 캐시가 아니라 `DiscoverRecipesPage.tsx` 진입
+    시 1회 조회. `recipe_tags(tag_id, tags(name))`/`profiles(display_name, email)`를 PostgREST 임베드
+    조인으로 함께 가져와 태그 이름/작성자 이름을 한 번에 해석하고, 재료 이름은 이 배치가 참조하는
+    `ingredientId`를 전부 모아 별도 쿼리 한 번으로 해석(`ingredientNameById: Map<string,string>`).
+    "이미 있음" 배지는 `recipes.source_recipe_id`(0007 마이그레이션에서 추가한 컬럼 — 복사해온 원본
+    레시피 id를 추적) 기준으로 `myRecipes`와 대조해서 판단.
+  - **"내 레시피로 복사하기"** (`RecipesFeature.tsx`의 `handleCopyPublicRecipe`): 재료/태그는 이름으로
+    매칭해서 내 household에 이미 있으면 재사용, 없으면 새로 만듦(AI 반영 로직 `createIngredientFromAi`/
+    `resolveOrCreateTag`와 같은 패턴 — 순차 처리 + 배치 내 캐시로 중복 생성 방지). 새 재료의 카테고리는
+    원본 카테고리를 그대로 옮기지 않고(원본 카테고리는 다른 household 소유라 이름조차 못 읽어옴 —
+    categories 테이블까지는 공개 예외를 안 넣음, 범위 밖으로 남겨둠) "기타"로 폴백 — 필요하면 나중에
+    직접 재분류. 조리 단계 이미지/완성 사진은 **참조만 옮기지 않고 실제로 다운로드해서 내 household
+    경로에 새로 저장**(`imageStore.ts`의 `copyImage` — 원본이 나중에 삭제되거나 비공개로 바뀌어도 내
+    복사본은 이미지까지 안전하게 유지됨). 이걸 가능하게 하려고 recipe-images 버킷에
+    `supabase/migrations/0008_public_recipe_images_storage.sql`로 "공개 레시피가 참조하는 이미지는
+    다운로드만 추가로 허용"하는 정책을 넣음(0006의 household 전용 정책과 별개로 추가, 업로드/삭제는
+    여전히 household 전용). 복사 완료 후 `confirm()`으로 "편집 화면으로 이동할까요?" 안내.
+  - **공개 범위(`visibility`) 선택**: `RecipeEditor.tsx` 하단(조리 순서 다음)에 개인 소유/가구 공유
+    (기본)/전체 공개 3단 select 추가, 전체 공개 선택 시 경고 문구 노출. 상세 화면에는 안 넣음(스펙상
+    편집 화면에만 필요).
+  - **범위에서 뺀 것**: 시드 레시피 4개(`src/data/seed.ts`)를 공개로 미리 심어두는 건 스킵 — 이 시드는
+    실제 DB에 한 번도 들어간 적 없는 미사용 TypeScript 참고 데이터라(Supabase 전환 후 새 household는
+    항상 빈 상태로 시작) 토글할 실제 DB 행 자체가 없음. 초기 콘텐츠 문제는 여러 household가 실제로
+    레시피를 만들고 공개하기 시작하면 자연히 해소될 것으로 보고 별도 조치 없이 남겨둠.
+  - **좋아요(하트)**: 공개 레시피를 얼마나 좋아하는지 보여주는 지표로 추가(가구 수가 늘어나기 전까진
+    "즐겨찾기" 개인용 기능이 더 실용적이지만, 그건 레시피 관리 기능을 더 발전시킬 때 따로 추가하기로
+    하고 이번엔 공개 지표만). `recipe_likes`(recipe_id+user_id 복합 PK — 중복 좋아요 자체가 DB
+    레벨에서 불가능) 테이블 + `supabase/migrations/0009_recipe_likes.sql`. RLS는 "그 레시피를 볼 수
+    있으면(본인 것+공개) 좋아요 목록도 볼 수 있음", 좋아요 추가/삭제는 본인 것만. `src/data/
+    recipeLikes.ts`의 `fetchLikeInfo`/`toggleLike` — group by 없이 해당 레시피들의 좋아요 행을 통째로
+    가져와 클라이언트에서 집계(개인 앱 규모라 충분히 가벼움). 토글 가능한 하트 버튼은
+    `PublicRecipeDetailPage.tsx`(다른 사람 공개 레시피, 낙관적 업데이트 + 실패 시 롤백)에만 두고,
+    `RecipesPage.tsx`의 그리드/리스트 카드와 `RecipeDetailPage.tsx`(내 레시피 상세, 공개 상태일 때만)에는
+    조회 전용 숫자만 표시 — 내 레시피에 내가 좋아요 누르는 건 의미가 없어서 그쪽엔 토글 버튼을 안 둠.
+- **작성자 표시/프로필(닉네임/사진)**: `profiles.display_name`은 원래도 존재했고 가입 시 트리거가
+  구글 계정 실명(`raw_user_meta_data->>'full_name'`)으로 자동 채워주고 있었지만, 편집 UI가 없었음
+  (이메일 로그인은 `full_name`이 없어 비어있었음). `src/data/profile.ts`의 `useProfile()`(household.ts와
+  같은 패턴)로 조회/수정 — 본인 프로필 수정은 `profiles_update_own` RLS가 이미 허용해서 DB 변경
+  없이 프론트만 추가하면 됐음.
+  - **레시피 작성자 표시("OO님의 레시피")**: `Recipe.authorName`/`authorAvatarUrl`을 추가 —
+    DB에 저장되는 값이 아니라 조회 시 `profiles!user_id(display_name, avatar_url)` 임베드 조인으로만
+    채워지는 표시 전용 필드(`rowToRecipe`). "우리집 레시피" 목록(`createRecipesRepository.getAll()`)은
+    이미 가구원으로 좁혀 조회하고 있어서(`profiles_select_own_or_household` RLS로 이미 허용) 조인만
+    추가하면 됐고, 본인 레시피 포함 전부에 작성자를 보여줌(가구원 중 누가 만들었는지 구분이 목적이라
+    내 것도 예외 두지 않는 쪽이 자연스럽다고 판단). 둘러보기(다른 가구 공개 레시피, `publicRecipes.ts`)는
+    다른 household 소속 작성자라 `authorHouseholdName`도 같이 붙여 "OO님의 레시피 (영희네)"로 표시
+    (`formatPublicRecipeOwnerLabel`), 내 household 소속 레시피는 어차피 같은 가구라 이름을 생략.
+  - **household 이름도 조회 가능해야 함(RLS 보완, 0012)**: 공개 레시피 작성자가 다른 household
+    소속이면 그 household 이름을 읽어올 권한이 없었음(`households_select_member`가 "내 household면"만
+    허용) — tags/ingredients/profiles에 이미 해준 것과 같은 종류의 SELECT 전용 예외를
+    `household_members`/`households`에도 추가(`supabase/migrations/0012_public_recipe_household_name.sql`).
+    노출 컬럼도 user_id/household_id/household 이름뿐이라 추가 민감정보 노출은 없음.
+  - **민감정보(이메일) 노출 버그(발견 및 수정)**: `publicRecipes.ts`가 원래 작성자 이름 조회 시
+    `profiles!user_id(display_name, email)`로 email까지 같이 가져와서, 닉네임이 비어있으면
+    이메일을 그대로 화면에 표시하는 폴백이 있었음 — 다른 household 유저에게 낯선 사람의 이메일이
+    노출되는 셈이라 위험한 패턴이었음(이번에 작성자 표시 기능을 만들며 발견). email 선택 자체를
+    제거하고, 닉네임이 없으면 "이름 없는 사용자"라는 중립적인 문구로 대체.
+  - **프로필 사진(avatar_url, 0013)**: 구글 로그인 시 `raw_user_meta_data`에 이미 있는
+    `avatar_url`/`picture`를 `profiles.avatar_url`에 저장(`handle_new_user()` 트리거 갱신 +
+    기존 계정은 마이그레이션에서 1회 백필). 실제 이미지 바이트를 우리 Storage에 복사하지 않고
+    구글이 제공하는 URL을 그대로 참조만 함(조리 단계 이미지와 달리 "우리가 소유해야 하는 자산"이
+    아니라고 판단, 계정 부가 정보일 뿐). 작성자 표시 옆(그리드 카드/상세 화면)과 설정 화면
+    "계정" 섹션에 작은 원형 아이콘으로 노출 — 리스트 뷰(컴팩트 한 줄 레이아웃)에는 생략.
+  - **household 이름 짓기 가이드**: household 생성 화면(`HouseholdOnboarding.tsx`)과 설정 화면
+    양쪽에 "가구 이름은 모든 구성원과 다른 가구 유저에게 동일하게 보여요. '우리집'이나
+    '장모님댁'처럼 특정 사람 기준의 호칭보다는, '김영희네'처럼 누가 봐도 자연스러운 이름을
+    추천해요" 안내 문구 추가. 설정 화면에서 household 이름을 나중에 바꾸는 기능도 이번에
+    추가(`households_update_member` RLS가 이미 가구원의 수정을 허용하고 있어서 UI만 없었음).
+  - **설정 화면 UI 패턴 — 인라인 편집**: API 키 입력처럼 입력창+저장 버튼+상태 문구를 항상
+    늘어놓는 대신, 닉네임/household 이름은 평소엔 "라벨: 값 [변경]"만 조용히 보여주다가 [변경]을
+    누르면 그 자리가 입력창+[취소]/[저장]으로 바뀌는 인라인 편집 컴포넌트(`SettingsPage.tsx`의
+    `InlineEditRow`)를 새로 만들어 적용 — 자주 안 바꾸는 값을 계속 입력 폼 형태로 노출해두면
+    화면이 번잡해 보인다는 피드백에 따른 디자인. 이 컴포넌트는 이후 API 키 마스킹 표시에도
+    재사용됨(아래 "API 키 Vault 전환" 항목의 `startEmpty` 옵션 참고).
+- **API 키 Vault 전환(DB 전환 Phase 4)**: Anthropic/Gemini API 키를 브라우저 localStorage 평문
+  저장 → Supabase Vault 암호화 저장으로, 실제 AI 호출도 브라우저 직접 호출 → 서버리스 함수 경유로
+  전환. 유튜브 자막 추출/썸네일 프록시("서버 도입 1호/2호")에 이은 세 번째 서버 확장이지만, 이번엔
+  "CORS 우회"가 아니라 "민감정보(API 키)를 브라우저에 안 두기"가 목적이라 성격이 다름 — 브라우저는
+  이제 Anthropic/Gemini API 키를 아예 들고 있지 않는다.
+  - **Vault 스키마**(`supabase/migrations/0014_api_key_vault.sql`): `user_api_keys(user_id,
+    provider, secret_id, updated_at)` — 실제 키 값은 담지 않고 `vault.secrets`를 가리키는 참조만
+    저장(household 아니라 user 단위, 각자 자기 키를 씀). `vault.secrets`/`vault.decrypted_secrets`는
+    PostgREST에 노출되지 않는 스키마라 supabase-js로 직접 접근이 원천적으로 불가능(anon/service_role
+    키 어느 쪽으로도) — 공식 권장 패턴대로 `public` 스키마에 `save_user_api_key`/`get_user_api_key`
+    SECURITY DEFINER 래퍼 함수를 두고, 그 실행 권한도 `service_role`에만 부여(anon/authenticated는
+    revoke). `user_api_keys` 테이블 자체도 RLS는 켜두되 정책을 하나도 안 만듦(anon/authenticated
+    접근 자체를 차단) — "본인 키만 조회/저장 가능"은 RLS가 아니라 서버리스 함수가 요청자의 로그인
+    세션(JWT)을 검증해서 그 user_id로만 함수를 호출하는 방식으로 보장(`api/_lib/auth.ts`의
+    `requireUser` — Supabase anon 클라이언트로 `auth.getUser(token)`만 하면 되고 service_role은
+    필요 없음). **SQL Editor에서 이 마이그레이션 실행 필요** + Vercel 프로젝트에 새 환경변수
+    `SUPABASE_SERVICE_ROLE_KEY` 추가 필요(반드시 `VITE_` 접두사 없이 — 접두사가 붙으면 Vite가
+    클라이언트 번들에 그대로 인라인해서 브라우저에 노출시키므로 절대 금지, `api/_lib/
+    supabaseAdmin.ts`에 이 경고를 주석으로 남겨둠).
+  - **서버리스 함수 구성**: `api/_lib/`(언더스코어 접두사 폴더는 Vercel이 라우트로 등록하지 않는
+    공식 컨벤션)에 공용 헬퍼 3개 — `auth.ts`(`requireUser`), `supabaseAdmin.ts`(service_role
+    클라이언트), `apiKeyStore.ts`(`saveUserApiKey`/`getUserApiKey`/`maskApiKey`). 실제 엔드포인트는
+    `api/save-api-key.ts`(키 저장), `api/get-api-key.ts`(마스킹된 키만 반환 — "앞 6자리+****+뒤
+    4자리", 설정 화면 표시용), `api/ai-chat.ts`(대화형 propose_recipe, 두 제공자 공용),
+    `api/ai-extract-transcript.ts`(Claude 전용, 자막→레시피), `api/ai-extract-youtube-meta.ts`
+    (Gemini 전용, 영상 메타+자막→레시피), `api/ai-image.ts`(Gemini 전용, 조리 단계/완성 사진 생성).
+  - **핵심 설계 — 클라이언트/서버가 같은 프롬프트·툴 로직을 공유**: `src/lib/claudeClient.ts`/
+    `geminiClient.ts`의 `chatAboutRecipe`/`extractRecipeFromTranscript`/
+    `extractRecipeFromYoutubeMeta`/`generateImageWithRetry`는 원래도 apiKey를 인자로 받는 순수
+    함수였어서(브라우저 전용 API를 쓰지 않음), 로직을 서버용으로 새로 옮겨 적을 필요 없이 `api/ai-*.ts`
+    가 그대로 import해서 쓴다(Vercel 함수 빌드가 `api/`에서 `src/`로의 상대 경로 import를 그대로
+    번들링해줌) — apiKey만 클라이언트가 보내던 것에서 서버가 Vault에서 복호화한 값으로 바뀔 뿐,
+    프롬프트/툴 스키마/재시도 로직은 완전히 동일해서 "서버 경유해도 기존과 동일한 품질의 에러
+    메시지가 보이는지" 같은 걱정이 애초에 생기지 않음(로직 중복이 없으므로 동작이 갈릴 여지가 없음).
+    반대로 `buildStepImagePrompt`/`buildFinalDishImagePrompt`처럼 API 키 자체가 필요 없는 순수
+    프롬프트 빌더 함수는 그대로 클라이언트에 남아있음.
+  - **YouTube Data API 키도 뒤이어 같은 방식으로 Vault 전환(0015)**: 처음엔 "읽기 전용 공개
+    데이터 조회용이라 민감도가 낮다"는 이유로 범위 밖으로 뒀었으나, 사용자 요청으로 바로 이어서
+    포함시킴. 저장소 계층의 provider 타입을 `'anthropic' | 'gemini'`에서 `ApiKeyProvider =
+    'anthropic' | 'gemini' | 'youtube'`로 넓히고(`api/_lib/apiKeyStore.ts`, `src/data/apiKeys.ts`
+    — `settings.aiProvider`와는 다른 축이라 별도 타입으로 분리), `user_api_keys.provider`
+    체크 제약도 함께 넓힘(`0015_youtube_api_key_provider.sql`). `api/youtube-meta.ts`가
+    `fetchYoutubeVideoMeta`(geminiClient.ts, 원래도 키를 인자로 받는 순수 함수라 그대로 재사용)를
+    서버에서 호출 — 이 키는 여전히 완전한 선택 사항이라, 키가 없거나 조회 자체가 실패해도(영상
+    비공개 등) 에러 대신 `{ meta: null }`로 조용히 응답하고 자막만으로 계속 진행한다(기존
+    클라이언트 쪽 try/catch 무시 동작을 서버로 그대로 옮김). `api/ai-chat.ts`의 provider
+    검증은 넓어진 `isValidApiKeyProvider`를 쓰지 않고 `'anthropic'|'gemini'`만 직접 체크 —
+    대화 제공자 선택과 키 저장소의 provider 개념이 다르다는 걸 명확히 하기 위함(대화에 youtube가
+    올 일은 없어야 함).
+  - **클라이언트 진입점**: `src/lib/aiProxy.ts`(로그인 세션의 access token을 `Authorization: Bearer`
+    로 실어 `/api/ai-*` 호출, `ApiProxyError`(코드+메시지)를 던짐) + `src/data/apiKeys.ts`의
+    `useApiKeyStatus(provider)`(설정 화면에서 마스킹된 키 상태 조회/저장, `useProfile()`과 같은 패턴).
+    `RecipeChatPanel.tsx`/`RecipeEditor.tsx`의 모든 AI 호출 지점이 `claudeClient`/`geminiClient`
+    직접 호출에서 `aiProxy.*` 호출로 교체됨.
+  - **설정 화면 UI**: API 키 입력도 `InlineEditRow`로 통일하되, 기존 값을 다시 보여주지 않고 항상
+    빈 입력창에서 새로 입력받도록 `startEmpty` 옵션을 추가(일반적인 보안 UX 패턴 — "변경"을 누르면
+    마스킹된 값이 아니라 빈 칸에서 시작). 표시값은 `useApiKeyStatus`가 돌려주는 마스킹된 문자열
+    (없으면 "(미설정)").
+  - **에러 처리 — "키 없음"은 서버가 최종 판단**: 클라이언트에서 사전에 `settings.xxxApiKey` 존재
+    여부를 체크하던 방식(이제 그 필드 자체가 안 쓰임)을 없애고, 서버가 Vault 조회 결과 키가 없으면
+    `{error: 'no_api_key', message: '...'}` (HTTP 400)를 반환 → `ApiProxyError.code === 'no_api_key'`
+    를 감지해서 에러 메시지 아래에 "설정으로 이동" 버튼을 보여줌. 이 버튼이 실제로 설정 탭으로
+    전환할 수 있어야 해서, `App.tsx`의 탭 상태를 로컬 `useState`에서 전역 store(`src/data/
+    activeTab.ts`, `useSyncExternalStore` 패턴)로 옮김 — 예전엔 탭 상태가 `App.tsx` 안에 갇혀있어서
+    레시피 편집/채팅 화면에서 "설정 탭으로 보내기"가 불가능했음.
+  - **기존 localStorage 평문 키 마이그레이션**: 설정 화면 진입 시 `settings.anthropicApiKey`/
+    `geminiApiKey`(둘 다 예전 필드, 마이그레이션 감지 목적으로만 남겨둠)에 값이 남아있고
+    `localStorage['cookkit:apiKeyMigrated']`가 없으면 "안전하게 옮길까요?" 배너 표시. "옮기기"를
+    누르면 각 키를 `/api/save-api-key`로 전송한 뒤 `settings`에서 지우고 플래그를 세움, "나중에"를
+    눌러도 플래그는 세워서 다시 안 뜨게 함(개인 1인 사용 앱이라 "묻지 않기" 선택을 존중 — 다만 이
+    경우 예전 평문 키는 그대로 localStorage에 남으므로, 신경 쓰인다면 브라우저 devtools에서 직접
+    지우거나 플래그를 지우고 다시 마이그레이션을 띄울 수 있음).
+  - **스트리밍은 원래도 안 씀**: 서버 경유 전환 전에도 Claude/Gemini 호출 둘 다 비스트리밍
+    (`messages.create`/`generateContent`, `streamGenerateContent` 아님)이었어서, "서버리스 함수를
+    거쳐도 스트리밍이 유지되는가"는 애초에 해당 사항이 없었음 — 응답은 항상 완결된 JSON을 한 번에
+    받아서 화면에 반영하는 방식 그대로.
+  - **이미지 생성 함수 타임아웃(`maxDuration: 200`)**: `generateImageWithRetry`가 내부적으로 60초
+    타임아웃 + 429/503/408 재시도(최대 3회, 지수 백오프 2초→4초)를 이미 갖고 있어서, 최악의 경우
+    60+2+60+4+60초 가까이 걸릴 수 있음 — Vercel 함수 자체의 `maxDuration`을 넉넉히 잡아야 도중에
+    함수가 먼저 끊기지 않음(`api/youtube-transcript.ts`가 이미 Fluid Compute를 전제로 120초를 쓰고
+    있어서 같은 전제 위에 설정).
+- **유통기한 관리 + PWA/웹 푸시 알림(14차 확장)**: `Ingredient.expirationDate?: string`(YYYY-MM-DD,
+  선택 — `0016_ingredient_expiration.sql`, `ingredients.expiration_date`) 추가. `src/lib/
+  expiration.ts`의 `getExpirationInfo()`가 오늘 날짜 기준으로 `expired`(경과)/`urgent`(3일
+  이내)/`soon`(4~7일) 세 단계를 계산하고, 화면(재료 목록 각 행 + 상단 "유통기한 임박/경과"
+  요약 섹션)과 서버(알림 발송 대상 판단) 양쪽이 이 함수 하나를 공유해서 기준이 어긋나지 않게
+  함(제공자 로직 재사용의 반복되는 패턴). 배지는 `.chip.expiration-{level}` 클래스(신규
+  `--warning` CSS 변수 추가, 기존 `.chip.allergen`의 color-mix 패턴 그대로 따름).
+  - **PWA(vite-plugin-pwa)**: `strategies: 'injectManifest'`로 설정(자동 생성 서비스워커
+    `generateSW`가 아니라 커스텀 소스 `src/sw.ts`를 씀 — push/notificationclick 이벤트를 직접
+    다뤄야 해서). 아이콘은 아직 임시(`scripts/generate-pwa-icons.mjs`가 순수 Node
+    `zlib.deflateSync`로 PNG를 직접 인코딩해서 만든 accent 색상 배경 + cream 원형 단색
+    아이콘 — 이 프로젝트엔 실제 로고 에셋이 없었고 이미지 생성/변환 도구도 없어서 절차적으로
+    최소한의 유효한 아이콘만 만들어둔 것, 나중에 실제 로고로 교체할 것). `index.html`에
+    `apple-mobile-web-app-*` 메타태그 + `apple-touch-icon`도 추가(iOS는 web manifest를 온전히
+    안 따라서 별도 필요).
+  - **알림 클릭 시 탭 전환**: 이 앱은 라우터 없는 탭 기반 SPA라 URL로 화면을 구분하지 않음 —
+    `src/sw.ts`의 `notificationclick`이 이미 열린 창엔 `postMessage({type:'cookkit-navigate',
+    tab})`, 새 창은 `/?tab=ingredients`로 열고, `main.tsx`가 시작 시 이 메시지/쿼리스트링을
+    읽어서 `src/data/activeTab.ts`(API 키 "설정으로 이동" 버튼에서 이미 쓰던 전역 탭 store)로
+    전환한다.
+  - **웹 푸시 구독(`src/data/pushNotifications.ts`)**: `useNotificationSettings()` 훅이 브라우저
+    Notification/Push API로 구독하고, 구독 정보(endpoint+공개키 — 비밀값 아님)를
+    `push_subscriptions` 테이블에 저장(`0017_push_subscriptions.sql`). 이 테이블은 Vault 없이
+    RLS만으로 본인 것만 조회/추가/삭제 허용(API 키와 달리 "이 기기로 보내달라"는 정보일 뿐이라
+    서버 경유가 굳이 필요 없다고 판단) — 실제 발송(VAPID 비밀키 필요)만 서버(service_role)가
+    처리. 설정 화면 "유통기한 알림 받기" 토글이 이 훅을 사용.
+  - **VAPID 키**: `npx web-push generate-vapid-keys`로 생성한 키 쌍 — 공개키는
+    `VITE_VAPID_PUBLIC_KEY`(클라이언트 번들에 노출돼도 안전, 구독 암호화용), 비밀키는
+    `VAPID_PRIVATE_KEY`(Vercel 환경변수로만, 서버 전용 — 노출되면 임의로 우리 구독자에게 푸시를
+    보낼 수 있게 되므로 서비스 롤 키에 준하게 취급).
+  - **발송 트리거(Vercel Cron)**: `vercel.json`의 `crons`(`0 0 * * *` = 매일 UTC 0시 = 한국시간
+    오전 9시)가 `api/check-expiring-ingredients.ts`를 매일 1회 호출. Vercel이 `CRON_SECRET`
+    환경변수를 설정해두면 호출 시 `Authorization: Bearer <CRON_SECRET>`를 자동으로 실어 보내므로
+    이 값으로 "진짜 Vercel Cron 호출"인지 검증(외부에서 임의로 이 엔드포인트를 두드려 알림을
+    스팸처럼 보내는 것 방지). 유통기한 있는 재료 전체를 가져와 `getExpirationInfo`로
+    urgent/expired만 걸러 household별로 묶고, household 구성원 중 구독이 있는 사용자에게
+    `web-push`로 발송 — 재료 이름을 최대 3개까지 미리보기로 넣고 나머지는 개수로 요약. 발송
+    실패가 404/410(구독 만료/기기에서 이미 해제)이면 그 구독 행을 정리(다음 실행 때 또 실패하지
+    않도록), 그 외 에러는 로그만 남기고 계속 진행.
+  - **범위에서 뺀 것**: 영수증 촬영으로 재료를 자동 인식/등록하는 기능은 이번 요청에서 명시적으로
+    제외(별도로 진행 예정) — 유통기한 입력은 재료 상세 모달에서 수동으로만 가능.
+  - **테스트 순서**: SQL Editor에서 `0016`/`0017` 마이그레이션 실행 → Vercel 환경변수에
+    `VITE_VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`CRON_SECRET` 추가 → 배포 후 안드로이드에서
+    먼저 확인(iOS는 전체 기능/디자인이 다 끝난 뒤 한 번에 확인 예정이라 이번엔 제외). Cron은
+    매일 정해진 시간에만 실행되므로 즉시 테스트하려면 `curl -H "Authorization: Bearer
+    $CRON_SECRET" https://<배포 도메인>/api/check-expiring-ingredients`로 직접 호출하거나 Vercel
+    대시보드의 Cron Jobs 탭에서 수동 실행.
+- **난이도/조리시간 자동 판단**: `Recipe.difficulty`('easy'|'medium'|'hard') / `difficultyReason`(판단
+  근거 한 문장) / `estimatedMinutes`(예상 조리시간 분)를 추가. 실제 저장은 다른 중첩 데이터와 마찬가지로
+  `recipes.content` jsonb 안에 담김(`supabaseAdapter.ts`).
+  - **조리시간**(`src/lib/recipeTime.ts` `estimateCookMinutes`): 조리 단계의 `timerSeconds` 합계를 분으로
+    환산, 타이머가 없는 단계는 단계당 2분으로 보정해서 더함.
+  - **난이도**(`src/lib/recipeDifficulty.ts` `computeDifficulty`): 재료 개수(5개 이하 0점/6~10개 1점/
+    11개 이상 2점) + 조리시간(30분 이하 0점/60분 이하 1점/그 이상 2점) + 조리단계 개수(5개 이하 0점/6개
+    이상 1점)를 합산 — 0~1점 easy, 2~3점 medium, 4점 이상 hard. 판단 근거 문장을 `difficultyReason`에 자동
+    채움.
+  - **RecipeEditor.tsx**: 두 값 모두 재료/조리순서가 바뀔 때마다 `useEffect`로 자동 재계산되다가, 사용자가
+    직접 값을 바꾸면(`difficultyTouched`/`estimatedMinutesTouched`) 그 편집 세션 동안은 자동 계산이
+    덮어쓰지 않음 — "↻ 자동 판단/계산으로 되돌리기" 버튼으로 다시 자동 모드로 전환 가능. 난이도를 수동
+    설정하면 `difficultyReason`이 `MANUAL_DIFFICULTY_REASON`("사용자가 직접 설정함") 상수로 바뀌고, 이
+    문구가 저장돼 있으면 다음에 그 레시피를 다시 열었을 때도 수동 설정을 존중해서 자동 재계산하지 않음
+    (문구가 없으면 — 즉 예전에 자동 계산된 값이면 — 열 때마다 최신 재료/조리순서 기준으로 다시 계산됨).
+  - **AI 대화형 생성**(`propose_recipe`): `claudeClient.ts`/`geminiClient.ts`의 스키마에 `difficulty`/
+    `difficultyReason` 필드를 추가하고 `aiChat.ts`의 `RECIPE_CHAT_SYSTEM_PROMPT`에 판단 기준(easy=30분
+    이내·재료 5가지 이하·특수 도구 불필요, medium=1시간 이내·기본 도구, hard=1시간 이상 또는 특수 기술/
+    도구 필요)을 안내해 AI가 직접 판단하게 함. `extractRecipeFromTranscript`/`extractRecipeFromYoutubeMeta`도
+    같은 스키마(`RECIPE_SCHEMA`/`GEMINI_RECIPE_SCHEMA`)를 공유해서 자동으로 같은 필드를 채움. AI가 준
+    난이도는 규칙 기반 점수보다 맥락(기술/도구 난이도)을 더 반영한다고 보고 적용 시 `difficultyTouched`를
+    true로 표시해 규칙 기반 재계산이 곧바로 덮어쓰지 않게 함(다만 이 표시는 편집 세션 한정 — 위와 달리
+    `MANUAL_DIFFICULTY_REASON` 문구를 쓰지 않으므로 다음에 다시 열면 규칙 기반으로 재계산됨).
+  - **UI**: 레시피 편집 화면(기본 정보 아래)과 상세 화면(태그 옆) 둘 다 난이도/예상 조리시간 배지 + ⓘ
+    아이콘(탭/호버 시 `difficultyReason` 표시)을 노출.
+  - **시드 데이터**: `src/data/seed.ts`의 4개 시드 레시피도 같은 함수로 난이도/조리시간을 계산해 채워둠
+    (단, 이 시드는 현재 앱 어디서도 import되지 않는 미사용 참고 데이터 — Supabase 전환 후 새 household는
+    빈 상태로 시작하기 때문).
+- **태그 국가/스타일 축**: `TagType`에 `'cuisine'` 추가(기존 `'style'`/`'category'`와 별개 축, 예:
+  한식/양식/중식/일식). `TagManager.tsx`에 태그 관리 섹션과 새 태그 추가 시 선택 옵션으로 추가.
+  `RecipeEditor.tsx`의 태그 선택 UI를 스타일/카테고리(있을 때만)/국가·스타일 세 섹션으로 분리(모두 다중
+  선택, cuisine은 선택 사항). AI(`propose_recipe`)가 `tagNames`로 제안하는 태그는 타입 구분 없이 이름만
+  보고 기존 태그를 재사용하므로(`resolveOrCreateTag`), 이미 등록된 cuisine 태그 이름을 그대로 다시
+  제안하면 자동으로 재사용됨 — 다만 AI가 새 cuisine 태그를 제안하도록 유도하는 프롬프트는 아직 추가하지
+  않음(필요해지면 `buildExistingContextNote`/시스템 프롬프트에 안내 추가할 것).
+  - **버그(수정 완료) — 국가/스타일 섹션이 비어서 고를 게 없었음**: 두 가지가 겹친 문제였음. (1) DB의
+    `tags.type` 체크 제약이 `schema.sql`에 `check (type in ('style', 'category'))`로 박혀있는 채
+    남아있어서 — TagType에 `'cuisine'`을 추가할 때 이 DB 제약을 같이 안 고친 누락 — cuisine 태그
+    insert 자체가 `new row for relation "tags" violates check constraint "tags_type_check"` 에러로
+    전부 막혀 있었음. (2) 그래서 household에 cuisine 태그가 하나도 없어 레시피 편집 화면의 "국가/스타일"
+    섹션을 열어도 선택할 게 없었음. `supabase/migrations/0005_seed_default_cuisine_tags.sql`로 해결 —
+    제약을 `'cuisine'`까지 허용하도록 재생성한 뒤, 기존 household들에 기본 태그 5개(한식/양식/중식/
+    일식/퓨전)를 채워넣고(이미 같은 이름이 있으면 건너뜀, 여러 번 실행해도 안전), `create_household`
+    RPC도 갱신해서 앞으로 새로 만들어지는 household도 자동으로 받도록 함. `schema.sql`의 제약 정의도
+    같이 고쳐서 앞으로 새 Supabase 프로젝트를 처음부터 설치할 때는 이 문제가 재발하지 않음. **SQL
+    Editor에서 이 마이그레이션 실행 필요**(0004처럼 실행 안 하면 화면에서 여전히 빈 섹션으로 보임).
+    앞으로 Tag/TagType처럼 DB에 `check` 제약이 걸린 필드에 새 값을 추가할 때는 TypeScript 타입만 고치고
+    끝내지 말고 반드시 해당 제약도 같이 마이그레이션할 것 — 이번에 놓친 지점.
+- **공공데이터 기반 대량 레시피 시딩(15차 확장)**: 신규 household는 항상 빈 상태로 시작해서
+  "둘러보기"(다른 가구 공개 레시피) 화면에 볼 게 없다는 초기 콘텐츠 부족 문제 해결용. 처음엔
+  유튜브 영상 200개를 골라 자막 추출(`api/youtube-transcript.ts`) → AI로 레시피 구조화하는
+  계획이었으나, 영상 200개 분량을 전부 AI 호출로 돌리면 토큰 비용이 부담스러운 수준이라 중단
+  (품질 검수 이전에 비용 단계에서 이미 무리라고 판단, 이 계획 자체는 CLAUDE.md에 문서화된 적
+  없이 폐기됨). 대신 식품의약품안전처 공공데이터포털의 "조리식품의 레시피 DB"(COOKRCP01) REST
+  API로 전환 — 이 API는 재료/조리순서/단계별 이미지가 이미 구조화돼 있어서 AI 호출 없이 텍스트
+  파싱만으로 레시피를 만들 수 있음(비용 0원, 실패율도 낮음). 실제로 200개를 가져와 이미 DB에
+  넣은 상태.
+  - **스크립트**: `scripts/seed-recipes-from-public-data.ts`(Node, `node --env-file=.env
+    scripts/seed-recipes-from-public-data.ts <start> <end> [batchId] [categoryFilter]`) —
+    `@supabase/supabase-js`를 service_role 키로 직접 호출해 일반 데이터 레이어(RLS)를 우회하는
+    1회성 관리 스크립트(household 단위 앱 데이터 레이어와는 별도 경로). `RCP_PARTS_DTLS`(재료
+    설명 텍스트)를 정규식으로 `{name, amount, unit}[]`로 파싱, `MANUAL01~20`/`MANUAL_IMG01~20`을
+    조리 단계+단계별 이미지로 매핑. 재료/태그는 이름으로 매칭해 있으면 재사용·없으면 생성(기존
+    AI 반영 로직과 같은 "순차 처리 + 배치 내 캐시" 패턴 — `resolveTag`/`resolveIngredient`,
+    `Promise.all`로 동시 처리하지 않음). 난이도/조리시간도 `recipeDifficulty.ts`/`recipeTime.ts`와
+    동일한 규칙을 스크립트 안에 그대로 복제해 적용(독립 Node 실행 스크립트라 import 대신 로직만
+    옮겨 적음).
+  - **소유 계정**: `cookkit-system`(0011 마이그레이션에서 만든 시스템 계정)이 소유. 이 계정
+    전용 household("CookKit 시스템")를 스크립트가 첫 실행 시 자동으로 만들거나 찾아서
+    (`ensureSystemHousehold`) 그 아래에 재료/태그/카테고리를 쌓음 — household 단위로 격리된
+    구조를 그대로 유지하기 위함.
+  - **이미지도 함께 저장**: 유튜브 썸네일(저작권 우려로 사용자가 명시적으로 선택했을 때만
+    재호스팅)과 달리, 식약처 공공데이터의 조리 단계 이미지는 정부 공공데이터포털이 재사용을
+    허용하는 자료라 `downloadAndStoreImage`로 바로 `recipe-images` Storage에 다운로드해 저장
+    (실패해도 이미지 없이 계속 진행 — 필수 아님).
+  - **공개 범위/출처 표시**: 전부 `visibility: 'public'`로 생성. `Recipe.content` jsonb 안에
+    `sourceType: 'public_data'`, `sourceNote`(식약처+`RCP_SEQ` 출처 문구), `sourceRcpSeq`,
+    `seedBatchId`를 추가로 기록(정식 `Recipe` TypeScript 타입 필드는 아니고 이 스크립트 전용
+    부가 정보 — 화면에서 쓰는 값이 아니라 추적/디버깅/재실행 판단용). **재실행해도 안전**: 넣기
+    전에 같은 `sourceRcpSeq`가 이미 있는지 확인해서 중복 삽입을 막음(`recipeAlreadyExists`).
+  - **카테고리 필터**: 4번째 인자로 `RCP_PAT2` 값(예: "후식", "국&찌개")을 콤마로 넘기면 특정
+    종류만 골라 담을 수 있음 — 특정 카테고리가 너무 적을 때 보충하는 용도로 나중에 추가함.
+  - **버그(수정 완료) — 둘러보기 화면 Bad Request**: 공개 레시피가 200개 넘게 쌓이자
+    `publicRecipes.ts`가 재료/작성자/household 이름을 `.in('id', [...아주 많은 id들])`로 한
+    번에 조회하던 게 URL 길이 제한을 넘어 `400 Bad Request`가 났음. `IN_QUERY_CHUNK_SIZE` 단위로
+    `chunk()`해서 여러 번 나눠 조회하도록 수정 — 앞으로 `.in()`에 넘기는 id 배열이 많아질 수 있는
+    곳(특히 공개 데이터처럼 규모가 커지는 화면)은 이 청크 패턴을 기본으로 쓸 것.
+  - **범위에서 뺀 것**: 유튜브 200개 분석 경로 자체는 완전히 폐기(이 스크립트로 대체) — 향후
+    유튜브 기반 대량 시딩을 다시 시도한다면, 영상 단위로 AI를 호출하는 대신 자막만 모아 배치로
+    한 번에 구조화하는 등 토큰 비용을 먼저 줄이는 방식으로 설계해야 함.
+- **레시피 가로 스크롤 행 구조(16차 확장)**: 공공데이터 시딩(15차)으로 공개 레시피가 수백 개
+  규모로 늘어나면서, 검색/필터 없이 들어가는 기본 진입 화면이 그냥 그리드를 쭉 나열하는 방식이면
+  세로 스크롤이 너무 길어지는 문제가 생김 — 넷플릭스/왓챠 스타일로 카테고리별 가로 스크롤 행을
+  여러 개 쌓는 구조로 개편.
+  - **공통 컴포넌트**(`src/features/recipes/RecipeRowSection.tsx`, 신규): "내 레시피"(Recipe.tagIds
+    기반)와 "둘러보기"(다른 household의 PublicRecipeEntry, tagNames 문자열 기반)는 원본 데이터
+    구조가 달라서, 각 화면이 자기 데이터를 공통 shape인 `RecipeRowItem`(id/recipe/tagNames/onClick/
+    ownerLabel/ownerAvatarUrl/cornerBadge/likeCount)으로 먼저 변환해 넘기면 `RecipeRowSection`(행
+    하나 렌더링, 카드 최대 18개 + "더보기" 카드)과 `RecipeCategoryDetailPage`(더보기 눌렀을 때
+    이동하는 카테고리 전체 목록, 기존 `.recipe-grid`/`.recipe-list` + 그리드/리스트 토글 그대로
+    재사용)는 어느 화면에서 왔는지 몰라도 동작한다. `groupRowItemsByTagName`/`splitTagRows` 헬퍼도
+    이 파일에서 공유 — 태그 이름별로 그룹핑한 뒤 cuisine/style(그 외 전부) 두 축으로 나누고 레시피
+    개수 많은 순으로 상위 `TAG_ROW_LIMIT`(8)개만 행으로 남긴다(태그를 자유롭게 늘릴 수 있어서 행이
+    무한정 늘어나는 걸 방지 — 나머지는 검색/필터로 여전히 찾을 수 있음).
+  - **행 구성**: "🧺 보유 재료로 가능"(재료 전부 `owned=true`) → "🆕 최근 추가됨"(전체, 최신순) →
+    cuisine 태그별 행 → style 태그별 행 순으로 노출. 레시피가 하나도 없는 태그는
+    `groupRowItemsByTagName`이 애초에 결과에 안 담아서 행 자체가 생기지 않는다(자동으로 "레시피가
+    있는 태그만 노출" 요구사항을 만족). 각 행 안의 카드 순서는 항상 최근 추가순(태그별로 다른 정렬
+    기준을 두지 않음). "최근 추가됨" 행은 레시피가 하나라도 있으면 항상 뜨므로, 다른 모든 행이
+    비어도(보유 재료 매치 없음 + 태그 없음) 최소 한 행은 항상 보장된다.
+  - **검색/필터와의 관계**: 검색어나 태그/알러지 제외/보유재료 필터를 하나라도 걸면 행 구조 대신
+    기존 필터링된 그리드/리스트 화면으로 전환(`isRowMode = !hasActiveFilter && 데이터 있음`) — "행
+    탐색"과 "검색 결과"를 서로 다른 화면으로 명확히 분리. 검색창/필터 칩 자체는 두 모드 모두에서
+    항상 보이고, 그리드/리스트 토글 버튼만 행 모드에서는 숨김(카테고리 상세 화면에는 그대로 있음).
+  - **카드 크기**: 기존 `RecipeCard`에 `size?: 'default' | 'row'` prop을 추가(새 컴포넌트를 만들지
+    않고 기존 카드를 재사용) — `'row'`면 `.recipe-card-row` 클래스가 붙어 정사각형에 가깝게
+    (128px, 이미지 `aspect-ratio: 1/1`) 축소되고 태그 chip 줄/작성자(ownerLabel) 줄은 공간 절약을
+    위해 생략(제목 + 인분/시간/좋아요 한 줄만 유지). "더보기" 카드는 `.recipe-row-more-card`(점선
+    테두리, 중립색) — 실제 컴포넌트가 아니라 버튼 하나로 `RecipeRowSection`이 행 끝에 항상 추가한다.
+  - **둘러보기 화면 — 시스템 계정(공공데이터 시드) 분리**(`DiscoverRecipesPage.tsx`): `entries`를
+    `authorUserId`(신규 필드, `publicRecipes.ts`의 `SYSTEM_USER_ID` 상수와 비교)로 실제 사용자
+    레시피(`realEntries`)와 시스템 계정 레시피(`systemEntries`)로 나눠서, 위와 같은 행 구조를
+    각각 독립적으로 만든다. 실제 사용자 행들 아래에 "🍳 CookKit 추천 레시피 (n)" 접기/펼치기
+    섹션(재료 목록 화면의 카테고리 접기/펼치기와 같은 ▸/▾ 버튼 패턴)을 두고 그 안에 시스템 계정용
+    행 구조를 넣음 — `realEntries.length === 0`(아직 진짜 공개 레시피가 하나도 없는 초기 상태)이면
+    기본 펼침, 있으면 기본 접힘. 사용자가 직접 펼치기/접기를 누르면 그 세션 동안은 그 상태를
+    그대로 따르고(`systemExpandedOverride`), 건드리지 않으면 매번 최신 `realEntries` 유무로 다시
+    판단한다(고정 저장 안 함 — 실제 사용자 레시피가 새로 생기면 다음 진입 때 자동으로 다시 접힘).
+    시스템 계정은 정상 가입 플로우를 거치지 않아 `profiles.display_name`이 비어있으므로, 작성자
+    표시를 "이름 없는 사용자" 대신 항상 "CookKit"으로 통일(`publicRecipes.ts`에서 처리), household
+    이름("CookKit 시스템")도 진짜 가구와 헷갈릴 수 있어 표시하지 않는다.
+  - **둘러보기의 "보유 재료로 가능" — 이름 매칭**: 공개 레시피의 `ingredientId`는 원본 작성자
+    household 소유라 내 household의 재료 id와 다르다. 그래서 owned 여부는 id가 아니라 **이름으로**
+    판단한다 — `ingredientNameById`(레시피가 참조하는 재료 id→이름)로 각 재료 이름을 구한 뒤, 내
+    household의 `owned=true`인 재료 이름 집합(`myOwnedNames`)에 포함되는지로 체크. "내 레시피로
+    복사하기"(`RecipesFeature.tsx`)가 이미 쓰던 이름 매칭 패턴과 같은 발상.
+  - **cuisine/style 태그 분류는 항상 "내 household" 기준**: 둘러보기 화면도 태그 이름이 cuisine인지
+    style인지 구분해야 하는데, 다른 household의 태그 목록을 따로 조회하지 않고 내 `useTags()`
+    목록에서 이름→타입 매핑(`tagTypeByName`)을 만들어 그대로 적용한다 — cuisine 태그 이름(한식/
+    양식/중식/일식/퓨전)은 household 생성 시 항상 동일하게 시드되므로(0005 마이그레이션) 이 방식으로
+    충분하고, 내 목록에 없는 낯선 태그 이름은 안전하게 style로 취급한다.
+  - **성능**: 각 행은 `RecipeRowSection` 내부에서 카드 18개로 잘라 렌더링(`ROW_CARD_LIMIT`) —
+    "더보기"를 눌러야 전체가 렌더링된다. 태그별 행 개수도 `TAG_ROW_LIMIT`(8)으로 상한. 나머지는
+    여전히 클라이언트 사이드 계산(레시피 수백 개 규모까지는 문제없음, 기존 "레시피 관리 화면(모바일
+    개편)" 항목의 성능 판단과 같은 전제).
+- **영수증 스캔 재료 등록(17차 확장)**: 장보기 화면(`ShoppingListPage.tsx`)에 "📷 영수증으로
+  재료 업데이트" 버튼 → `ReceiptScanModal.tsx`가 전체 흐름을 담당.
+  - **촬영/선택**: `<input type="file" accept="image/*" capture="environment">`(후면 카메라
+    우선, 갤러리 선택도 가능). 선택한 파일은 `src/lib/imageResize.ts`의 `resizeImageForUpload`로
+    최대 1600px/JPEG 품질 0.82로 클라이언트에서 미리 축소해서 보냄 — 모바일 카메라 원본(수 MB)을
+    그대로 보내면 전송 시간도 길고 서버리스 함수 요청 본문 크기 제한에 걸릴 수 있어서, 글자만
+    읽으면 되는 용도에 맞게 인식 정확도 손해 없이 줄임.
+  - **인식**: `api/ai-receipt.ts`(신규) — API 키 Vault 전환(13차) 때 만든 패턴 그대로
+    재사용(`requireUser`로 세션 검증 → Vault에서 Gemini 키 복호화 → 호출). Gemini 비전
+    (`geminiClient.ts`의 `extractReceiptItems`, `responseSchema`로 구조화된 JSON 배열 강제)에
+    영수증 이미지를 inlineData로 실어 보냄 — Claude도 이미지 인식이 가능하지만 이미지 생성과
+    같은 이유로 우선 Gemini만 구현(추후 필요시 Anthropic 경로 추가 가능하도록 구조는 열어둠).
+    응답 스키마는 `{rawText, guessedName, quantity?, unit?, categoryName?, uncertain?}[]` —
+    rawText(원문)와 guessedName(정규화된 이름)을 둘 다 반환해서 확인 화면에서 대조 가능하게 함,
+    categoryName은 재료 스키마 추출 때와 같은 패턴으로 기존 카테고리 재사용을 유도하는 힌트.
+    영수증이 아니거나 알아볼 품목이 없으면 AI가 빈 배열을 반환하도록 프롬프트에 명시.
+  - **확인 화면(자동 저장 절대 금지)**: 인식된 품목을 체크박스 리스트로 보여줌(기본 전체 선택).
+    `uncertain=true`이거나 guessedName이 비어있는 항목은 "⚠️ 확인이 필요해요" 섹션으로 먼저 모아
+    보여줌. 각 항목은 rawText(작게, 회색 텍스트)/guessedName(수정 가능한 입력)/수량/단위/카테고리
+    선택(드롭다운)로 구성 — `ingredients` 목록에서 이름(정규화 후 대소문자 무시)이 일치하면 "이미
+    있음" 배지(카테고리 선택 숨김), 없으면 "새로 추가됨" 배지(카테고리 선택 노출). 카테고리
+    드롭다운은 기존 카테고리 + AI가 제안한 새 카테고리 이름(`__new__:이름` sentinel 값, 있으면
+    "(새로 생성)" 라벨로 노출) — 응답 0개면 "인식된 항목이 없어요, 다시 시도하거나 직접
+    입력해주세요" 안내로 전환.
+  - **반영**: "적용하기"를 눌러야만 실제로 저장됨 — 선택된 항목만 순회하며 이미 있는 재료는
+    `owned:true`로만 갱신, 없는 재료는 새로 생성(+`owned:true`). 새 카테고리도 여러 개 생길 수
+    있어서 `Promise.all` 대신 순차 처리 + 배치 내 캐시(`newCategoryCache`)로 만듦 — AI 반영
+    로직에서 겪었던 "같은 이름 카테고리 중복 생성" 레이스 컨디션(CLAUDE.md 8차 확장 항목 참고)과
+    같은 종류의 버그를 막기 위한 동일 패턴.
+- **요리 완료 기록(CookingLog, 17차 확장)**: `supabase/migrations/0018_cooking_log.sql` —
+  `cooking_log(id, recipe_id, household_id, user_id, cooked_at, memo, created_at)`. household
+  공유 테이블(누가 기록했든 우리집 기록으로 다 같이 조회 가능, `is_household_member` RLS)이되
+  생성/수정/삭제는 본인 명의만(recipe_likes의 "본인 것만 write" 패턴과 shopping_selection의
+  "household 공유 select" 패턴을 섞은 형태). `src/data/cookingLog.ts`가 조회/생성 담당 —
+  `fetchCookingStats(recipeIds)`는 recipeLikes.ts의 `fetchLikeInfo`와 같은 패턴(계속 구독하는
+  캐시가 아니라 필요한 화면에서 그때그때 `.in()` 조회 후 클라이언트 집계, id 배열이 길어질 수
+  있어 `IN_QUERY_CHUNK_SIZE`로 청크 처리)으로 레시피별 `{count, lastCookedAt}`을 한 번에 계산.
+  - **"🍳 오늘 만들었어요" 버튼**(`RecipeDetailPage.tsx`): 누르면 `CookingLogModal.tsx`가
+    이 레시피가 쓰는 재료(중복 제거)를 체크박스로 보여줌(기본 전체 선택 — "이 재료들 다
+    썼어요?"), 메모 입력란(선택)도 함께. "완료"를 누르면 `logCooking()`으로 기록을 남긴 뒤,
+    체크된 재료 중 현재 `owned=true`인 것만 `owned:false`로 차감(이미 안 보유 상태인 재료는
+    건드리지 않음) — 두 단계 모두 사용자가 "완료"를 눌러야만 실행되고, 재료 반영 자체는
+    호출부(`RecipeDetailPage.tsx`의 `handleConfirmCooking`)가 순차 처리(`for...of`)로 수행.
+  - **레시피 상세의 최소 요약**: "이 레시피를 n번 만들었어요 · 마지막으로 만든 날짜: ..."를
+    버튼 바로 아래 노출(기록이 없으면 아무것도 안 보여줌). 날짜 수정 등은 이번 범위에서 생략.
+  - **"📋 요리 기록" 조회 화면**(`CookingHistoryPage.tsx`, 처음엔 범위 밖이었다가 실사용 중
+    요청으로 추가): `RecipesPage.tsx` 상단 버튼으로 진입, household 전체의 최근 기록을
+    `fetchCookingHistory(householdId)`로 최신순 최대 50건 조회(레시피명/작성자/날짜/메모).
+    검색·필터·수정 없이 목록만 보여주는 최소 구현 — `recipes(name)`/`profiles(display_name)`
+    임베드 조인 사용, 다른 가구원의 비공개 레시피를 기록한 경우처럼 조인이 막히면
+    "(알 수 없는 레시피)"로 대체 표시. supabase-js가 select 문자열을 타입 레벨로 파싱할 때
+    이런 to-one 임베드도 배열 타입으로 추론해버려서(런타임엔 항상 단일 객체) `as unknown as`를
+    거쳐 캐스팅 — 앞으로 비슷한 임베드 조인을 새로 추가할 때 같은 타입 에러가 나면 이 패턴을
+    쓸 것.
+  - **"자주 해먹은 순" 정렬**: `RecipesPage.tsx`의 `SortMode`에 자리만 마련해뒀던 `'frequent'`를
+    실제로 채움 — 레시피 목록이 바뀔 때마다 `fetchCookingStats`로 전체 집계를 다시 불러와
+    `cookingCountById`에 저장하고, 정렬 시 횟수 내림차순(동률이면 최근 추가순으로 보조 정렬).
+    "둘러보기" 화면에는 추가하지 않음 — RLS상 다른 household의 요리 기록은 애초에 안 보이고,
+    다른 가구가 그 레시피를 몇 번 해먹었는지는 이 화면 성격과 맞지 않다고 판단.
+- **요리 모드(핸즈프리 안내 + 음성 명령, 18차 확장)**: 레시피 상세 화면의 "🍳 요리 시작하기"
+  버튼 → 확인 후 `CookingModePage.tsx`(전체화면 오버레이, `.cooking-mode-*` 클래스로 큰 글씨/
+  버튼 위주 별도 레이아웃). 음성은 "가능한 환경에서 더 편하게" 쓰는 보조 수단이고, 화면 탭은
+  "모든 환경에서 항상 가능한" 기본 수단이라는 게 핵심 설계 원칙 — iOS Safari가 PWA로 설치된
+  (standalone) 상태에서 SpeechRecognition 자체가 애플 제약으로 동작하지 않는 알려진 문제가
+  있어서, 그 경우 탭(◀이전/다음▶/⏱타이머/✕종료)만 유일한 수단이 되므로 항상 노출해야 한다.
+  - **Wake Lock**(`useWakeLock.ts`): `navigator.wakeLock`으로 화면 꺼짐 방지, 지원 안 되면
+    조용히 무시. 브라우저가 자동 해제하는 경우(다른 탭/앱으로 전환 등)를 대비해
+    `visibilitychange`로 다시 보이면 재요청한다(Wake Lock 표준 동작 — 자동 복구 안 됨).
+  - **TTS/STT**(`useVoiceAssistant.ts`): 마이크는 "손을 아예 안 대는 게 컨셉"이라 처음 켤 때만
+    탭이 필요하고(브라우저 정책상 사용자 제스처 필요) 이후엔 인식이 끝날 때마다
+    (`recognition.onend`) `keepListeningRef`가 true인 한 자동으로 다시 시작해서 계속 듣는다.
+    TTS가 말하는 동안은 마이크를 잠깐 멈췄다가(`pausedForSpeechRef`) 말이 끝나면 재개 — 안 그러면
+    스피커로 나온 안내("타이머를 시작할게요" 등)를 마이크가 스스로 듣고 명령으로 착각해 무한
+    재실행하는 버그가 생김(실제로 겪고 고침). 이 훅은 "무슨 말을 들었는지"만 알려주고
+    (`onTranscript(transcript, speak)`) 명령 해석은 호출부 책임 — `CookingModePage`/
+    `MultiCookModePage`가 명령어 집합/라우팅이 다르기 때문(복합 요리는 레시피 이름으로 타이머
+    대상을 구분해야 함).
+  - **명령어**(`src/lib/cookingVoiceCommands.ts`): 요리 중엔 주변 소음/대화 속에 "다음"/"완료"/
+    "시작" 같은 흔한 단어가 우연히 섞일 수 있어서, 짧은 한 단어가 아니라 2어절 이상의 조합
+    (`COMMAND_PHRASES`)으로만 인식하고, 같은 의도의 다양한 표현은 넓게 받는다(예: 다음 단계 →
+    "다음 단계"/"다음으로"/"넘어가"/"다음 거"). 완전 일치가 아니라 포함 여부로 매칭하되, STT가
+    "다음단계"/"다음 단계"처럼 공백 유무를 다르게 뱉을 수 있어 공백을 지운 뒤 비교한다. 인식된
+    말은 화면에 작게 표시(`lastHeard`)해서 왜 반응 안 했는지 확인 가능. 이해 못 한 명령은
+    "다시 말씀해주시겠어요?" 음성 안내.
+  - **타이머 명령**: "다음 단계"는 현재 타이머를 무조건 정지하고 다음 단계 타이머로 교체
+    (1개 레시피 모드 한정 — `goNext`가 `finalizeCurrentStepTiming` 후 `stepIndex`만 바꾸면
+    단계 진입 effect가 타이머 상태를 초기화함), "타이머 멈춰"는 일시정지(남은 시간 유지),
+    "타이머 시작"/"타이머 다시"/"이어서"는 일시정지 지점부터 재개(이미 시작된 적 있으면 —
+    `timerRemaining !== null` — resume, 아니면 fresh start), "타이머 초기화"는 처음 설정
+    시간으로 되돌리고 정지 상태로. 각 동작마다 `speak()`로 짧게 확인 안내.
+  - **웨이크워드는 도입 안 함**(2026-08 논의) — "쿠킷, 다음 단계"처럼 매번 두 마디를 말해야
+    해서 번거롭고 마이크를 계속 켜두는 배터리/프라이버시 부담도 있어서, 위 2어절 이상 명령어로
+    먼저 실사용해보고 오작동이 실제로 거슬리면 그때 추가하기로 하고 보류. 관련 코드 없음.
+  - **타이머 자동 시작 설정**(`src/data/cookingModeSettings.ts`, `useAutoStartTimer`/
+    `setAutoStartTimer`): 켜두면 타이머 있는 단계 진입 시 안내와 함께 자동으로 타이머가
+    시작됨(기본값 꺼짐, localStorage에 기기별 저장 — `viewMode.ts`/`theme.ts`와 같은 패턴).
+    이 토글은 **설정 탭 "요리 모드" 섹션**에서 관리(요리 단계 화면 자체에는 안 둠 — 대신 그
+    자리에 음성 명령어 예시 카드를 넣음, `COMMAND_EXAMPLES`).
+  - **완료 흐름**: 마지막 단계에서 "완료 ▶"(탭) 또는 "다음 단계"(음성) → "🎉 요리 완료!" 화면 →
+    "🍳 오늘 만들었어요" → `onFinish(stepTimings)` → `RecipeDetailPage`가 기존
+    `CookingLogModal`을 그대로 열어 재료 차감/기록으로 자연스럽게 연결(중복 구현 없음).
+- **요리 모드 실제 소요시간 기록(19차 확장 A)**: `CookingLog`에 `stepTimings`(단계별 준비/조리
+  실측 시간 배열)와 `isMultiRecipe`(복합 요리 세션 여부) 필드 추가
+  (`supabase/migrations/0019_cooking_log_step_timings.sql`). "다진마늘과 두부 넣고 5분 끓이기"
+  같은 단계에서 마늘이 안 다져져 있어 3분 다지고 5분 끓였다면 이걸 합쳐 "8분"으로 기록하면
+  레시피 조정이 완전히 틀어지므로, **준비(진입~타이머 시작)와 조리(시작~이탈, 일시정지 제외)를
+  반드시 분리**해서 측정한다.
+  - **측정 방식**(`CookingModePage.tsx`의 `timingDraftRef`): 단계 진입 시각(`enteredAt`)과
+    타이머를 처음 시작한 시각(`timerStartedAt`)의 차이가 prep, 타이머 카운트다운 tick마다
+    누적하는 `cookElapsedSeconds`(일시정지 중엔 tick 자체가 안 돎)가 cook. 타이머를 아예 안 쓴
+    단계는 `hadTimer:false`로 표시하고 전체 체류 시간만 기록(조정 제안 대상에서 제외). "다음
+    단계"로 넘어갈 때(`finalizeCurrentStepTiming`) 확정해서 세션 배열에 쌓고, "오늘
+    만들었어요" 확정 시 `logCooking`에 같이 실어 보낸다.
+  - **조정 제안**(`src/data/cookingLog.ts`의 `fetchStepTimingAdjustments`): 같은 단계의 과거
+    `cookSeconds` 기록이 **지금 레시피에 설정된** `timerSeconds`와 꾸준히 다르면 제안한다 —
+    각 기록에 박제된 옛 plannedSeconds가 아니라 항상 "현재" 값과 비교해야, 한 번 조정을
+    반영한 뒤에도 예전 기록 때문에 같은 제안이 계속 다시 뜨는 문제가 없다. 2회 기록이면 둘의
+    차이가 30% 이내로 일관될 때만(편차가 크면 아직 데이터 부족으로 보고 더 모음) 평균을 대표값
+    으로, 3회 이상이면 이상치 하나에 흔들리지 않게 평균 대신 중앙값을 대표값으로 쓴다. 대표값이
+    설정값과 30% 이상 차이 나야 실제로 제안한다. `isMultiRecipe=true`인 기록은 항상 제외(복합
+    요리는 다른 레시피로 이탈했다가 돌아오는 흐름이 전제라 cookSeconds가 부풀려짐).
+  - **UI**(`TimingAdjustmentModal.tsx`): "오늘 만들었어요" 완료 직후(요리 모드를 거쳐 실제
+    측정한 경우만)가 주 진입점, 레시피 상세 화면의 "⏱ 조정 제안 있음" 배지가 완료 화면에서
+    놓쳤을 때의 보조 진입점(둘 다 같은 컴포넌트 재사용). 체크박스로 단계별 선택 후 "조정하기"를
+    눌러야만 `recipe.steps[].timerSeconds`가 바뀜(자동 반영 없음).
+- **복합 요리(여러 레시피 동시 진행, 19차 확장 B)**: **핵심 원칙 — 원본 레시피는 절대 수정하지
+  않고, "어떤 순서로 단계를 배치할지"만 결정한다.** AI에게 "두 레시피를 합쳐서 새 레시피를
+  만들어줘"라고 시키면 재료·조리법이 미묘하게 왜곡될 위험이 있어서, 대신 각 레시피의 단계
+  내용은 원본 그대로 두고 순서 배치 알고리즘만 새로 만들었다. 화면에는 항상 어느 레시피
+  단계인지 출처를 표시한다.
+  - **진입**(`MultiCookSelectPage.tsx`): 레시피 목록의 "🍳 여러개 요리하기" 버튼 → 체크박스로
+    2~3개 선택(그 이상은 실제 동시 조리가 비현실적이라 상한).
+  - **순서 배치**(`src/lib/multiCookOrdering.ts`의 `buildMultiCookPlan`, 순수 함수·규칙
+    기반 — AI 없이 무료/즉시 응답, 결과가 어색하면 나중에 AI를 얹는 방향으로 남겨둠): 각
+    레시피를 "손질"(첫 타이머 단계 이전, 타이머 자체가 없으면 전체)과 "조리"(첫 타이머
+    단계부터 끝까지)로 나눠서, 손질 단계는 레시피별로 모아 앞쪽에 배치(여러 레시피 손질을
+    한 번에 하는 게 효율적)하고, 조리 단계는 각 레시피 내부 순서를 지키면서 매 순간 남은
+    단계 중 타이머가 가장 긴 것부터 배치한다(오래 걸리는 걸 먼저 걸어둬야 그 사이 다른
+    레시피를 진행할 수 있고 완성 시점도 서로 비슷해짐). 타이머 없는 단계끼리 동률이면
+    라운드로빈으로 번갈아 골라 한쪽에 쏠리지 않게 함. 예상 총 소요시간 = 손질 시간(순차 합)
+    + 조리 시간(병렬 진행이므로 레시피별 조리시간 중 최댓값, `estimateCookMinutes` 재사용).
+  - **미리보기**(`MultiCookPreviewPage.tsx`): 배치된 순서를 카드 목록으로 보여주고(각 카드에
+    출처 레시피/손질·조리 구분 표시), 카드 오른쪽 "⠿" 손잡이를 드래그해서 순서를 직접 바꿀
+    수 있다 — **이 프로젝트 첫 `@dnd-kit`(core/sortable/utilities) 도입**. `RecipeEditor`의
+    조리 단계 순서 변경은 "모바일 터치에서 드래그가 더 불안정해서" 여전히 ▲/▼ 버튼 방식을
+    쓰고 있는데(이 CLAUDE.md에 이미 기록돼 있던 이유), 여기는 사용자가 명시적으로 드래그를
+    요청해서 별도로 라이브러리를 들였다 — 카드 전체가 아니라 손잡이에만 드래그 리스너를 붙여서
+    손잡이 밖 영역은 스크롤 제스처와 충돌하지 않게 함. "순서 다시 짜기"는 드래그로 옮긴 걸
+    되돌려 알고리즘 원본 순서로 리셋(규칙 기반이라 같은 입력이면 항상 같은 결과라 "재계산"이
+    아니라 "리셋"에 가까움).
+  - **공용 훅 추출**: 복합 요리 진행 화면을 만들면서 `CookingModePage.tsx`에 있던 Wake Lock/
+    TTS·STT 인프라를 `useWakeLock.ts`/`useVoiceAssistant.ts`(+ 명령어 유틸
+    `cookingVoiceCommands.ts`)로 뽑아내 `MultiCookModePage.tsx`와 공유한다(동작 변경 없이
+    리팩터만 먼저 하고 별도 커밋으로 검증).
+  - **진행 화면**(`MultiCookModePage.tsx`): "다음/이전"은 미리 짜인 순서(`order`)만 이동할 뿐
+    다른 레시피의 타이머는 건드리지 않는다 — 여러 타이머가 각자 독립적으로 완료/일시정지/
+    초기화될 때까지 동시에 진행되는 게 1개 레시피 모드와의 핵심 차이. 화면 상단에 "🥣
+    단호박스프 · 2/5단계"처럼 지금 보는 게 어느 레시피 몇 단계인지 표시하고, 현재 단계 타이머
+    아래에 "진행 중인 다른 타이머" 목록을 같이 보여준다. 음성 "타이머 시작"처럼 레시피 이름이
+    없으면 지금 보고 있는 단계를 대상으로 하고, "스프 타이머 멈춰"처럼 이름이 들리면
+    (`detectTargetRecipeId` — 레시피 이름 전체/공백 단위 토큰/마지막 2글자를 키워드로 느슨하게
+    매칭, 여러 레시피와 동시에 매칭되면 모호한 것으로 보고 현재 단계로 폴백) 그 레시피의
+    타이머를 대상으로 한다. 타이머 완료 시 "OO 타이머가 끝났어요"로 어느 레시피 것인지 음성
+    안내. 여러 타이머를 매 tick 한 번에 갱신하되, 완료 감지(음성 안내+기록)는 `setTimers`
+    업데이트 함수 밖에서 처리(업데이트 함수 안에 부수효과를 두면 개발 모드 StrictMode의
+    이중 호출로 중복 실행될 수 있어서) — `handledCompletionsRef`로 이미 처리한 완료를 걸러
+    한 번만 반응한다. 복합 요리의 `stepTimings`는 prepSeconds를 0으로 단순화하고(여러
+    레시피를 오가는 흐름이라 "진입~시작" 구간이 단일 레시피 모드처럼 의미 있지 않음) 타이머를
+    실제로 쓴 단계만 기록 — 어차피 `isMultiRecipe=true`는 조정 제안 계산에서 통째로 제외되니
+    정밀도가 중요하지 않다고 판단.
+  - **완료 처리**(`MultiCookLogModal.tsx`): 모든 단계 완료 시 "🎉 모두 완료!" → "오늘
+    만들었어요" → 선택한 레시피들의 재료를 `ingredientId` 기준으로 병합해서 하나의 체크리스트로
+    보여줌(같은 재료를 여러 레시피가 같이 쓰면 — 예: 양파 — 한 번만 표시하고 어느 레시피들이
+    쓰는지 이름을 옆에 같이 보여줌). 확정하면 **선택한 레시피 각각에 대해 별도로 `CookingLog`를
+    생성**(하나로 합치지 않음, `isMultiRecipe:true`, 각 레시피 소유의 `stepTimings`만 필터링해서
+    따로 저장) — 재료 차감은 병합된 목록 기준으로 `ingredientId`당 한 번만(중복 차감 방지).
+
+## 유튜브 자막 추출 관련 TODO
+- 자막이 실제로 있는 영상은 `youtube-transcript` + Vercel Serverless Function 조합으로 자동 추출
+  완료(한국어 → 영어 → 자동생성 자막 순 폴백, 각 실패 상황(자막 없음 / 비공개·삭제 영상)을 구분한
+  에러 메시지 제공).
+- **자막이 아예 없는 영상**: 처음엔 이 경우 영상의 음성을 직접 다운로드해서 STT(Whisper 등)를 돌리는
+  방식을 검토했으나, 조사 결과 `@distube/ytdl-core`(오디오 추출용 후보 라이브러리)가 이미 폐기(2025-08
+  저장소 archive)됐고, 대안인 `yt-dlp`조차 **Vercel 같은 데이터센터 IP에서는 유튜브 봇 차단 임계치가
+  훨씬 낮아**(라이브러리 문제가 아니라 IP 평판 기반 차단이라 어떤 도구를 써도 동일) 직접 구현은 신뢰성이
+  낮다고 판단해 보류함.
+- 대신 **Supadata(supadata.ai) API로 폴백** 도입: 자막이 없을 때만 `/api/youtube-transcript`가
+  Supadata에 `mode=auto`로 재요청 → 자막 우선 시도, 없으면 Supadata가 자체적으로 오디오 STT(Whisper)까지
+  대신 처리해 텍스트를 돌려줌. 오디오 다운로드/봇 차단 리스크를 우리가 직접 떠안지 않고 위임하는 구조.
+  긴 영상은 Supadata가 작업(jobId)을 만들어 비동기 처리하며, 서버는 최대 100초까지 폴링 후 응답(Vercel
+  함수 `maxDuration: 120` — Hobby 플랜에서 60초 넘게 쓰려면 프로젝트에서 Fluid Compute를 켜야 함).
+- **환경변수 필요**: `SUPADATA_API_KEY`를 Vercel 프로젝트 환경변수로 설정해야 이 폴백이 동작함
+  (supadata.ai 가입 후 발급, 무료 티어 월 100건). 다른 API 키들과 달리 이건 **브라우저 localStorage가
+  아니라 서버(Vercel) 쪽 환경변수** — 서버 함수가 직접 호출하기 때문. 키가 없으면 이 폴백 없이 기존처럼
+  "자막 없음" 에러만 반환하도록 안전하게 동작(하위 호환).
+- 그래도 Supadata 폴백까지 실패하면: 자막이 없는 영상은 명확한 에러 메시지를 보여주고, 사용자가 상단
+  대화창에서 텍스트로 직접 설명해 레시피를 만드는 기존 기능으로 유도함.

@@ -8,6 +8,9 @@ export interface Household {
   inviteCode: string;
   /** 레시피를 담거나 배치할 때 초기 인분값으로 쓰는 가구 기본 인원(0027) — 기본 2 */
   defaultServings: number;
+  /** 가구가 조심하는 알러지 유발 성분 목록(0032, 프로필에서 관리) — 재료의 allergens와는
+   * 별개로, "우리 가구가 피하는 성분"을 한 곳에서 관리하기 위한 목록. */
+  allergens: string[];
 }
 
 /**
@@ -55,7 +58,7 @@ export function useHousehold() {
 
     const { data: row, error: householdError } = await supabase
       .from('households')
-      .select('id, name, invite_code, default_servings')
+      .select('id, name, invite_code, default_servings, allergens')
       .eq('id', membership.household_id)
       .maybeSingle();
 
@@ -67,7 +70,13 @@ export function useHousehold() {
 
     setHousehold(
       row
-        ? { id: row.id, name: row.name, inviteCode: row.invite_code, defaultServings: row.default_servings }
+        ? {
+            id: row.id,
+            name: row.name,
+            inviteCode: row.invite_code,
+            defaultServings: row.default_servings,
+            allergens: row.allergens ?? [],
+          }
         : null,
     );
     setLoading(false);

@@ -65,7 +65,11 @@ create table public.households (
   created_at timestamptz not null default now(),
   -- 가구 기본 인원(0027) — recipe.servingsBase(레시피 원본 기준 인분)와는 다른 개념("우리집은
   -- 보통 몇 인분씩 만드는지"). 레시피를 담거나 배치할 때 초기값으로 쓰인다.
-  default_servings integer not null default 2 check (default_servings > 0)
+  default_servings integer not null default 2 check (default_servings > 0),
+  -- 가구가 조심하는 알러지 유발 성분 목록(0032, 예: '마늘', '밀가루') — 재료 하나하나에 직접
+  -- 표시하는 대신 프로필에서 한 번에 관리. 여기 추가하면 이름이 정확히 같은 기존 재료는
+  -- 자동으로 태깅되고, 재료 상세 화면에서는 이 목록이 토글 칩으로 제안된다.
+  allergens text[] not null default '{}'
 );
 
 
@@ -121,6 +125,84 @@ as $$
     where hm1.user_id = auth.uid() and hm2.user_id = target_user_id
   );
 $$;
+
+
+-- ============================================================================
+-- household 온보딩 RPC (0002, 0005/0031에서 기본 태그 시딩 추가)
+-- ============================================================================
+-- household_members RLS는 "본인 user_id로만 insert 가능"까지만 체크해서, 클라이언트가
+-- 직접 insert하면 초대코드 검증 없이도(household_id만 알면) 가입이 가능한 상태다. households
+-- SELECT 정책도 "이미 멤버인 household만" 허용해서 가입 전엔 초대코드로 찾을 방법이 없다.
+-- SECURITY DEFINER 함수로 이 두 문제를 우회한다.
+
+create function public.create_household(household_name text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  new_household_id uuid;
+begin
+  if exists (select 1 from public.household_members where user_id = auth.uid()) then
+    raise exception '이미 가구에 속해 있어요. 한 계정은 하나의 가구에만 속할 수 있어요.';
+  end if;
+
+  insert into public.households (name, created_by)
+  values (household_name, auth.uid())
+  returning id into new_household_id;
+
+  insert into public.household_members (household_id, user_id)
+  values (new_household_id, auth.uid());
+
+  -- 국가/장르 + 요리 스타일 기본 태그(0031) — 하나도 없이 시작하면 레시피 편집 화면의 해당
+  -- 섹션이 비어 아무것도 고를 수 없어서 실사용에 번거롭다.
+  insert into public.tags (household_id, name, type)
+  select new_household_id, v.name, 'cuisine'
+  from (values ('한식'), ('양식'), ('중식'), ('일식'), ('퓨전'), ('동남아식'), ('인도식'), ('멕시칸'), ('분식')) as v(name);
+
+  insert into public.tags (household_id, name, type)
+  select new_household_id, v.name, 'style'
+  from (
+    values ('크림류'), ('토마토류'), ('고기요리'), ('국물요리'), ('볶음요리'),
+           ('구이요리'), ('튀김요리'), ('찜·조림'), ('면요리'), ('밥·죽류'),
+           ('무침·샐러드'), ('매콤한맛')
+  ) as v(name);
+
+  return new_household_id;
+end;
+$$;
+
+create function public.join_household_by_invite_code(code text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  target_household_id uuid;
+begin
+  if exists (select 1 from public.household_members where user_id = auth.uid()) then
+    raise exception '이미 가구에 속해 있어요. 한 계정은 하나의 가구에만 속할 수 있어요.';
+  end if;
+
+  select id into target_household_id
+  from public.households
+  where invite_code = code;
+
+  if target_household_id is null then
+    raise exception '초대 코드가 올바르지 않아요.';
+  end if;
+
+  insert into public.household_members (household_id, user_id)
+  values (target_household_id, auth.uid());
+
+  return target_household_id;
+end;
+$$;
+
+grant execute on function public.create_household(text) to authenticated;
+grant execute on function public.join_household_by_invite_code(text) to authenticated;
 
 
 -- ============================================================================

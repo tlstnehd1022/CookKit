@@ -12,6 +12,7 @@ import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
 import { getPantryAvailability } from '../../lib/pantryAvailability';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { useHighlightIngredientIds, clearHighlightIngredientIds } from '../../data/highlightIngredients';
+import { useHousehold } from '../../data/household';
 import type { Ingredient } from '../../data/types';
 
 export function IngredientsPage() {
@@ -391,6 +392,7 @@ function IngredientDetailModal({
   onSave: (patch: IngredientDetailPatch) => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
+  const { household } = useHousehold();
   const [allergens, setAllergens] = useState<string[]>(ingredient.allergens);
   const [draft, setDraft] = useState('');
   const [preferredUnit, setPreferredUnit] = useState(ingredient.preferredUnit ?? '');
@@ -417,7 +419,11 @@ function IngredientDetailModal({
   );
   const [customMethodText, setCustomMethodText] = useState(isInitialPreset ? '' : initialMethod);
 
-  function addAllergen() {
+  function toggleAllergen(name: string) {
+    setAllergens((prev) => (prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name]));
+  }
+
+  function addCustomAllergen() {
     const trimmed = draft.trim();
     if (trimmed && !allergens.includes(trimmed)) {
       setAllergens([...allergens, trimmed]);
@@ -425,30 +431,45 @@ function IngredientDetailModal({
     setDraft('');
   }
 
+  // 가구가 관리하는 알러지 목록(household.allergens) + 이 재료에 이미 붙어있는 것을 합쳐서
+  // 토글 칩으로 보여준다 — 프로필에서 정한 목록을 여기서 탭 한 번으로 이 재료에도 표시할 수
+  // 있게(예: "돈까스소스"에 "마늘" 체크). 목록에 없는 성분은 아래 직접 입력으로 추가.
+  const allergenOptions = Array.from(new Set([...(household?.allergens ?? []), ...allergens]));
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <h2>{ingredient.name} — 상세 설정</h2>
 
         <div className="section-title">알러지 유발 성분</div>
-        <div className="chip-row">
-          {allergens.map((allergen) => (
-            <span className="chip allergen" key={allergen}>
-              {allergen}
-              <button onClick={() => setAllergens(allergens.filter((a) => a !== allergen))}>✕</button>
-            </span>
-          ))}
-        </div>
+        <p className="text-muted" style={{ marginTop: -4, marginBottom: 8 }}>
+          이 재료에 해당하는 걸 눌러서 표시하세요. 프로필의 "알러지 관리"에서 가구 목록을 먼저
+          만들어두면 여기서 고르기만 하면 돼요.
+        </p>
+        {allergenOptions.length > 0 && (
+          <div className="chip-row">
+            {allergenOptions.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className={`chip selectable ${allergens.includes(name) ? 'active' : ''}`}
+                onClick={() => toggleAllergen(name)}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="field" style={{ marginTop: 12 }}>
-          <label>새 알러지 성분 추가</label>
+          <label>목록에 없는 성분 직접 추가</label>
           <div className="row">
             <input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="예: 마늘, 밀가루"
-              onKeyDown={(e) => e.key === 'Enter' && addAllergen()}
+              placeholder="예: 새우"
+              onKeyDown={(e) => e.key === 'Enter' && addCustomAllergen()}
             />
-            <button className="btn small" onClick={addAllergen}>
+            <button className="btn small" onClick={addCustomAllergen}>
               추가
             </button>
           </div>

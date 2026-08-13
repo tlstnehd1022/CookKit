@@ -10,7 +10,7 @@ import { useApiKeyStatus } from '../../data/apiKeys';
 import { useNotificationSettings, isIosNotInstalled } from '../../data/pushNotifications';
 import { setAutoStartTimer, useAutoStartTimer } from '../../data/cookingModeSettings';
 import { useNotifications, type AppNotification } from '../../data/notifications';
-import { useRecipes } from '../../data/store';
+import { useIngredients, useRecipes } from '../../data/store';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { TagManager } from '../recipes/TagManager';
@@ -247,6 +247,9 @@ function ProfileSection() {
 
 function HouseholdSection() {
   const { household, refresh: refreshHousehold } = useHousehold();
+  const { ingredients, saveIngredient } = useIngredients();
+  const [allergenDraft, setAllergenDraft] = useState('');
+  const [allergenError, setAllergenError] = useState<string | null>(null);
 
   async function saveHouseholdName(next: string) {
     if (!household) return;
@@ -266,6 +269,51 @@ function HouseholdSection() {
     const { error } = await supabase.from('households').update({ default_servings: parsed }).eq('id', household.id);
     if (error) throw error;
     await refreshHousehold();
+  }
+
+  /** 가구 알러지 목록에 추가하면서, 이름이 정확히 같은 기존 재료가 있으면 자동으로
+   * 태깅한다("돈까스소스"처럼 이름만 봐선 알 수 없는 재료는 재료 상세 화면에서 따로 표시해야
+   * 하지만, "마늘"처럼 재료 자체가 알러지원인 흔한 경우는 이걸로 끝난다). */
+  async function addHouseholdAllergen() {
+    if (!household) return;
+    const trimmed = allergenDraft.trim();
+    if (!trimmed || household.allergens.includes(trimmed)) {
+      setAllergenDraft('');
+      return;
+    }
+    setAllergenError(null);
+    try {
+      const { error } = await supabase
+        .from('households')
+        .update({ allergens: [...household.allergens, trimmed] })
+        .eq('id', household.id);
+      if (error) throw error;
+      await refreshHousehold();
+      const matched = ingredients.find((i) => i.name.trim().toLowerCase() === trimmed.toLowerCase());
+      if (matched && !matched.allergens.includes(trimmed)) {
+        await saveIngredient({ ...matched, allergens: [...matched.allergens, trimmed] });
+      }
+      setAllergenDraft('');
+    } catch (err) {
+      setAllergenError(getErrorMessage(err, '알러지 성분을 추가하지 못했어요.'));
+    }
+  }
+
+  /** 가구 목록에서만 빼고, 이미 재료에 붙어있는 태그는 건드리지 않는다(그 재료의 실제 성분
+   * 정보를 잃지 않기 위해 — 지우고 싶으면 그 재료 상세 화면에서 직접 뺄 수 있음). */
+  async function removeHouseholdAllergen(name: string) {
+    if (!household) return;
+    setAllergenError(null);
+    try {
+      const { error } = await supabase
+        .from('households')
+        .update({ allergens: household.allergens.filter((a) => a !== name) })
+        .eq('id', household.id);
+      if (error) throw error;
+      await refreshHousehold();
+    } catch (err) {
+      setAllergenError(getErrorMessage(err, '알러지 성분을 지우지 못했어요.'));
+    }
   }
 
   return (
@@ -292,6 +340,35 @@ function HouseholdSection() {
           <p className="text-muted" style={{ marginTop: 12 }}>
             초대 코드: <strong>{household.inviteCode}</strong> (가족에게 공유해서 같이 쓰세요)
           </p>
+
+          <div className="section-title">알러지 관리</div>
+          <p className="text-muted" style={{ marginTop: -4, marginBottom: 8 }}>
+            우리 가구가 피하는 성분이에요. 여기 추가하면 이름이 같은 재료엔 자동으로 표시되고,
+            "돈까스소스"처럼 이름만 봐선 알 수 없는 재료는 냉장고에서 그 재료를 눌러 따로
+            표시할 수 있어요. 대화형 AI도 이 목록을 보고 레시피 제안 전에 먼저 확인해요.
+          </p>
+          {household.allergens.length > 0 && (
+            <div className="chip-row" style={{ marginBottom: 8 }}>
+              {household.allergens.map((name) => (
+                <span className="chip allergen" key={name}>
+                  {name}
+                  <button onClick={() => removeHouseholdAllergen(name)}>✕</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="row pill-input-row">
+            <input
+              value={allergenDraft}
+              onChange={(e) => setAllergenDraft(e.target.value)}
+              placeholder="예: 마늘, 밀가루"
+              onKeyDown={(e) => e.key === 'Enter' && addHouseholdAllergen()}
+            />
+            <button className="btn small" onClick={addHouseholdAllergen}>
+              추가
+            </button>
+          </div>
+          {allergenError && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{allergenError}</p>}
         </>
       ) : (
         <p className="text-muted">가구 정보를 불러오는 중...</p>

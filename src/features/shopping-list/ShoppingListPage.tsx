@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
-import { useIngredients, useIngredientsById, usePantryStatus, useRecipes, getCurrentHouseholdId } from '../../data/store';
+import {
+  useCategories,
+  useIngredients,
+  useIngredientsById,
+  usePantryStatus,
+  useRecipes,
+  getCurrentHouseholdId,
+} from '../../data/store';
 import { useShoppingSelection, type ShoppingSelectionEntry } from '../../data/shoppingSelection';
 import { useShoppingExtraItems } from '../../data/shoppingExtraItems';
 import { useHousehold } from '../../data/household';
@@ -29,6 +36,7 @@ interface AggregatedRow {
 export function ShoppingListPage() {
   const { recipes } = useRecipes();
   const { ingredients, saveIngredient, markIngredientFilled } = useIngredients();
+  const { categories } = useCategories();
   const ingredientsById = useIngredientsById();
   const { setOwned } = usePantryStatus();
   const { selection, selectedRecipeIds, toggle: toggleRecipe, updateServings } = useShoppingSelection();
@@ -126,6 +134,28 @@ export function ShoppingListPage() {
   const neededCount = aggregated.filter((row) => !isRowUsable(row.ingredientId)).length;
   const gotCount = aggregated.length - neededCount;
   const checkedRows = aggregated.filter((row) => checkedKeys.has(row.key));
+
+  // 카테고리(매대)별로 묶어서 보여준다 — 매장 동선대로 한 구역씩 사면서 확인하기 쉽게. 재료
+  // 관리 화면(IngredientsPage)의 categories 순서를 그대로 따르고, 삭제된 재료는 "기타"로 묶는다.
+  const groupedRows = useMemo(() => {
+    const byCategory = new Map<string, AggregatedRow[]>();
+    const uncategorized: AggregatedRow[] = [];
+    for (const row of filteredRows) {
+      const categoryId = ingredientsById.get(row.ingredientId)?.categoryId;
+      if (!categoryId) {
+        uncategorized.push(row);
+        continue;
+      }
+      const list = byCategory.get(categoryId);
+      if (list) list.push(row);
+      else byCategory.set(categoryId, [row]);
+    }
+    const groups = categories
+      .map((category) => ({ name: category.name, rows: byCategory.get(category.id) ?? [] }))
+      .filter((group) => group.rows.length > 0);
+    if (uncategorized.length > 0) groups.push({ name: '기타', rows: uncategorized });
+    return groups;
+  }, [filteredRows, ingredientsById, categories]);
 
   async function handleToggleOwned(id: string, next: boolean) {
     try {
@@ -270,48 +300,24 @@ export function ShoppingListPage() {
           </div>
 
           {filteredRows.length === 0 && <div className="empty-hint">조건에 맞는 재료가 없습니다.</div>}
-          {filteredRows.map((row) => {
-            const ingredient = ingredientsById.get(row.ingredientId);
-            const availability = ingredient ? getPantryAvailability(ingredient) : 'unavailable';
-            const usable = availability === 'usable';
-            const isExpired = availability === 'expired_unconfirmed';
-            const checked = checkedKeys.has(row.key);
-            return (
-              <div className="shopping-item-row" key={row.key} style={{ opacity: checked ? 0.55 : 1 }}>
-                <button
-                  type="button"
-                  className={`shopping-item-check ${checked ? 'checked' : ''}`}
-                  onClick={() => toggleChecked(row.key)}
-                  aria-label="담음 체크"
-                >
-                  {checked && '✓'}
-                </button>
-                <div className="shopping-item-body">
-                  <div className={`shopping-item-name ${checked ? 'checked' : ''}`}>
-                    {ingredient?.name ?? '(삭제된 재료)'}
-                  </div>
-                  <div className="text-muted" style={{ fontSize: 11 }}>
-                    {row.sourceLabel}
-                  </div>
-                  {isExpired && <div className="shopping-item-note">유통기한 지남 — 확인 필요</div>}
-                </div>
-                <div className="text-muted" style={{ flexShrink: 0, fontSize: 12 }}>
-                  {row.totalAmount} {row.unit}
-                </div>
-                <button
-                  className={`toggle ${usable ? 'on' : ''} ${isExpired ? 'expired' : ''}`}
-                  onClick={() =>
-                    isExpired ? setExpiredConfirmId(row.ingredientId) : handleToggleOwned(row.ingredientId, !usable)
-                  }
-                  disabled={!ingredient}
-                  aria-label={isExpired ? '유통기한 확인' : '보유 여부'}
-                  title={!ingredient ? '삭제된 재료라 상태를 변경할 수 없어요' : undefined}
-                >
-                  <span className="knob" />
-                </button>
+          {groupedRows.map((group) => (
+            <div key={group.name} style={{ marginBottom: 4 }}>
+              <div className="section-title" style={{ margin: '12px 0 2px' }}>
+                {group.name}
               </div>
-            );
-          })}
+              {group.rows.map((row) => (
+                <ShoppingItemRow
+                  key={row.key}
+                  row={row}
+                  ingredient={ingredientsById.get(row.ingredientId)}
+                  checked={checkedKeys.has(row.key)}
+                  onToggleChecked={() => toggleChecked(row.key)}
+                  onToggleOwned={handleToggleOwned}
+                  onOpenExpiredConfirm={() => setExpiredConfirmId(row.ingredientId)}
+                />
+              ))}
+            </div>
+          ))}
         </>
       )}
 
@@ -417,6 +423,58 @@ export function ShoppingListPage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/** 집계된 재료 한 행 — 카테고리(매대)별 그룹 안에서 반복 렌더링된다. */
+function ShoppingItemRow({
+  row,
+  ingredient,
+  checked,
+  onToggleChecked,
+  onToggleOwned,
+  onOpenExpiredConfirm,
+}: {
+  row: AggregatedRow;
+  ingredient: Ingredient | undefined;
+  checked: boolean;
+  onToggleChecked: () => void;
+  onToggleOwned: (id: string, next: boolean) => void;
+  onOpenExpiredConfirm: () => void;
+}) {
+  const availability = ingredient ? getPantryAvailability(ingredient) : 'unavailable';
+  const usable = availability === 'usable';
+  const isExpired = availability === 'expired_unconfirmed';
+  return (
+    <div className="shopping-item-row" style={{ opacity: checked ? 0.55 : 1 }}>
+      <button
+        type="button"
+        className={`shopping-item-check ${checked ? 'checked' : ''}`}
+        onClick={onToggleChecked}
+        aria-label="담음 체크"
+      >
+        {checked && '✓'}
+      </button>
+      <div className="shopping-item-body">
+        <div className={`shopping-item-name ${checked ? 'checked' : ''}`}>{ingredient?.name ?? '(삭제된 재료)'}</div>
+        <div className="text-muted" style={{ fontSize: 11 }}>
+          {row.sourceLabel}
+        </div>
+        {isExpired && <div className="shopping-item-note">유통기한 지남 — 확인 필요</div>}
+      </div>
+      <div className="text-muted" style={{ flexShrink: 0, fontSize: 12 }}>
+        {row.totalAmount} {row.unit}
+      </div>
+      <button
+        className={`toggle ${usable ? 'on' : ''} ${isExpired ? 'expired' : ''}`}
+        onClick={() => (isExpired ? onOpenExpiredConfirm() : onToggleOwned(row.ingredientId, !usable))}
+        disabled={!ingredient}
+        aria-label={isExpired ? '유통기한 확인' : '보유 여부'}
+        title={!ingredient ? '삭제된 재료라 상태를 변경할 수 없어요' : undefined}
+      >
+        <span className="knob" />
+      </button>
     </div>
   );
 }

@@ -370,7 +370,7 @@ function AppSettingsSection() {
           </button>
         </div>
         <p className="text-muted" style={{ marginTop: 8 }}>
-          켜두면 재료의 유통기한이 3일 이내로 임박했을 때 매일 한 번 알림을 보내드려요.
+          켜두면 재료의 유통기한이 2일 이내로 임박했거나 지났을 때 매일 한 번 알림을 보내드려요.
         </p>
         {!notificationSettings.supported && (
           <p className="text-muted" style={{ marginTop: 4 }}>

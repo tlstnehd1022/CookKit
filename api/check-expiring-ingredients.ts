@@ -36,11 +36,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const admin = getSupabaseAdmin();
 
   try {
-    // 1) 유통기한이 등록된 재료 전체를 가져와 클라이언트와 같은 기준(src/lib/expiration.ts)으로
-    // "임박(3일 이내)/경과" 여부를 판단한다(로직 중복 없이 화면 배지 기준과 항상 일치시킴).
+    // 1) 보유 중(owned=true)이면서 유통기한이 등록된 재료를 가져와 클라이언트와 같은 기준
+    // (src/lib/expiration.ts)으로 "임박(D-2 이내)/경과" 여부를 판단한다(로직 중복 없이 화면
+    // 배지 기준과 항상 일치시킴). owned=false인 재료는 유통기한이 남아있어도 실제로 냉장고에
+    // 없는 것이라 알림 대상에서 제외한다(A-3, getPantryAvailability와 같은 판단 기준).
     const { data: ingredients, error: ingredientsError } = await admin
       .from('ingredients')
       .select('id, household_id, name, expiration_date')
+      .eq('owned', true)
       .not('expiration_date', 'is', null);
     if (ingredientsError) throw ingredientsError;
 

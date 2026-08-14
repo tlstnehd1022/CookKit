@@ -12,7 +12,7 @@ import { useShoppingSelection, type ShoppingSelectionEntry } from '../../data/sh
 import { useShoppingExtraItems } from '../../data/shoppingExtraItems';
 import { useHousehold } from '../../data/household';
 import { scaleAmount } from '../../data/computed';
-import { AddIngredientModal, ExpiredConfirmModal } from '../ingredients/IngredientsPage';
+import { AddIngredientModal } from '../ingredients/IngredientsPage';
 import { fetchFillFrequencies, type FillFrequencyInfo } from '../../data/ingredientFillLog';
 import { computeRefillSuggestions } from '../../lib/refillSuggestions';
 import { getPantryAvailability } from '../../lib/pantryAvailability';
@@ -42,14 +42,14 @@ export function ShoppingListPage() {
   const { selection, selectedRecipeIds, toggle: toggleRecipe, updateServings } = useShoppingSelection();
   const { items: extraItems, add: addExtraItem, remove: removeExtraItem } = useShoppingExtraItems();
   const { household } = useHousehold();
-  const [filterMode, setFilterMode] = useState<FilterMode>('all');
+  // 화면 목적이 "뭘 사야 하는지"라 기본값을 "구매 필요"로 시작한다(요구사항 4).
+  const [filterMode, setFilterMode] = useState<FilterMode>('need');
   const [fillFrequencies, setFillFrequencies] = useState<Map<string, FillFrequencyInfo> | null>(null);
   const [checkedKeys, setCheckedKeys] = useState<Set<string>>(new Set());
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showRecipeSelect, setShowRecipeSelect] = useState(false);
   const [showAddExtra, setShowAddExtra] = useState(false);
   const [showMoveToFridge, setShowMoveToFridge] = useState(false);
-  const [expiredConfirmId, setExpiredConfirmId] = useState<string | null>(null);
 
   // "자주 채우는데 지금 없어요" 선제 제안 근거 데이터 — 계산이 무거울 수 있어 화면 진입 시 1회만
   // 조회하고 재사용한다(usePantryStatus처럼 계속 구독하는 캐시가 아님).
@@ -312,8 +312,6 @@ export function ShoppingListPage() {
                   ingredient={ingredientsById.get(row.ingredientId)}
                   checked={checkedKeys.has(row.key)}
                   onToggleChecked={() => toggleChecked(row.key)}
-                  onToggleOwned={handleToggleOwned}
-                  onOpenExpiredConfirm={() => setExpiredConfirmId(row.ingredientId)}
                 />
               ))}
             </div>
@@ -407,45 +405,25 @@ export function ShoppingListPage() {
           }}
         />
       )}
-
-      {expiredConfirmId && (
-        <ExpiredConfirmModal
-          ingredient={ingredientsById.get(expiredConfirmId)!}
-          onClose={() => setExpiredConfirmId(null)}
-          onResolve={async (stillGood) => {
-            const target = ingredientsById.get(expiredConfirmId);
-            if (!target) return;
-            if (stillGood) {
-              await saveIngredient({ ...target, expirationDate: undefined });
-            } else {
-              await saveIngredient({ ...target, owned: false });
-            }
-          }}
-        />
-      )}
     </div>
   );
 }
 
-/** 집계된 재료 한 행 — 카테고리(매대)별 그룹 안에서 반복 렌더링된다. */
+/** 집계된 재료 한 행 — 카테고리(매대)별 그룹 안에서 반복 렌더링된다. 보유 여부 수정은 여기서
+ * 하지 않는다(냉장고 탭에서만) — "담음" 체크(왼쪽) 하나로 충분하고, 보유 토글까지 같이 있으면
+ * "구매 필요" 필터와 상호작용하면서 혼란스러웠다(토글을 켜면 항목이 필터에서 바로 사라지는 등). */
 function ShoppingItemRow({
   row,
   ingredient,
   checked,
   onToggleChecked,
-  onToggleOwned,
-  onOpenExpiredConfirm,
 }: {
   row: AggregatedRow;
   ingredient: Ingredient | undefined;
   checked: boolean;
   onToggleChecked: () => void;
-  onToggleOwned: (id: string, next: boolean) => void;
-  onOpenExpiredConfirm: () => void;
 }) {
-  const availability = ingredient ? getPantryAvailability(ingredient) : 'unavailable';
-  const usable = availability === 'usable';
-  const isExpired = availability === 'expired_unconfirmed';
+  const isExpired = ingredient != null && getPantryAvailability(ingredient) === 'expired_unconfirmed';
   return (
     <div className="shopping-item-row" style={{ opacity: checked ? 0.55 : 1 }}>
       <button
@@ -461,20 +439,11 @@ function ShoppingItemRow({
         <div className="text-muted" style={{ fontSize: 11 }}>
           {row.sourceLabel}
         </div>
-        {isExpired && <div className="shopping-item-note">유통기한 지남 — 확인 필요</div>}
+        {isExpired && <div className="shopping-item-note">유통기한 지남 — 확인 필요(냉장고 탭에서 확인)</div>}
       </div>
       <div className="text-muted" style={{ flexShrink: 0, fontSize: 12 }}>
         {row.totalAmount} {row.unit}
       </div>
-      <button
-        className={`toggle ${usable ? 'on' : ''} ${isExpired ? 'expired' : ''}`}
-        onClick={() => (isExpired ? onOpenExpiredConfirm() : onToggleOwned(row.ingredientId, !usable))}
-        disabled={!ingredient}
-        aria-label={isExpired ? '유통기한 확인' : '보유 여부'}
-        title={!ingredient ? '삭제된 재료라 상태를 변경할 수 없어요' : undefined}
-      >
-        <span className="knob" />
-      </button>
     </div>
   );
 }

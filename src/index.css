@@ -863,13 +863,6 @@ h2 {
   border-color: var(--success);
 }
 
-/* A-5: 유통기한이 지나 확인이 필요한 재료 — usable이 아니라 knob은 꺼짐 위치(.on 아님)지만,
-   완전히 없는 것과는 다르다는 걸 danger 톤 트랙으로 구분한다. 탭하면 토글이 아니라 확인 모달이 뜬다. */
-.toggle.expired {
-  background: color-mix(in srgb, var(--danger) 22%, var(--chip-bg));
-  border-color: var(--danger);
-}
-
 .toggle .knob {
   position: absolute;
   top: 2px;

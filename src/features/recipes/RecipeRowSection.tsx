@@ -30,7 +30,12 @@ export interface RecipeRowItem {
   likeCount?: number;
 }
 
-/** 태그 이름별로 아이템을 그룹핑한다 — 레시피가 하나도 없는 태그는 결과에 아예 포함되지 않는다. */
+// 레시피 1개짜리 태그 행은 가로 스크롤할 게 사실상 없어 스크롤 가치가 낮다(29차 확장으로
+// style 태그가 12개까지 늘어나면서 이런 얇은 행이 많아짐) — 최소 2개는 있어야 행으로 만든다.
+const MIN_ROW_ITEM_COUNT = 2;
+
+/** 태그 이름별로 아이템을 그룹핑한다 — 레시피가 MIN_ROW_ITEM_COUNT개 미만인 태그는 결과에서
+ * 아예 빠진다(레시피가 하나도 없는 태그는 당연히 포함 안 됨). */
 export function groupRowItemsByTagName(items: RecipeRowItem[]): Map<string, RecipeRowItem[]> {
   const map = new Map<string, RecipeRowItem[]>();
   for (const item of items) {
@@ -39,6 +44,9 @@ export function groupRowItemsByTagName(items: RecipeRowItem[]): Map<string, Reci
       if (list) list.push(item);
       else map.set(name, [item]);
     }
+  }
+  for (const [name, list] of map) {
+    if (list.length < MIN_ROW_ITEM_COUNT) map.delete(name);
   }
   return map;
 }

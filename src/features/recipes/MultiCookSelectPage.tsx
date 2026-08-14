@@ -30,11 +30,11 @@ export function MultiCookSelectPage({
 
   return (
     <div>
-      <div className="row">
-        <button className="btn small" onClick={onCancel}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center' }}>
+        <button className="btn small" onClick={onCancel} style={{ justifySelf: 'start' }}>
           ← 뒤로
         </button>
-        <h1 style={{ margin: 0 }}>🍳 요리하기</h1>
+        <h1 style={{ margin: 0, justifySelf: 'center' }}>🍳 요리하기</h1>
         <span />
       </div>
       <p className="text-muted">하나 또는 여러 개 레시피를 골라주세요. (최대 {MAX_RECIPES}개)</p>

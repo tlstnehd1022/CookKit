@@ -424,8 +424,8 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
       })}
 
       <div className="weekly-continuation-box">
-        <div className="weekly-continuation-kicker">이어 쓰기</div>
-        <p style={{ margin: 0 }}>{continuationMessage ?? '이 날짜에 레시피를 배치하면 이어 쓰기 안내가 나와요.'}</p>
+        <div className="weekly-continuation-kicker">🔗 재료 이어쓰기</div>
+        <p style={{ margin: 0 }}>{continuationMessage ?? '이 날짜에 레시피를 배치하면 재료 이어쓰기 안내가 나와요.'}</p>
       </div>
 
       <div className="section-title">이 날 살 것</div>

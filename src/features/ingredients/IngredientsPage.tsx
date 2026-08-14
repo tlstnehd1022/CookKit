@@ -156,14 +156,14 @@ export function IngredientsPage() {
 
   return (
     <div>
-      <div className="row">
-        <h1>냉장고</h1>
+      <h1 className="page-header-title">냉장고</h1>
+      <div className="page-header-actions">
         <button className="btn small" onClick={() => setShowCategoryManager(true)}>
           카테고리 관리
         </button>
       </div>
 
-      <p className="text-muted" style={{ marginTop: -8, marginBottom: 14 }}>
+      <p className="text-muted" style={{ marginTop: -6, marginBottom: 14 }}>
         재료 {ownedIngredients.length}개 · 이걸로 만들 수 있는 레시피 {makeableRecipeCount}개
       </p>
 

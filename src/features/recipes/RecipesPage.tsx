@@ -295,31 +295,29 @@ export function RecipesPage({
         </button>
       )}
 
-      <div className="row">
-        <h1>레시피 관리</h1>
-        <div className="chip-row" style={{ marginTop: 0 }}>
-          {/* 첫 화면(행 구조)에서는 그리드/리스트 toggle이 필요 없음 — 검색/필터로 넘어가거나
-              행에서 "더보기"로 들어간 카테고리 상세 화면에서만 다시 노출됨 */}
-          {!isRowMode && (
-            <button
-              className="btn small"
-              onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-              title={viewMode === 'grid' ? '리스트로 보기' : '그리드로 보기'}
-            >
-              {viewMode === 'grid' ? '☰' : '▦'}
-            </button>
-          )}
-          <button className="btn small" onClick={onOpenCookingHistory}>
-            📋 요리 기록
+      <h1 className="page-header-title">레시피 관리</h1>
+      <div className="page-header-actions">
+        {/* 첫 화면(행 구조)에서는 그리드/리스트 toggle이 필요 없음 — 검색/필터로 넘어가거나
+            행에서 "더보기"로 들어간 카테고리 상세 화면에서만 다시 노출됨 */}
+        {!isRowMode && (
+          <button
+            className="btn small"
+            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+            title={viewMode === 'grid' ? '리스트로 보기' : '그리드로 보기'}
+          >
+            {viewMode === 'grid' ? '☰' : '▦'}
           </button>
-          <button className="btn small" onClick={onManageTags}>
-            태그 관리
-          </button>
-          <button className="btn primary small" onClick={onAddRecipe}>
-            + 레시피 추가
-          </button>
-        </div>
+        )}
+        <button className="btn small" onClick={onOpenCookingHistory}>
+          📋 요리 기록
+        </button>
+        <button className="btn small" onClick={onManageTags}>
+          태그 관리
+        </button>
       </div>
+      <button className="btn primary small" onClick={onAddRecipe}>
+        + 레시피 추가
+      </button>
 
       <div className="row" style={{ gap: 8, alignItems: 'center' }}>
         <div className="pill-input-row" style={{ flex: 1, marginBottom: 0 }}>

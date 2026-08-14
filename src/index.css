@@ -1419,6 +1419,73 @@ select:focus {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+   첫 사용 온보딩 투어 — src/features/home/OnboardingTour.tsx
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* 대상 요소를 클릭하지 못하게 위에 깔리는 투명 레이어. 실제 어둡게 보이는 건
+   .tour-highlight의 box-shadow가 화면 전체로 퍼지는 효과라 이 레이어 자체는 배경이 없다.
+   바깥(말풍선 밖) 아무 곳이나 탭하면 즉시 종료. */
+.tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  cursor: pointer;
+}
+
+/* 대상 요소 크기만큼 "구멍"이 뚫린 것처럼 보이게 하는 트릭 — 요소 자체는 투명하고, 화면
+   전체를 덮는 거대한 box-shadow가 그 바깥만 어둡게 채운다. modal-backdrop과 같은 계열의
+   색(rgba(46,43,37,..))을 쓰되, 전체 화면을 덮는 스크림이라 살짝 더 진하게(0.6) 준다. */
+.tour-highlight {
+  position: fixed;
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 9999px rgba(46, 43, 37, 0.6);
+  pointer-events: none;
+  transition:
+    top 0.25s ease,
+    left 0.25s ease,
+    width 0.25s ease,
+    height 0.25s ease;
+}
+
+.tour-tooltip {
+  position: fixed;
+  z-index: 301;
+  width: 280px;
+  max-width: calc(100vw - 32px);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft-hover);
+  padding: 16px;
+  cursor: default;
+}
+
+.tour-tooltip-title {
+  font-family: var(--font-heading);
+  font-size: 17px;
+  margin: 0 0 4px;
+}
+
+.tour-tooltip-desc {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0 0 14px;
+}
+
+.tour-tooltip-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tour-step-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
    프로필 바텀시트 — src/features/settings/ProfileSheet.tsx
    ══════════════════════════════════════════════════════════════════════ */
 

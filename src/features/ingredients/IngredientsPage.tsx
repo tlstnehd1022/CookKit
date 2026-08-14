@@ -169,7 +169,7 @@ export function IngredientsPage() {
 
       <div className="row" style={{ gap: 8 }}>
         <button className="btn primary" style={{ flex: 1 }} onClick={() => setShowReceiptScan(true)}>
-          📷 영수증으로 채우기
+          📷 영수증
         </button>
         <button className="btn primary" style={{ flex: 1 }} onClick={() => setShowAddForm(true)}>
           ➕ 직접 추가
@@ -372,6 +372,7 @@ export function ExpiredConfirmModal({
 }
 
 interface IngredientDetailPatch {
+  name: string;
   allergens: string[];
   preferredUnit?: string;
   preferredMethod?: string;
@@ -393,6 +394,7 @@ function IngredientDetailModal({
   onDelete: () => Promise<void>;
 }) {
   const { household } = useHousehold();
+  const [name, setName] = useState(ingredient.name);
   const [allergens, setAllergens] = useState<string[]>(ingredient.allergens);
   const [draft, setDraft] = useState('');
   const [preferredUnit, setPreferredUnit] = useState(ingredient.preferredUnit ?? '');
@@ -439,7 +441,11 @@ function IngredientDetailModal({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-        <h2>{ingredient.name} — 상세 설정</h2>
+        <h2>재료 상세 설정</h2>
+        <div className="field">
+          <label>이름</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 양파" />
+        </div>
 
         <div className="section-title">알러지 유발 성분</div>
         <p className="text-muted" style={{ marginTop: -4, marginBottom: 8 }}>
@@ -548,12 +554,13 @@ function IngredientDetailModal({
           </button>
           <button
             className="btn primary"
-            disabled={saving || deleting}
+            disabled={saving || deleting || !name.trim()}
             onClick={async () => {
               setSaving(true);
               setSaveError(null);
               try {
                 await onSave({
+                  name: name.trim(),
                   allergens,
                   preferredUnit: preferredUnit.trim() || undefined,
                   preferredMethod:

@@ -196,6 +196,9 @@ export function RecipeEditor({
     const newRecipeIngredients: RecipeIngredient[] = [];
     for (const item of result.ingredients) {
       const trimmedName = item.name.trim();
+      // 이름이 비어있는 재료는 AI 응답 파싱 오류 등으로 생긴 쓰레기 데이터라 건너뛴다 — 이름
+      // 없는 재료를 그대로 저장하면 냉장고 목록에 빈 칩으로 남아 사용자가 지울 수도 없었다.
+      if (!trimmedName) continue;
       let ingredientId = ingredientCache.get(trimmedName);
       if (!ingredientId) {
         ingredientId = await createIngredientFromAi(item.name, item.categoryName, categoryCache);

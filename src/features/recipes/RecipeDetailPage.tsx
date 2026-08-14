@@ -15,6 +15,7 @@ import {
   fetchCookingStats,
   fetchStepTimingAdjustments,
   logCooking,
+  setCookingLogImage,
   type CookingStats,
   type StepAdjustmentSuggestion,
 } from '../../data/cookingLog';
@@ -150,7 +151,7 @@ export function RecipeDetailPage({
     };
   }, [recipe?.id]);
 
-  async function handleConfirmCooking(selectedIngredientIds: string[], memo: string) {
+  async function handleConfirmCooking(selectedIngredientIds: string[], memo: string): Promise<string> {
     if (!recipe || !user || !householdId) {
       throw new Error('로그인이 필요합니다.');
     }
@@ -192,6 +193,7 @@ export function RecipeDetailPage({
       setTimingSuggestions(suggestions);
     }
     setPendingStepTimings(undefined);
+    return cookingLogId;
   }
 
   async function handleSetFinalImageFromCookingLog(imageId: string) {
@@ -468,6 +470,7 @@ export function RecipeDetailPage({
           onClose={() => setShowCookingLogModal(false)}
           onConfirm={handleConfirmCooking}
           onSetFinalImage={handleSetFinalImageFromCookingLog}
+          onSaveLogImage={setCookingLogImage}
           onEditRecipe={() => {
             setShowCookingLogModal(false);
             onEdit();

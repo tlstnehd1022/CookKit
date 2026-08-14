@@ -52,6 +52,9 @@ export async function logCooking(params: {
   memo?: string;
   stepTimings?: CookingLogStepTiming[];
   isMultiRecipe?: boolean;
+  /** 언제 만들었는지(ISO) — 생략하면 DB 기본값(now())이 적용된다. "요리 기록 직접 추가"에서
+   * 과거 날짜를 고른 경우에만 넘긴다. */
+  cookedAt?: string;
 }): Promise<{ id: string }> {
   const { data, error } = await supabase
     .from('cooking_log')
@@ -63,11 +66,19 @@ export async function logCooking(params: {
       memo: params.memo?.trim() || null,
       step_timings: params.stepTimings && params.stepTimings.length > 0 ? params.stepTimings : null,
       is_multi_recipe: params.isMultiRecipe ?? false,
+      ...(params.cookedAt ? { cooked_at: params.cookedAt } : {}),
     })
     .select('id')
     .single();
   if (error) throw error;
   return { id: data.id as string };
+}
+
+/** 요리 기록에 사진을 연결한다 — 대표 사진 지정 여부와 무관하게 항상 남겨서 레시피 상세의
+ * "우리집에서 만든 모습" 갤러리(4-1)에서 근거로 쓴다. */
+export async function setCookingLogImage(cookingLogId: string, imageId: string): Promise<void> {
+  const { error } = await supabase.from('cooking_log').update({ image_id: imageId }).eq('id', cookingLogId);
+  if (error) throw error;
 }
 
 /** 냉장고 정리 완료 표시 — 요리한 사람이 아닌 다른 가구원도 정리할 수 있어(household 공유 작업)

@@ -8,7 +8,7 @@ const BUCKET = 'recipe-images';
 // 화면이 열려있는 동안 충분한 정도로만 유효한 signed URL(비공개 버킷이라 공개 URL 대신 필요).
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
-export type ImageKind = 'step' | 'final';
+export type ImageKind = 'step' | 'final' | 'log';
 
 /** 새 이미지를 저장할 Storage 경로를 만든다: household_id/recipe_id/step_또는_final/파일명 */
 export function buildImagePath(householdId: string, recipeId: string, kind: ImageKind): string {

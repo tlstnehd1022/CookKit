@@ -21,6 +21,7 @@ export function CookingLogModal({
   onClose,
   onConfirm,
   onSetFinalImage,
+  onSaveLogImage,
   onEditRecipe,
   onOpenPantryTidy,
 }: {
@@ -30,8 +31,12 @@ export function CookingLogModal({
   ingredientsById: Map<string, Ingredient>;
   householdId: string | null;
   onClose: () => void;
-  onConfirm: (selectedIngredientIds: string[], memo: string) => Promise<void>;
+  onConfirm: (selectedIngredientIds: string[], memo: string) => Promise<string>;
   onSetFinalImage: (imageId: string) => Promise<void>;
+  /** 업로드한 사진을 요리 기록(cooking_log.image_id)에 연결 — 대표 사진 지정 여부와 무관하게
+   * 항상 호출돼서 "우리집에서 만든 모습" 갤러리(4-1)에 남는다. onConfirm이 반환한 cookingLogId를
+   * 인자로 받는다. */
+  onSaveLogImage: (cookingLogId: string, imageId: string) => Promise<void>;
   onEditRecipe: () => void;
   /** D-1: 요리에 쓴 재료가 자동으로 "없어요"로 표시된 상태에서 냉장고 정리 모드로 이동 */
   onOpenPantryTidy: () => void;
@@ -45,6 +50,8 @@ export function CookingLogModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<'checklist' | 'done'>('checklist');
+  // handleConfirm이 채워준다 — 완료 화면에서 사진을 이 기록에 연결(onSaveLogImage)할 때 필요.
+  const [cookingLogId, setCookingLogId] = useState<string | null>(null);
 
   const [uploadedImageId, setUploadedImageId] = useState<string | null>(null);
   const [setAsFinalImage, setSetAsFinalImage] = useState(true);
@@ -52,6 +59,7 @@ export function CookingLogModal({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [applyingFinalImage, setApplyingFinalImage] = useState(false);
   const uploadedImageUrl = useStoredImage(uploadedImageId ?? undefined);
+  const currentFinalImageUrl = useStoredImage(recipe.finalImageId);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -66,7 +74,8 @@ export function CookingLogModal({
     setSaving(true);
     setError(null);
     try {
-      await onConfirm(Array.from(selected), memo);
+      const id = await onConfirm(Array.from(selected), memo);
+      setCookingLogId(id);
       setStep('done');
     } catch (err) {
       setError(getErrorMessage(err, '기록 중 오류가 발생했습니다.'));
@@ -85,16 +94,19 @@ export function CookingLogModal({
   }
 
   async function handlePhotoUpload(file: File) {
-    if (!householdId) {
-      setPhotoError('household 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
+    if (!householdId || !cookingLogId) {
+      setPhotoError('요리 기록 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
       return;
     }
     setPhotoUploading(true);
     setPhotoError(null);
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      const imageId = buildImagePath(householdId, recipe.id, 'final');
+      const imageId = buildImagePath(householdId, recipe.id, 'log');
       await saveImage(imageId, dataUrl);
+      // 대표 사진 지정 여부와 무관하게 항상 이 요리 기록에 연결해둔다 — 안 그러면 "대표 사진으로
+      // 안 함"을 고른 사진이 Storage에만 남고 어디서도 참조되지 않아 사실상 유실된다.
+      await onSaveLogImage(cookingLogId, imageId);
       setUploadedImageId(imageId);
     } catch (err) {
       setPhotoError(getErrorMessage(err, '사진 업로드에 실패했습니다.'));
@@ -170,16 +182,32 @@ export function CookingLogModal({
           {photoError && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{photoError}</p>}
 
           {uploadedImageId && (
-            <label className="row" style={{ marginTop: 8 }}>
-              <span>이 사진을 레시피 대표 이미지로 설정</span>
-              <input
-                type="checkbox"
-                checked={setAsFinalImage}
-                onChange={(e) => setSetAsFinalImage(e.target.checked)}
-              />
-            </label>
+            <>
+              <label className="row" style={{ marginTop: 8 }}>
+                <span>이 사진을 레시피 대표 이미지로 설정</span>
+                <input
+                  type="checkbox"
+                  checked={setAsFinalImage}
+                  onChange={(e) => setSetAsFinalImage(e.target.checked)}
+                />
+              </label>
+              {currentFinalImageUrl && (
+                <div className="row" style={{ marginTop: 4, gap: 8, alignItems: 'center' }}>
+                  <span className="text-muted" style={{ fontSize: 12 }}>
+                    지금 대표 사진
+                  </span>
+                  <img
+                    src={currentFinalImageUrl}
+                    alt="지금 대표 사진"
+                    style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 'var(--radius-sm)' }}
+                  />
+                </div>
+              )}
+              <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                아니어도 "우리집에서 만든 모습" 갤러리에는 남아요.
+              </p>
+            </>
           )}
-
           <div className="section-title" style={{ marginTop: 16 }}>냉장고 정리</div>
           <p className="text-muted" style={{ marginTop: -4 }}>
             요리에 쓴 재료는 자동으로 "없어요"로 표시됐어요. 확인만 하고 남은 재료만 되돌리면 돼요.

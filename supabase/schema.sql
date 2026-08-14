@@ -648,7 +648,10 @@ create table public.cooking_log (
   -- 요리 완료 후 냉장고 정리를 했는지 — null이면 아직 정리 안 함(0024, 홈 화면 안내 대상)
   pantry_cleaned_at timestamptz,
   -- 실제로 만든 인분(0030) — 재료 차감(owned=false)이 이 인분 기준이었다는 기록
-  servings integer not null default 2 check (servings > 0)
+  servings integer not null default 2 check (servings > 0),
+  -- 요리 완료 시 올린 사진(Storage 경로, 0033) — 대표 사진 지정 여부와 무관하게 항상 남는다
+  -- (레시피 상세 "우리집에서 만든 모습" 갤러리 근거).
+  image_id text
 );
 
 create index cooking_log_recipe_id_idx on public.cooking_log (recipe_id);

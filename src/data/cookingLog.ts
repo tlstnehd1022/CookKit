@@ -282,3 +282,56 @@ export async function fetchCookingHistory(householdId: string): Promise<CookingL
     memo: row.memo as string | null,
   }));
 }
+
+export interface CookingLogPhoto {
+  id: string;
+  imageId: string;
+  cookedAt: string;
+  authorName: string | null;
+}
+
+/** 레시피 상세의 "📸 우리집에서 만든 모습" 갤러리(4-1) — 우리 household가 이 레시피로 남긴
+ * 요리 기록 중 사진이 있는 것만 최신순으로. RLS(cooking_log_select_household)가 household
+ * 범위를 이미 제한한다. */
+export async function fetchCookingLogPhotos(recipeId: string): Promise<CookingLogPhoto[]> {
+  const { data, error } = await supabase
+    .from('cooking_log')
+    .select('id, image_id, cooked_at, profiles(display_name)')
+    .eq('recipe_id', recipeId)
+    .not('image_id', 'is', null)
+    .order('cooked_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    imageId: row.image_id as string,
+    cookedAt: row.cooked_at as string,
+    authorName: (row.profiles as unknown as { display_name: string | null } | null)?.display_name ?? null,
+  }));
+}
+
+export interface PublicCookingLogPhoto {
+  id: string;
+  imageId: string;
+  cookedAt: string;
+  /** 개인 이름이 아니라 household 이름만 — 다른 household 사용자에게는 프라이버시 보호(4-2). */
+  householdName: string | null;
+}
+
+/** 둘러보기(다른 household 공개 레시피)의 "🍽 이 레시피를 요리해본 사람들" 갤러리(4-2) — 공개
+ * 레시피가 아니면 RLS(cooking_log_select_via_public_recipe, 0034)가 애초에 아무 행도 반환하지
+ * 않는다. memo/재료 사용 세부정보는 필요 없어 select에서부터 빼서 가져오지 않는다. */
+export async function fetchPublicCookingLogPhotos(recipeId: string): Promise<PublicCookingLogPhoto[]> {
+  const { data, error } = await supabase
+    .from('cooking_log')
+    .select('id, image_id, cooked_at, households(name)')
+    .eq('recipe_id', recipeId)
+    .not('image_id', 'is', null)
+    .order('cooked_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    imageId: row.image_id as string,
+    cookedAt: row.cooked_at as string,
+    householdName: (row.households as unknown as { name: string } | null)?.name ?? null,
+  }));
+}

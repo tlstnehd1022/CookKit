@@ -12,15 +12,18 @@ import { requestProfileSheet } from '../../data/profileSheet';
 import { showUndoToast } from '../../data/undoToast';
 import { getErrorMessage } from '../../lib/errorMessage';
 import {
+  fetchCookingLogPhotos,
   fetchCookingStats,
   fetchStepTimingAdjustments,
   logCooking,
   setCookingLogImage,
+  type CookingLogPhoto,
   type CookingStats,
   type StepAdjustmentSuggestion,
 } from '../../data/cookingLog';
 import { useSession } from '../../data/session';
 import { CookingLogModal } from './CookingLogModal';
+import { CookingLogPhotoGallery } from './CookingLogPhotoGallery';
 import { CookingModePage } from './CookingModePage';
 import { TimingAdjustmentModal } from './TimingAdjustmentModal';
 import { PantryTidyModal } from '../ingredients/PantryTidyModal';
@@ -68,6 +71,7 @@ export function RecipeDetailPage({
   const [nutritionError, setNutritionError] = useState<string | null>(null);
   const [nutritionMissingApiKey, setNutritionMissingApiKey] = useState(false);
   const [cookingStats, setCookingStats] = useState<CookingStats | null>(null);
+  const [cookingLogPhotos, setCookingLogPhotos] = useState<CookingLogPhoto[]>([]);
   const [showCookingLogModal, setShowCookingLogModal] = useState(false);
   const [showCookingMode, setShowCookingMode] = useState(false);
   // D-1: "오늘 만들었어요" 확정 시 생성된 기록 id — 정리하기로 이동할 때 pantry_cleaned_at을
@@ -131,6 +135,24 @@ export function RecipeDetailPage({
       cancelled = true;
     };
   }, [recipe?.id]);
+
+  // "📸 우리집에서 만든 모습" 갤러리(4-1) — 요리 기록/영수증 흐름에서 새 사진이 추가될 수 있어
+  // 모달을 닫을 때(showCookingLogModal이 false로 바뀔 때)도 다시 불러온다.
+  useEffect(() => {
+    if (!recipe) {
+      setCookingLogPhotos([]);
+      return;
+    }
+    let cancelled = false;
+    fetchCookingLogPhotos(recipe.id)
+      .then((result) => {
+        if (!cancelled) setCookingLogPhotos(result);
+      })
+      .catch((err) => console.error('요리 기록 사진 조회 실패:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [recipe?.id, showCookingLogModal]);
 
   // "⏱ 조정 제안" 배지용 — 완료 화면에서 놓쳤거나 예전 기록으로 뒤늦게 조건을 만족한 경우를 위한
   // 보조 진입점. 완료 화면에서 이미 다뤘어도(적용/건너뛰기) 다시 불러오면 자연스럽게 없어지거나
@@ -314,6 +336,15 @@ export function RecipeDetailPage({
           }}
         />
       )}
+      <CookingLogPhotoGallery
+        title="📸 우리집에서 만든 모습"
+        items={cookingLogPhotos.map((photo) => ({
+          id: photo.id,
+          imageId: photo.imageId,
+          cookedAt: photo.cookedAt,
+          label: photo.authorName,
+        }))}
+      />
       <button
         className={`btn ${isSelected(recipe.id) ? 'primary' : ''}`}
         style={{ width: '100%', marginBottom: 8 }}
@@ -568,3 +599,4 @@ function formatSeconds(total: number): string {
   const seconds = total % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
+

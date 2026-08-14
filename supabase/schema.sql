@@ -399,6 +399,17 @@ create policy "households_select_via_public_recipe" on public.households
     )
   );
 
+-- 위와 별개로 "그 공개 레시피를 요리해본 다른 household"의 이름도 읽을 수 있어야 함(0034,
+-- cooking_log_select_via_public_recipe가 노출하는 행이 참조하는 household — 레시피 작성자의
+-- household와는 다를 수 있다).
+create policy "households_select_via_public_cooking_log" on public.households
+  for select using (
+    id in (
+      select household_id from public.cooking_log
+      where recipe_id in (select id from public.recipes where visibility = 'public')
+    )
+  );
+
 -- 새 household 생성은 로그인한 사용자면 누구나 가능(생성 직후 household_members에도
 -- 본인을 추가해야 실제로 그 household의 멤버가 됨 — 앱에서 두 insert를 함께 처리할 것)
 create policy "households_insert_authenticated" on public.households
@@ -661,6 +672,13 @@ alter table public.cooking_log enable row level security;
 
 create policy "cooking_log_select_household" on public.cooking_log
   for select using (public.is_household_member(household_id));
+
+-- 둘러보기(다른 household 공개 레시피)의 "이 레시피를 요리해본 사람들" 갤러리(0034, 4-2) —
+-- tags/ingredients/profiles/households에 이미 있던 것과 같은 종류의 SELECT 전용 예외.
+create policy "cooking_log_select_via_public_recipe" on public.cooking_log
+  for select using (
+    recipe_id in (select id from public.recipes where visibility = 'public')
+  );
 
 create policy "cooking_log_insert_household" on public.cooking_log
   for insert with check (public.is_household_member(household_id) and user_id = auth.uid());

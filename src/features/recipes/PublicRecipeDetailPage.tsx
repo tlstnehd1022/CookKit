@@ -3,9 +3,11 @@ import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
 import { useStoredImage } from '../../data/imageStore';
 import { fetchLikeInfo, toggleLike, type LikeInfo } from '../../data/recipeLikes';
 import { createRecipeLikedNotification, deleteRecipeLikedNotification } from '../../data/notifications';
+import { fetchPublicCookingLogPhotos, type PublicCookingLogPhoto } from '../../data/cookingLog';
 import { useSession } from '../../data/session';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { formatPublicRecipeOwnerLabel, type PublicRecipeEntry } from '../../data/publicRecipes';
+import { CookingLogPhotoGallery } from './CookingLogPhotoGallery';
 
 /** 다른 household의 공개 레시피 상세 — 조회 전용(재료/조리순서/난이도/작성자 표시) + 좋아요.
  * "내 레시피로 복사하기" 버튼과 실제 복사 로직은 onCopy prop으로 상위(RecipesFeature)에서 주입한다. */
@@ -28,6 +30,7 @@ export function PublicRecipeDetailPage({
   const { user } = useSession();
   const [likeInfo, setLikeInfo] = useState<LikeInfo>({ likeCount: 0, likedByMe: false });
   const [likeBusy, setLikeBusy] = useState(false);
+  const [publicPhotos, setPublicPhotos] = useState<PublicCookingLogPhoto[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -41,6 +44,21 @@ export function PublicRecipeDetailPage({
       cancelled = true;
     };
   }, [recipe.id, user?.id]);
+
+  // "🍽 이 레시피를 요리해본 사람들" 접힌 갤러리(4-2) — 공개 레시피 참조 RLS 예외를 통해 다른
+  // household의 요리 기록 사진을 가져온다. 사진이 하나도 없으면 CookingLogPhotoGallery가
+  // 알아서 아무것도 렌더링하지 않는다.
+  useEffect(() => {
+    let cancelled = false;
+    fetchPublicCookingLogPhotos(recipe.id)
+      .then((result) => {
+        if (!cancelled) setPublicPhotos(result);
+      })
+      .catch((err) => console.error('요리해본 사람들 사진 조회 실패:', getErrorMessage(err)));
+    return () => {
+      cancelled = true;
+    };
+  }, [recipe.id]);
 
   async function handleToggleLike() {
     if (!user || likeBusy) return;
@@ -106,6 +124,17 @@ export function PublicRecipeDetailPage({
           }}
         />
       )}
+
+      <CookingLogPhotoGallery
+        title="🍽 이 레시피를 요리해본 사람들"
+        collapsible
+        items={publicPhotos.map((photo) => ({
+          id: photo.id,
+          imageId: photo.imageId,
+          cookedAt: photo.cookedAt,
+          label: photo.householdName ? `${photo.householdName}에서 만든 모습` : null,
+        }))}
+      />
 
       {onCopy && (
         <button className="btn primary" style={{ width: '100%', marginBottom: 8 }} onClick={onCopy} disabled={copying}>

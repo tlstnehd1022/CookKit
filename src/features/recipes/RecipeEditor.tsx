@@ -817,8 +817,8 @@ export function RecipeEditor({
         </button>
       )}
 
-      <div className="section-title">또는 유튜브 링크로 변환</div>
       <div className="card">
+        <h2 style={{ fontSize: 14, marginBottom: 4 }}>🎬 유튜브 링크로 변환</h2>
         <p className="text-muted" style={{ marginBottom: 8 }}>
           링크만 넣으면 자막을 읽고 레시피로 정리해요.
         </p>

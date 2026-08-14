@@ -836,6 +836,10 @@ h2 {
   font-size: 14px;
   box-shadow: var(--shadow-soft);
   transition: box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+  /* white-space가 없으면 .row(flex) 안에서 flex:1 형제가 공간을 차지할 때 버튼이 내용보다
+     좁게 눌리고, 한글은 글자 단위로도 줄바꿈되는 기본 규칙 때문에 텍스트가 세로로 한 글자씩
+     쌓이는 버그가 생긴다(유튜브 변환 버튼에서 실기기로 확인됨) — 버튼 라벨은 항상 한 줄. */
+  white-space: nowrap;
 }
 
 .btn:hover:not(:disabled) {

@@ -9,10 +9,6 @@ export interface Ingredient {
   categoryId: string;
   defaultBuyUnit: string;
   allergens: string[];
-  /** 예: '작은술' — 이 재료를 넣을 때 선호하는 계량 단위. AI 레시피 생성/수정 시 참고 정보로 전달됨 */
-  preferredUnit?: string;
-  /** 예: '그라인더로 갈아서', '다진 것 대신 편 썰기로' — 자유 서술형 선호 방식 */
-  preferredMethod?: string;
   /** 보유 여부(household 공유) — 예전엔 별도 PantryStatus 맵이었으나 DB 전환 후 재료 행에 통합 */
   owned: boolean;
   /** 유통기한(YYYY-MM-DD, 선택) — 없으면 배지/알림 대상에서 제외 */

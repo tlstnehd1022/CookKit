@@ -135,13 +135,6 @@ export function RecipeEditor({
     tags: tags.map((tag) => tag.name),
     categories: categories.map((category) => category.name),
     ingredients: ingredients.map((ingredient) => ingredient.name),
-    ingredientPreferences: ingredients
-      .filter((ingredient) => ingredient.preferredUnit || ingredient.preferredMethod)
-      .map((ingredient) => ({
-        name: ingredient.name,
-        preferredUnit: ingredient.preferredUnit,
-        preferredMethod: ingredient.preferredMethod,
-      })),
     allergenIngredients: ingredients
       .filter((ingredient) => ingredient.allergens.length > 0)
       .map((ingredient) => ({ name: ingredient.name, allergens: ingredient.allergens })),

@@ -7,7 +7,6 @@ import { showUndoToast } from '../../data/undoToast';
 import { CategoryManager } from './CategoryManager';
 import { ReceiptScanModal } from './ReceiptScanModal';
 import { PantryTidyModal } from './PantryTidyModal';
-import { COMMON_UNITS } from '../../data/units';
 import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
 import { getPantryAvailability } from '../../lib/pantryAvailability';
 import { getErrorMessage } from '../../lib/errorMessage';
@@ -376,13 +375,8 @@ interface IngredientDetailPatch {
   name: string;
   categoryId: string;
   allergens: string[];
-  preferredUnit?: string;
-  preferredMethod?: string;
   expirationDate?: string;
 }
-
-const METHOD_PRESETS = ['다진 것', '편으로', '그라인더로', '가루로', '생것 그대로'];
-const CUSTOM_METHOD_VALUE = '__custom__';
 
 function IngredientDetailModal({
   ingredient,
@@ -401,7 +395,6 @@ function IngredientDetailModal({
   const [categoryId, setCategoryId] = useState(ingredient.categoryId);
   const [allergens, setAllergens] = useState<string[]>(ingredient.allergens);
   const [draft, setDraft] = useState('');
-  const [preferredUnit, setPreferredUnit] = useState(ingredient.preferredUnit ?? '');
   const [expirationDate, setExpirationDate] = useState(ingredient.expirationDate ?? '');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -418,13 +411,6 @@ function IngredientDetailModal({
       setDeleting(false);
     }
   }
-
-  const initialMethod = ingredient.preferredMethod ?? '';
-  const isInitialPreset = METHOD_PRESETS.includes(initialMethod);
-  const [selectedMethod, setSelectedMethod] = useState(
-    initialMethod === '' ? '' : isInitialPreset ? initialMethod : CUSTOM_METHOD_VALUE,
-  );
-  const [customMethodText, setCustomMethodText] = useState(isInitialPreset ? '' : initialMethod);
 
   function toggleAllergen(name: string) {
     setAllergens((prev) => (prev.includes(name) ? prev.filter((a) => a !== name) : [...prev, name]));
@@ -518,49 +504,6 @@ function IngredientDetailModal({
           </p>
         </div>
 
-        <div className="section-title">개인 선호 (AI 레시피 생성/수정 시 참고됨)</div>
-        <div className="field">
-          <label>선호 계량 단위 (선택)</label>
-          <select value={preferredUnit} onChange={(e) => setPreferredUnit(e.target.value)}>
-            <option value="">(설정 안 함)</option>
-            {COMMON_UNITS.map((unit) => (
-              <option key={unit} value={unit}>
-                {unit}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label>선호 방식 (선택)</label>
-          <div className="chip-row">
-            {METHOD_PRESETS.map((method) => (
-              <button
-                key={method}
-                className={`chip selectable ${selectedMethod === method ? 'active' : ''}`}
-                onClick={() => setSelectedMethod((prev) => (prev === method ? '' : method))}
-              >
-                {method}
-              </button>
-            ))}
-            <button
-              className={`chip selectable ${selectedMethod === CUSTOM_METHOD_VALUE ? 'active' : ''}`}
-              onClick={() =>
-                setSelectedMethod((prev) => (prev === CUSTOM_METHOD_VALUE ? '' : CUSTOM_METHOD_VALUE))
-              }
-            >
-              직접입력
-            </button>
-          </div>
-          {selectedMethod === CUSTOM_METHOD_VALUE && (
-            <input
-              style={{ marginTop: 6 }}
-              value={customMethodText}
-              onChange={(e) => setCustomMethodText(e.target.value)}
-              placeholder="예: 다진 마늘 대신 마늘칩 사용"
-            />
-          )}
-        </div>
-
         <div className="row" style={{ marginTop: 16 }}>
           <button className="btn danger" onClick={() => setShowDeleteConfirm(true)} disabled={saving || deleting}>
             {deleting ? '삭제 중...' : '삭제'}
@@ -579,11 +522,6 @@ function IngredientDetailModal({
                   name: name.trim(),
                   categoryId,
                   allergens,
-                  preferredUnit: preferredUnit.trim() || undefined,
-                  preferredMethod:
-                    selectedMethod === CUSTOM_METHOD_VALUE
-                      ? customMethodText.trim() || undefined
-                      : selectedMethod || undefined,
                   expirationDate: expirationDate || undefined,
                 });
               } catch (err) {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useCategories, useIngredients, useRecipes, useTags, makeId, getCurrentHouseholdId } from '../../data/store';
 import { useSettings } from '../../data/settings';
 import { requestProfileSheet } from '../../data/profileSheet';
+import { requestDiscoverTab } from '../../data/discoverTabRequest';
 import { createHouseholdRecipeAddedNotifications } from '../../data/notifications';
 // geminiClient는 이제 API 키가 필요 없는 순수 함수(프롬프트 생성)와 youtubeApiKey(범위 밖, 계속
 // 클라이언트에서 직접 씀)를 쓰는 fetchYoutubeVideoMeta만 남음 — 실제 AI 호출(대화/추출/이미지
@@ -804,6 +805,12 @@ export function RecipeEditor({
         </button>
         <h1 style={{ margin: 0 }}>{existing ? '레시피 수정' : '레시피 추가'}</h1>
       </div>
+
+      {!existing && (
+        <button className="btn small" style={{ marginBottom: 12 }} onClick={requestDiscoverTab}>
+          🔍 다른 집 레시피 둘러보기
+        </button>
+      )}
 
       <RecipeChatPanel
         onApply={applyExtractedResult}

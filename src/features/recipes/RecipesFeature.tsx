@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RecipesPage } from './RecipesPage';
 import { RecipeDetailPage } from './RecipeDetailPage';
 import { RecipeEditor } from './RecipeEditor';
@@ -22,6 +22,7 @@ import {
 } from '../../data/store';
 import { useSession } from '../../data/session';
 import { useHousehold } from '../../data/household';
+import { useDiscoverTabRequested, clearDiscoverTabRequest } from '../../data/discoverTabRequest';
 import { copyImage, isStorageImagePath } from '../../data/imageStore';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { logCooking } from '../../data/cookingLog';
@@ -60,6 +61,14 @@ export function RecipesFeature() {
   const { tags, saveTag } = useTags();
   const { saveRecipe } = useRecipes();
   const householdId = getCurrentHouseholdId();
+
+  const discoverRequested = useDiscoverTabRequested();
+  useEffect(() => {
+    if (!discoverRequested) return;
+    setListMode('discover');
+    setView({ screen: 'list' });
+    clearDiscoverTabRequest();
+  }, [discoverRequested]);
 
   /**
    * 복합 요리 완료 확인 — 선택한 레시피 각각에 대해 별도로 CookingLog를 남긴다(하나로 합치지

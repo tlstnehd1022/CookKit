@@ -15,6 +15,7 @@ import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { TagManager } from '../recipes/TagManager';
 import { CategoryManager } from '../ingredients/CategoryManager';
+import { ConfirmDialog } from '../recipes/ConfirmDialog';
 
 const API_KEY_MIGRATION_FLAG = 'cookkit:apiKeyMigrated';
 
@@ -43,6 +44,7 @@ export function ProfileSheet({
   onNavigateToRecipe: (recipeId: string) => void;
 }) {
   const [section, setSection] = useState<Section>('menu');
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { user, logout } = useSession();
   const { profile } = useProfile();
   const { unreadCount } = useNotifications();
@@ -88,14 +90,23 @@ export function ProfileSheet({
             <button
               type="button"
               className="profile-sheet-menu-item danger"
-              onClick={() => {
-                if (confirm('로그아웃할까요?')) logout();
-              }}
+              onClick={() => setShowLogoutConfirm(true)}
             >
               <LogOut size={19} strokeWidth={2.75} />
               <span>로그아웃</span>
             </button>
           </div>
+        )}
+        {showLogoutConfirm && (
+          <ConfirmDialog
+            message="로그아웃할까요?"
+            confirmLabel="로그아웃"
+            onConfirm={() => {
+              setShowLogoutConfirm(false);
+              logout();
+            }}
+            onCancel={() => setShowLogoutConfirm(false)}
+          />
         )}
 
         {section === 'notifications' && (

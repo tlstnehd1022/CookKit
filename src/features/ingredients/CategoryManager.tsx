@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useCategories, makeId } from '../../data/store';
+import { ConfirmDialog } from '../recipes/ConfirmDialog';
 
 export function CategoryManager({ onClose }: { onClose: () => void }) {
   const { categories, saveCategory, deleteCategory } = useCategories();
   const [name, setName] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   function addCategory() {
     const trimmed = name.trim();
@@ -15,12 +17,11 @@ export function CategoryManager({ onClose }: { onClose: () => void }) {
   }
 
   function handleDelete(id: string) {
-    if (confirm('이 카테고리를 삭제할까요? 이 카테고리를 쓰던 재료는 그대로 남지만 분류가 사라집니다.')) {
-      deleteCategory(id);
-    }
+    setDeleteTargetId(id);
   }
 
   return (
+    <>
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <h2>카테고리 관리</h2>
@@ -90,5 +91,18 @@ export function CategoryManager({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
+
+      {deleteTargetId && (
+        <ConfirmDialog
+          message="이 카테고리를 삭제할까요? 이 카테고리를 쓰던 재료는 그대로 남지만 분류가 사라집니다."
+          confirmLabel="삭제"
+          onConfirm={() => {
+            deleteCategory(deleteTargetId);
+            setDeleteTargetId(null);
+          }}
+          onCancel={() => setDeleteTargetId(null)}
+        />
+      )}
+    </>
   );
 }

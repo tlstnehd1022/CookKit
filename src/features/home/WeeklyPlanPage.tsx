@@ -35,6 +35,7 @@ import { getErrorMessage } from '../../lib/errorMessage';
 import { RecipeDetailPage } from '../recipes/RecipeDetailPage';
 import { RecipeEditor } from '../recipes/RecipeEditor';
 import { RecipeCard, RecipeListItem, resolveRecipeTagNames } from '../recipes/RecipesPage';
+import { ConfirmDialog } from '../recipes/ConfirmDialog';
 import { ExpiredConfirmModal } from '../ingredients/IngredientsPage';
 import type { Ingredient, MealPlan, MealType, Recipe } from '../../data/types';
 
@@ -76,6 +77,7 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
   const [pickerContext, setPickerContext] = useState<PickerContext | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
   const [expiredConfirmId, setExpiredConfirmId] = useState<string | null>(null);
+  const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
   // 끼니 섹션 펼침 상태는 저장하지 않고(2번 요구사항), 이 화면에 머무는 동안만 사용자가 직접
   // 펼친 끼니를 기억한다 — 날짜를 바꾸면 초기화된다(아래 useEffect).
   const [manuallyExpanded, setManuallyExpanded] = useState<Set<MealType>>(new Set());
@@ -155,8 +157,14 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
     }
   }
 
-  async function handleRemovePlan(id: string) {
-    if (!confirm('이 메뉴를 뺄까요?')) return;
+  function handleRemovePlan(id: string) {
+    setPendingRemoveId(id);
+  }
+
+  async function confirmRemovePlan() {
+    const id = pendingRemoveId;
+    setPendingRemoveId(null);
+    if (!id) return;
     try {
       await removeMealPlan(id);
       await refresh();
@@ -499,6 +507,15 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
               await saveIngredient({ ...target, owned: false });
             }
           }}
+        />
+      )}
+
+      {pendingRemoveId && (
+        <ConfirmDialog
+          message="이 메뉴를 뺄까요?"
+          confirmLabel="빼기"
+          onConfirm={confirmRemovePlan}
+          onCancel={() => setPendingRemoveId(null)}
         />
       )}
     </div>

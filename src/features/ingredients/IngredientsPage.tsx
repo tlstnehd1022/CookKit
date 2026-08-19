@@ -13,6 +13,7 @@ import { getPantryAvailability } from '../../lib/pantryAvailability';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { useHighlightIngredientIds, clearHighlightIngredientIds } from '../../data/highlightIngredients';
 import { useHousehold } from '../../data/household';
+import { ConfirmDialog } from '../recipes/ConfirmDialog';
 import type { Ingredient } from '../../data/types';
 
 export function IngredientsPage() {
@@ -402,9 +403,10 @@ function IngredientDetailModal({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   async function handleDelete() {
-    if (!confirm(`'${ingredient.name}'을(를) 삭제할까요? 이 재료를 쓰는 레시피에서는 "삭제된 재료"로 표시돼요.`)) return;
+    setShowDeleteConfirm(false);
     setDeleting(true);
     try {
       await onDelete();
@@ -439,6 +441,7 @@ function IngredientDetailModal({
   const allergenOptions = Array.from(new Set([...(household?.allergens ?? []), ...allergens]));
 
   return (
+    <>
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <h2>재료 상세 설정</h2>
@@ -546,7 +549,7 @@ function IngredientDetailModal({
         </div>
 
         <div className="row" style={{ marginTop: 16 }}>
-          <button className="btn danger" onClick={handleDelete} disabled={saving || deleting}>
+          <button className="btn danger" onClick={() => setShowDeleteConfirm(true)} disabled={saving || deleting}>
             {deleting ? '삭제 중...' : '삭제'}
           </button>
           <button className="btn" onClick={onClose} disabled={saving || deleting}>
@@ -581,6 +584,16 @@ function IngredientDetailModal({
         {saveError && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{saveError}</p>}
       </div>
     </div>
+
+      {showDeleteConfirm && (
+        <ConfirmDialog
+          message={`'${ingredient.name}'을(를) 삭제할까요? 이 재료를 쓰는 레시피에서는 "삭제된 재료"로 표시돼요.`}
+          confirmLabel="삭제"
+          onConfirm={handleDelete}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -603,20 +616,17 @@ export function AddIngredientModal({
   const [defaultBuyUnit, setDefaultBuyUnit] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
 
   const canSave = name.trim().length > 0 && categoryId;
 
-  async function handleSubmit() {
-    const trimmedName = name.trim();
-    if (existingNames.includes(trimmedName.toLowerCase())) {
-      if (!confirm(`'${trimmedName}'은(는) 이미 등록된 재료예요. 그래도 새로 추가할까요?`)) return;
-    }
+  async function performSave() {
     setSaving(true);
     setSaveError(null);
     try {
       await onSave({
         id: makeId(),
-        name: trimmedName,
+        name: name.trim(),
         categoryId,
         defaultBuyUnit: defaultBuyUnit.trim() || '1개',
         allergens: [],
@@ -628,7 +638,16 @@ export function AddIngredientModal({
     }
   }
 
+  function handleSubmit() {
+    if (existingNames.includes(name.trim().toLowerCase())) {
+      setShowDuplicateConfirm(true);
+      return;
+    }
+    performSave();
+  }
+
   return (
+    <>
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <h2>재료 추가</h2>
@@ -668,5 +687,18 @@ export function AddIngredientModal({
         {saveError && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{saveError}</p>}
       </div>
     </div>
+
+      {showDuplicateConfirm && (
+        <ConfirmDialog
+          message={`'${name.trim()}'은(는) 이미 등록된 재료예요. 그래도 새로 추가할까요?`}
+          confirmLabel="추가"
+          onConfirm={() => {
+            setShowDuplicateConfirm(false);
+            performSave();
+          }}
+          onCancel={() => setShowDuplicateConfirm(false)}
+        />
+      )}
+    </>
   );
 }

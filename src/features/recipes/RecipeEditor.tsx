@@ -3,6 +3,7 @@ import { useCategories, useIngredients, useRecipes, useTags, makeId, getCurrentH
 import { useSettings } from '../../data/settings';
 import { requestProfileSheet } from '../../data/profileSheet';
 import { requestDiscoverTab } from '../../data/discoverTabRequest';
+import { useConfirmDialog } from './ConfirmDialog';
 import { createHouseholdRecipeAddedNotifications } from '../../data/notifications';
 // geminiClient는 이제 API 키가 필요 없는 순수 함수(프롬프트 생성)와 youtubeApiKey(범위 밖, 계속
 // 클라이언트에서 직접 씀)를 쓰는 fetchYoutubeVideoMeta만 남음 — 실제 AI 호출(대화/추출/이미지
@@ -48,6 +49,7 @@ export function RecipeEditor({
   const { ingredients, saveIngredient } = useIngredients();
   const { categories, saveCategory } = useCategories();
   const { tags, saveTag } = useTags();
+  const { confirmAsync, dialog: confirmDialog } = useConfirmDialog();
   const { settings } = useSettings();
 
   const existing = recipeId ? recipes.find((r) => r.id === recipeId) : undefined;
@@ -612,16 +614,16 @@ export function RecipeEditor({
     }
   }
 
-  function confirmAndRunBatchForCurrentSteps() {
+  async function confirmAndRunBatchForCurrentSteps() {
     if (steps.length === 0 && !finalImageId) return;
     const existingStepCount = steps.filter((s) => s.imageId).length;
     const existingCount = existingStepCount + (finalImageId ? 1 : 0);
     let targetIndexes = steps.map((_, i) => i);
     let includeFinal = true;
     if (existingCount > 0) {
-      const overwrite = confirm(
-        `이미 이미지가 있는 항목이 ${existingCount}개 있어요(조리 단계 + 완성 사진 포함). ` +
-          `기존 이미지도 다시 만들까요?\n(취소를 누르면 이미지가 없는 항목만 생성해요)`,
+      const overwrite = await confirmAsync(
+        `이미 이미지가 있는 항목이 ${existingCount}개 있어요(조리 단계 + 완성 사진 포함). 기존 이미지도 다시 만들까요?`,
+        { confirmLabel: '전체 다시 생성', cancelLabel: '새 것만' },
       );
       if (!overwrite) {
         targetIndexes = steps.map((_, i) => i).filter((i) => !steps[i].imageId);
@@ -635,7 +637,7 @@ export function RecipeEditor({
     }
     const manyStepsNote =
       totalCount >= BATCH_WARN_THRESHOLD ? ` 항목이 많아(${totalCount}개) 시간이 좀 더 걸릴 수 있어요.` : '';
-    const proceed = confirm(`${totalCount}개 이미지를 생성할까요? 시간이 조금 걸릴 수 있어요.${manyStepsNote}`);
+    const proceed = await confirmAsync(`${totalCount}개 이미지를 생성할까요? 시간이 조금 걸릴 수 있어요.${manyStepsNote}`);
     if (!proceed) return;
     runBatchImageGeneration(targetIndexes, steps, name || '이름 없는 레시피', includeFinal);
   }
@@ -748,7 +750,7 @@ export function RecipeEditor({
         const totalCount = steps.length + 1; // +1은 완성 사진
         const manyStepsNote =
           totalCount >= BATCH_WARN_THRESHOLD ? ` 항목이 많아(${totalCount}개) 시간이 좀 더 걸릴 수 있어요.` : '';
-        const proceed = confirm(
+        const proceed = await confirmAsync(
           `AI로 조리 단계 이미지와 완성 사진을 생성할까요? 시간이 조금 걸릴 수 있어요.${manyStepsNote}`,
         );
         if (proceed) {
@@ -1318,6 +1320,7 @@ export function RecipeEditor({
           onSkip={handleSkipTagSuggestion}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }

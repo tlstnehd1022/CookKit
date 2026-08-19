@@ -1,5 +1,7 @@
+import { useState } from 'react';
+
 /** 브라우저 기본 confirm()은 CSS를 못 입힌다(브라우저 네이티브 UI) — 디자인 컨셉에 맞춰야 하는
- * 곳(요리 모드 시작/종료 확인)에서만 기존 .modal-backdrop/.modal-sheet를 재사용한 대체 다이얼로그. */
+ * 곳에서 기존 .modal-backdrop/.modal-sheet를 재사용한 대체 다이얼로그. */
 export function ConfirmDialog({
   message,
   onConfirm,
@@ -28,4 +30,46 @@ export function ConfirmDialog({
       </div>
     </div>
   );
+}
+
+interface ConfirmRequest {
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  resolve: (result: boolean) => void;
+}
+
+/** window.confirm()을 그대로 대체하는 async 버전 — `await confirmAsync('...')`로 쓰고, 반환된
+ * `dialog`를 JSX 아무 곳에나 렌더링해두면 된다. 여러 confirm이 순서대로 이어지는 흐름(예:
+ * RecipeEditor의 이미지 생성 확인 체인)도 기존 `if (confirm(...))` 코드를 거의 그대로 두고
+ * `confirm` → `await confirmAsync`만 바꾸면 되게 하기 위한 헬퍼. */
+export function useConfirmDialog() {
+  const [request, setRequest] = useState<ConfirmRequest | null>(null);
+
+  function confirmAsync(
+    message: string,
+    options?: { confirmLabel?: string; cancelLabel?: string },
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      setRequest({ message, confirmLabel: options?.confirmLabel, cancelLabel: options?.cancelLabel, resolve });
+    });
+  }
+
+  const dialog = request ? (
+    <ConfirmDialog
+      message={request.message}
+      confirmLabel={request.confirmLabel}
+      cancelLabel={request.cancelLabel}
+      onConfirm={() => {
+        request.resolve(true);
+        setRequest(null);
+      }}
+      onCancel={() => {
+        request.resolve(false);
+        setRequest(null);
+      }}
+    />
+  ) : null;
+
+  return { confirmAsync, dialog };
 }

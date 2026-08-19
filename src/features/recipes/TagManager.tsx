@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTags, makeId } from '../../data/store';
-import type { TagType } from '../../data/types';
+import { useConfirmDialog } from './ConfirmDialog';
+import type { Tag, TagType } from '../../data/types';
 
 export function TagManager({ onClose }: { onClose: () => void }) {
   const { tags, saveTag, deleteTag } = useTags();
@@ -8,6 +9,7 @@ export function TagManager({ onClose }: { onClose: () => void }) {
   const [type, setType] = useState<TagType>('style');
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
+  const { confirmAsync, dialog: confirmDialog } = useConfirmDialog();
 
   function addTag() {
     const trimmed = name.trim();
@@ -16,7 +18,14 @@ export function TagManager({ onClose }: { onClose: () => void }) {
     setName('');
   }
 
+  async function handleDeleteTag(tag: Tag) {
+    if (await confirmAsync(`'${tag.name}' 태그를 삭제할까요? 이 태그를 쓰던 레시피에서는 태그가 사라져요.`, { confirmLabel: '삭제' })) {
+      deleteTag(tag.id);
+    }
+  }
+
   return (
+    <>
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <h2>태그 관리</h2>
@@ -42,11 +51,7 @@ export function TagManager({ onClose }: { onClose: () => void }) {
                 saveTag({ ...tag, name: renameDraft.trim() || tag.name });
                 setRenamingId(null);
               }}
-              onDelete={() => {
-                if (confirm(`'${tag.name}' 태그를 삭제할까요? 이 태그를 쓰던 레시피에서는 태그가 사라져요.`)) {
-                  deleteTag(tag.id);
-                }
-              }}
+              onDelete={() => handleDeleteTag(tag)}
             />
           ))}
 
@@ -69,11 +74,7 @@ export function TagManager({ onClose }: { onClose: () => void }) {
                 saveTag({ ...tag, name: renameDraft.trim() || tag.name });
                 setRenamingId(null);
               }}
-              onDelete={() => {
-                if (confirm(`'${tag.name}' 태그를 삭제할까요? 이 태그를 쓰던 레시피에서는 태그가 사라져요.`)) {
-                  deleteTag(tag.id);
-                }
-              }}
+              onDelete={() => handleDeleteTag(tag)}
             />
           ))}
 
@@ -98,11 +99,7 @@ export function TagManager({ onClose }: { onClose: () => void }) {
                 saveTag({ ...tag, name: renameDraft.trim() || tag.name });
                 setRenamingId(null);
               }}
-              onDelete={() => {
-                if (confirm(`'${tag.name}' 태그를 삭제할까요? 이 태그를 쓰던 레시피에서는 태그가 사라져요.`)) {
-                  deleteTag(tag.id);
-                }
-              }}
+              onDelete={() => handleDeleteTag(tag)}
             />
           ))}
 
@@ -128,6 +125,8 @@ export function TagManager({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
+      {confirmDialog}
+    </>
   );
 }
 

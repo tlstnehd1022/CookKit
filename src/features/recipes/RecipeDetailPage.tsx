@@ -76,6 +76,7 @@ export function RecipeDetailPage({
   const [showCookingLogModal, setShowCookingLogModal] = useState(false);
   const [showCookingMode, setShowCookingMode] = useState(false);
   const [showStartConfirm, setShowStartConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // D-1: "오늘 만들었어요" 확정 시 생성된 기록 id — 정리하기로 이동할 때 pantry_cleaned_at을
   // 나중에 기록하기 위해 들고 있는다.
   const [lastCookingLogId, setLastCookingLogId] = useState<string | null>(null);
@@ -293,17 +294,7 @@ export function RecipeDetailPage({
           <button className="btn small" onClick={onEdit}>
             수정
           </button>
-          <button
-            className="btn small danger"
-            onClick={() => {
-              if (confirm(`'${recipe.name}' 레시피를 삭제할까요?`)) {
-                const snapshot = recipe;
-                deleteRecipe(recipe.id);
-                onBack();
-                showUndoToast(`'${snapshot.name}' 레시피를 지웠어요`, () => saveRecipe(snapshot));
-              }
-            }}
-          >
+          <button className="btn small danger" onClick={() => setShowDeleteConfirm(true)}>
             삭제
           </button>
         </div>
@@ -492,6 +483,20 @@ export function RecipeDetailPage({
         <StepCard key={index} index={index + 1} step={step} />
       ))}
 
+      {showDeleteConfirm && (
+        <ConfirmDialog
+          message={`'${recipe.name}' 레시피를 삭제할까요?`}
+          confirmLabel="삭제"
+          onConfirm={() => {
+            setShowDeleteConfirm(false);
+            const snapshot = recipe;
+            deleteRecipe(recipe.id);
+            onBack();
+            showUndoToast(`'${snapshot.name}' 레시피를 지웠어요`, () => saveRecipe(snapshot));
+          }}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
       {showStartConfirm && (
         <ConfirmDialog
           message="요리를 시작할까요?"

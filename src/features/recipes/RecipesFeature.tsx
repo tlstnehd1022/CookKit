@@ -10,6 +10,7 @@ import { MultiCookSelectPage } from './MultiCookSelectPage';
 import { MultiCookPreviewPage } from './MultiCookPreviewPage';
 import { MultiCookModePage } from './MultiCookModePage';
 import { MultiCookLogModal } from './MultiCookLogModal';
+import { useConfirmDialog } from './ConfirmDialog';
 import type { PublicRecipeEntry } from '../../data/publicRecipes';
 import {
   useCategories,
@@ -52,6 +53,7 @@ export function RecipesFeature() {
   const [multiCookRecipes, setMultiCookRecipes] = useState<Recipe[]>([]);
   const [multiCookStepTimings, setMultiCookStepTimings] = useState<CookingLogStepTiming[]>([]);
   const [showMultiCookLogModal, setShowMultiCookLogModal] = useState(false);
+  const { confirmAsync, dialog: confirmDialog } = useConfirmDialog();
 
   const { user } = useSession();
   const { household } = useHousehold();
@@ -180,7 +182,7 @@ export function RecipesFeature() {
       };
       await saveRecipe(newRecipe);
 
-      if (confirm('내 레시피로 추가됐어요, 편집 화면으로 이동할까요?')) {
+      if (await confirmAsync('내 레시피로 추가됐어요, 편집 화면으로 이동할까요?')) {
         setView({ screen: 'edit', recipeId: newRecipeId });
       } else {
         setListMode('mine');
@@ -312,6 +314,7 @@ export function RecipesFeature() {
         />
       )}
       {showTagManager && <TagManager onClose={() => setShowTagManager(false)} />}
+      {confirmDialog}
     </div>
   );
 }

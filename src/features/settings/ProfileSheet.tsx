@@ -1,10 +1,11 @@
 import { useRef, useState, type ChangeEvent } from 'react';
-import { ChevronLeft, X, User, Home, Settings, Tags, LogOut, ChevronRight, Bell } from 'lucide-react';
+import { ChevronLeft, X, User, Home, Settings, Tags, LogOut, ChevronRight, Bell, Compass } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSettings } from '../../data/settings';
 import { useSession } from '../../data/session';
 import { useHousehold } from '../../data/household';
 import { useProfile } from '../../data/profile';
+import { requestOnboardingTourRestart } from '../../data/onboardingTour';
 import { useTheme } from '../../data/theme';
 import { useApiKeyStatus } from '../../data/apiKeys';
 import { useNotificationSettings, isIosNotInstalled } from '../../data/pushNotifications';
@@ -87,6 +88,17 @@ export function ProfileSheet({
                 <ChevronRight size={16} strokeWidth={2.75} className="profile-sheet-menu-chevron" />
               </button>
             ))}
+            <button
+              type="button"
+              className="profile-sheet-menu-item"
+              onClick={() => {
+                requestOnboardingTourRestart();
+                onClose();
+              }}
+            >
+              <Compass size={19} strokeWidth={2.75} />
+              <span>앱 사용법 다시 보기</span>
+            </button>
             <button
               type="button"
               className="profile-sheet-menu-item danger"

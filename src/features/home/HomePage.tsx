@@ -14,6 +14,11 @@ import { useShoppingSelection } from '../../data/shoppingSelection';
 import { requestRecipeSearchFocus } from '../../data/recipeSearchFocus';
 import { requestMaxMinutesFilter } from '../../data/recipeTimeFilterRequest';
 import { useProfileSheetRequested, clearProfileSheetRequest } from '../../data/profileSheet';
+import {
+  hasSeenOnboardingTour,
+  useOnboardingTourRestartRequested,
+  clearOnboardingTourRestartRequest,
+} from '../../data/onboardingTour';
 import { useNotifications } from '../../data/notifications';
 import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
 import { isPantryUsable } from '../../lib/pantryAvailability';
@@ -35,6 +40,7 @@ import { CookingHistoryPage } from '../recipes/CookingHistoryPage';
 import { PantryTidyModal } from '../ingredients/PantryTidyModal';
 import { ProfileSheet } from '../settings/ProfileSheet';
 import { WeeklyPlanPage } from './WeeklyPlanPage';
+import { OnboardingTour } from './OnboardingTour';
 import type { MealPlan, Recipe } from '../../data/types';
 
 type View =
@@ -58,7 +64,9 @@ export function HomePage() {
   const [monthlyCookingCount, setMonthlyCookingCount] = useState<number | null>(null);
   const [uncleanedLog, setUncleanedLog] = useState<UncleanedCookingLog | null>(null);
   const [showPantryTidy, setShowPantryTidy] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const profileSheetRequested = useProfileSheetRequested();
+  const tourRestartRequested = useOnboardingTourRestartRequested();
 
   const { recipes } = useRecipes();
   const { ingredients } = useIngredients();
@@ -76,6 +84,21 @@ export function HomePage() {
       clearProfileSheetRequest();
     }
   }, [profileSheetRequested]);
+
+  // 신규 가구가 household 생성(+알러지 온보딩) 직후 처음 홈 화면에 진입하는 시점이 곧 이
+  // 컴포넌트의 첫 마운트 시점이라(온보딩 중에는 HomePage 자체가 렌더되지 않음), 마운트 시
+  // 한 번 "봤음" 플래그만 확인하면 별도의 트리거 신호 없이 자동 시작 요구사항을 만족한다.
+  useEffect(() => {
+    if (!hasSeenOnboardingTour()) setShowTour(true);
+  }, []);
+
+  // 프로필 바텀시트의 "앱 사용법 다시 보기" — 플래그와 무관하게 언제든 재실행.
+  useEffect(() => {
+    if (tourRestartRequested) {
+      setShowTour(true);
+      clearOnboardingTourRestartRequest();
+    }
+  }, [tourRestartRequested]);
 
   useEffect(() => {
     if (!householdId) return;
@@ -243,6 +266,7 @@ export function HomePage() {
         <button
           type="button"
           className="home-avatar-btn"
+          data-tour="profile"
           onClick={() => setShowProfileSheet(true)}
           aria-label="프로필 및 설정"
         >
@@ -255,12 +279,17 @@ export function HomePage() {
         </button>
       </div>
 
-      <button type="button" className="home-search-field" onClick={() => requestRecipeSearchFocus()}>
+      <button
+        type="button"
+        className="home-search-field"
+        data-tour="search"
+        onClick={() => requestRecipeSearchFocus()}
+      >
         <Search size={18} strokeWidth={2.75} />
         <span>레시피나 재료 검색</span>
       </button>
 
-      <div className="home-section">
+      <div className="home-section" data-tour="pantry">
         <div className="home-section-head">
           <span className="home-section-title">냉장고에 있는 재료</span>
           <button type="button" className="home-link" onClick={() => setActiveTab('ingredients')}>
@@ -285,6 +314,7 @@ export function HomePage() {
           <button
             type="button"
             className="btn primary"
+            data-tour="quick-start"
             style={{ width: '100%', marginTop: 10 }}
             onClick={() =>
               setView({
@@ -299,7 +329,7 @@ export function HomePage() {
       </div>
 
       {recommendation && (
-        <div className="home-section">
+        <div className="home-section" data-tour="recommend">
           <div className="home-recommend-card">
             <button
               type="button"
@@ -374,7 +404,7 @@ export function HomePage() {
         </div>
       )}
 
-      <div className="home-section">
+      <div className="home-section" data-tour="week">
         <div className="home-section-head">
           <span className="home-section-title">이번 주 일정</span>
           <button type="button" className="home-link" onClick={() => setView({ screen: 'weekly-plan' })}>
@@ -411,7 +441,7 @@ export function HomePage() {
       </div>
 
       {expiringSoon.length > 0 && (
-        <div className="home-section">
+        <div className="home-section" data-tour="expiring">
           <div className="home-section-head">
             <span className="home-section-title">유통기한이 다가와요</span>
           </div>
@@ -474,6 +504,8 @@ export function HomePage() {
           onApplied={() => setUncleanedLog(null)}
         />
       )}
+
+      {showTour && <OnboardingTour onFinish={() => setShowTour(false)} />}
     </div>
   );
 }

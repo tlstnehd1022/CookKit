@@ -314,10 +314,10 @@ export function RecipesPage({
         <button className="btn small" onClick={onManageTags}>
           태그 관리
         </button>
+        <button className="btn primary small" onClick={onAddRecipe}>
+          + 레시피 추가
+        </button>
       </div>
-      <button className="btn primary small" onClick={onAddRecipe}>
-        + 레시피 추가
-      </button>
 
       <div className="row" style={{ gap: 8, alignItems: 'center' }}>
         <div className="pill-input-row" style={{ flex: 1, marginBottom: 0 }}>

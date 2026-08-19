@@ -574,7 +574,9 @@ h2 {
   font-size: clamp(20px, 6vw, 30px);
   font-weight: 700;
   line-height: 1.35;
-  text-align: center;
+  /* 문구가 여러 줄로 길어지면 가운데 정렬은 줄마다 시작 위치가 달라져 눈이 따라가기 힘들다 —
+     왼쪽 정렬로 바꿔 긴 문장도 읽기 쉽게 한다. */
+  text-align: left;
 }
 
 /* 이미지가 최대 420px 높이(4:3)까지 차지해 타이머/재료 칩을 밀어내던 문제 — 참고용 사진이라

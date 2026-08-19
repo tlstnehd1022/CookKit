@@ -589,6 +589,15 @@ h2 {
   display: block;
 }
 
+/* 화면 "폭"은 clamp(글자 크기)로 대응되지만 "높이"가 낮은 기기(가로모드, 작은 폰)는 폭 기준
+   clamp만으로는 못 잡는다 — 짧은 화면에서는 참고 이미지를 아예 생략해 타이머/재료가 더 확실히
+   보이게 한다. */
+@media (max-height: 640px) {
+  .cooking-mode-image {
+    display: none;
+  }
+}
+
 /* D-1: 타이머 카드(accent-200 배경, radius 28) — 숫자 38px + 시작/재개 버튼 */
 .cooking-mode-timer-card {
   display: flex;

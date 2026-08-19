@@ -14,7 +14,9 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.ts',
       registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      // 자동 주입 등록 스크립트 대신 main.tsx에서 직접 registerSW()를 호출한다 — 주기적으로
+      // registration.update()를 불러 새 배포를 감지하기 위해 registration 객체가 필요해서.
+      injectRegister: false,
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png}'],
       },

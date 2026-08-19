@@ -1,8 +1,26 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import { setActiveTab, type Tab } from './data/activeTab'
 import { setHighlightIngredientIds } from './data/highlightIngredients'
+
+// PWA(standalone)로 계속 켜둔 채 쓰면 브라우저가 새 배포를 확인할 "페이지 이동"이 거의 안
+// 일어나서, registerType:'autoUpdate'만으로는 실제로 갱신될 일이 드물다(사용자가 수동으로
+// 새로고침/재설치해야 했던 이유). registration.update()를 직접 주기적으로 + 앱을 다시 열
+// 때(visibilitychange) 호출해 새 버전을 감지시킨다 — 감지되면 autoUpdate가 알아서 적용하고
+// 새로고침한다.
+const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000
+
+registerSW({
+  onRegisteredSW(_swUrl, registration) {
+    if (!registration) return
+    setInterval(() => registration.update(), UPDATE_CHECK_INTERVAL_MS)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') registration.update()
+    })
+  },
+})
 
 const root = createRoot(document.getElementById('root')!)
 

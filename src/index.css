@@ -564,24 +564,28 @@ h2 {
   font-weight: 600;
   color: var(--text-secondary);
   text-align: center;
-  margin: 18px 0 6px;
+  margin: 10px 0 6px;
 }
 
-/* D-1: "단계 문구"는 34px — 주방에서 폰을 세워두고 멀리서도 읽히도록 지금보다 훨씬 크게 */
+/* D-1(34px 고정)이었던 걸 clamp로 변경 — 조리 단계 문구가 길면 34px 고정 폭에서 줄바꿈이
+   많아져 아래 타이머/재료 칩을 보려면 스크롤해야 했다. 화면 폭에 맞춰 자동으로 줄어들어
+   짧은 문구는 여전히 크게, 긴 문구는 줄 수를 줄여 한 화면에 더 들어오게 한다. */
 .cooking-mode-content {
-  font-size: 34px;
+  font-size: clamp(20px, 6vw, 30px);
   font-weight: 700;
-  line-height: 1.4;
+  line-height: 1.35;
   text-align: center;
 }
 
+/* 이미지가 최대 420px 높이(4:3)까지 차지해 타이머/재료 칩을 밀어내던 문제 — 참고용 사진이라
+   높이를 작게 캡핑해서 필수 정보(타이머/재료)가 스크롤 없이 보이는 쪽을 우선한다. */
 .cooking-mode-image {
-  width: 100%;
-  max-width: 420px;
-  aspect-ratio: 4 / 3;
+  max-width: 260px;
+  max-height: 130px;
+  width: auto;
   object-fit: cover;
   border-radius: var(--radius);
-  margin: 12px auto 16px;
+  margin: 4px auto 10px;
   display: block;
 }
 
@@ -593,8 +597,8 @@ h2 {
   gap: 12px;
   background: color-mix(in srgb, var(--accent) 20%, var(--bg-card));
   border-radius: 28px;
-  padding: 14px 20px;
-  margin: 22px 0;
+  padding: 12px 20px;
+  margin: 12px 0;
 }
 
 .cooking-mode-timer-number {

@@ -374,6 +374,7 @@ export function ExpiredConfirmModal({
 
 interface IngredientDetailPatch {
   name: string;
+  categoryId: string;
   allergens: string[];
   preferredUnit?: string;
   preferredMethod?: string;
@@ -395,7 +396,9 @@ function IngredientDetailModal({
   onDelete: () => Promise<void>;
 }) {
   const { household } = useHousehold();
+  const { categories } = useCategories();
   const [name, setName] = useState(ingredient.name);
+  const [categoryId, setCategoryId] = useState(ingredient.categoryId);
   const [allergens, setAllergens] = useState<string[]>(ingredient.allergens);
   const [draft, setDraft] = useState('');
   const [preferredUnit, setPreferredUnit] = useState(ingredient.preferredUnit ?? '');
@@ -448,6 +451,16 @@ function IngredientDetailModal({
         <div className="field">
           <label>이름</label>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 양파" />
+        </div>
+        <div className="field">
+          <label>카테고리</label>
+          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="section-title">알러지 유발 성분</div>
@@ -564,6 +577,7 @@ function IngredientDetailModal({
               try {
                 await onSave({
                   name: name.trim(),
+                  categoryId,
                   allergens,
                   preferredUnit: preferredUnit.trim() || undefined,
                   preferredMethod:

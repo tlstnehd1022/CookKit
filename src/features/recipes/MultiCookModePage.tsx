@@ -3,6 +3,7 @@ import { useStoredImage } from '../../data/imageStore';
 import { useAutoStartTimer } from '../../data/cookingModeSettings';
 import { useWakeLock } from './useWakeLock';
 import { useVoiceAssistant } from './useVoiceAssistant';
+import { ConfirmDialog } from './ConfirmDialog';
 import {
   COMMAND_EXAMPLES,
   detectTargetRecipeId,
@@ -64,6 +65,7 @@ export function MultiCookModePage({
   const [planIndex, setPlanIndex] = useState(0);
   const [timers, setTimers] = useState<RunningTimer[]>([]);
   const [finished, setFinished] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const timersRef = useRef<RunningTimer[]>([]);
   const handledCompletionsRef = useRef<Set<string>>(new Set());
   const sessionTimingsRef = useRef<CookingLogStepTiming[]>([]);
@@ -266,7 +268,7 @@ export function MultiCookModePage({
   }
 
   function confirmExit() {
-    if (confirm('요리 모드를 종료할까요?')) onExit();
+    setShowExitConfirm(true);
   }
 
   const otherTimers = timers.filter(
@@ -418,6 +420,18 @@ export function MultiCookModePage({
             {isLastPlanStep ? '완료 ▶' : '다음 ▶'}
           </button>
         </div>
+      )}
+
+      {showExitConfirm && (
+        <ConfirmDialog
+          message="요리 모드를 종료할까요?"
+          confirmLabel="종료"
+          onConfirm={() => {
+            setShowExitConfirm(false);
+            onExit();
+          }}
+          onCancel={() => setShowExitConfirm(false)}
+        />
       )}
     </div>
   );

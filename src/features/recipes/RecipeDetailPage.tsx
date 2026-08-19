@@ -23,6 +23,7 @@ import {
 } from '../../data/cookingLog';
 import { useSession } from '../../data/session';
 import { CookingLogModal } from './CookingLogModal';
+import { ConfirmDialog } from './ConfirmDialog';
 import { CookingLogPhotoGallery } from './CookingLogPhotoGallery';
 import { CookingModePage } from './CookingModePage';
 import { TimingAdjustmentModal } from './TimingAdjustmentModal';
@@ -74,6 +75,7 @@ export function RecipeDetailPage({
   const [cookingLogPhotos, setCookingLogPhotos] = useState<CookingLogPhoto[]>([]);
   const [showCookingLogModal, setShowCookingLogModal] = useState(false);
   const [showCookingMode, setShowCookingMode] = useState(false);
+  const [showStartConfirm, setShowStartConfirm] = useState(false);
   // D-1: "오늘 만들었어요" 확정 시 생성된 기록 id — 정리하기로 이동할 때 pantry_cleaned_at을
   // 나중에 기록하기 위해 들고 있는다.
   const [lastCookingLogId, setLastCookingLogId] = useState<string | null>(null);
@@ -355,9 +357,7 @@ export function RecipeDetailPage({
       <button
         className="btn primary"
         style={{ width: '100%', marginBottom: 8 }}
-        onClick={() => {
-          if (confirm('요리를 시작할까요?')) setShowCookingMode(true);
-        }}
+        onClick={() => setShowStartConfirm(true)}
       >
         🍳 요리 시작하기
       </button>
@@ -492,6 +492,17 @@ export function RecipeDetailPage({
         <StepCard key={index} index={index + 1} step={step} />
       ))}
 
+      {showStartConfirm && (
+        <ConfirmDialog
+          message="요리를 시작할까요?"
+          confirmLabel="시작"
+          onConfirm={() => {
+            setShowStartConfirm(false);
+            setShowCookingMode(true);
+          }}
+          onCancel={() => setShowStartConfirm(false)}
+        />
+      )}
       {showCookingLogModal && (
         <CookingLogModal
           recipe={recipe}

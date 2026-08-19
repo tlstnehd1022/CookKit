@@ -6,6 +6,7 @@ import { scaleAmount } from '../../data/computed';
 import { findStepIngredients } from '../../lib/stepIngredientMatch';
 import { useWakeLock } from './useWakeLock';
 import { useVoiceAssistant } from './useVoiceAssistant';
+import { ConfirmDialog } from './ConfirmDialog';
 import {
   COMMAND_EXAMPLES,
   formatCountdown,
@@ -65,6 +66,7 @@ export function CookingModePage({
   const [timerRemaining, setTimerRemaining] = useState<number | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [todayCookingCount, setTodayCookingCount] = useState<number | null>(null);
   // 현재 단계의 준비/조리 시간 측정 draft — 타이머가 실제로 "처음" 시작된 시점(timerStartedAt)을
   // 기준으로 진입~시작을 prep, 시작~이탈(활성 시간만, 일시정지 제외)을 cook으로 나눈다.
@@ -234,7 +236,7 @@ export function CookingModePage({
   }
 
   function confirmExit() {
-    if (confirm('요리 모드를 종료할까요?')) onExit();
+    setShowExitConfirm(true);
   }
 
   function handleCommand(command: Command) {
@@ -358,12 +360,14 @@ export function CookingModePage({
 
             {micSupported && (
               <div className="card" style={{ marginTop: 16 }}>
-                <p className="text-muted" style={{ fontSize: 12, marginBottom: 4 }}>
-                  🎙️ 음성 명령어 예시 (설정 → 요리 모드에서 타이머 자동 시작도 켤 수 있어요)
-                </p>
-                <p className="text-muted" style={{ fontSize: 12 }}>
-                  {COMMAND_EXAMPLES.map((phrase) => `"${phrase}"`).join(' · ')}
-                </p>
+                <p className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>🎙️ 음성 명령어</p>
+                <div className="chip-row">
+                  {COMMAND_EXAMPLES.map((phrase) => (
+                    <span key={phrase} className="chip">
+                      {phrase}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -409,6 +413,18 @@ export function CookingModePage({
             {isLastStep ? '완료 ▶' : '다음 ▶'}
           </button>
         </div>
+      )}
+
+      {showExitConfirm && (
+        <ConfirmDialog
+          message="요리 모드를 종료할까요?"
+          confirmLabel="종료"
+          onConfirm={() => {
+            setShowExitConfirm(false);
+            onExit();
+          }}
+          onCancel={() => setShowExitConfirm(false)}
+        />
       )}
     </div>
   );

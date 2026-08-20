@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { ChevronLeft, X, User, Home, Settings, LogOut, ChevronRight, Bell, Compass, Camera } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSettings } from '../../data/settings';
@@ -9,7 +9,14 @@ import { requestOnboardingTourRestart } from '../../data/onboardingTour';
 import { useTheme } from '../../data/theme';
 import { useApiKeyStatus } from '../../data/apiKeys';
 import { useNotificationSettings, isIosNotInstalled } from '../../data/pushNotifications';
-import { setAutoStartTimer, useAutoStartTimer } from '../../data/cookingModeSettings';
+import {
+  setAutoStartTimer,
+  useAutoStartTimer,
+  setAutoStartVoice,
+  useAutoStartVoice,
+  setSelectedVoiceURI,
+  useSelectedVoiceURI,
+} from '../../data/cookingModeSettings';
 import { useNotifications, type AppNotification } from '../../data/notifications';
 import { useIngredients, useRecipes } from '../../data/store';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
@@ -418,6 +425,27 @@ function HouseholdSection() {
   );
 }
 
+/** 브라우저/기기가 제공하는 TTS 음성 목록 — Chrome 등에서는 비동기로("voiceschanged") 채워져서
+ * 이벤트를 같이 구독한다. 한국어 음성만 추리되(있으면), 하나도 없으면 전체 목록을 보여준다. */
+function useAvailableVoices(): SpeechSynthesisVoice[] {
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>(() =>
+    'speechSynthesis' in window ? window.speechSynthesis.getVoices() : [],
+  );
+
+  useEffect(() => {
+    if (!('speechSynthesis' in window)) return;
+    function refresh() {
+      setVoices(window.speechSynthesis.getVoices());
+    }
+    refresh();
+    window.speechSynthesis.addEventListener('voiceschanged', refresh);
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', refresh);
+  }, []);
+
+  const korean = voices.filter((v) => v.lang.toLowerCase().startsWith('ko'));
+  return korean.length > 0 ? korean : voices;
+}
+
 function AppSettingsSection() {
   const { settings, updateSettings } = useSettings();
   const { theme, toggleTheme } = useTheme();
@@ -426,6 +454,9 @@ function AppSettingsSection() {
   const youtubeKeyStatus = useApiKeyStatus('youtube');
   const notificationSettings = useNotificationSettings();
   const autoStartTimer = useAutoStartTimer();
+  const autoStartVoice = useAutoStartVoice();
+  const selectedVoiceURI = useSelectedVoiceURI();
+  const availableVoices = useAvailableVoices();
 
   const [migrating, setMigrating] = useState(false);
   const [migrationError, setMigrationError] = useState<string | null>(null);
@@ -522,6 +553,41 @@ function AppSettingsSection() {
           켜두면 요리 모드에서 타이머가 있는 단계에 들어갈 때 말하거나 누르지 않아도 자동으로 타이머가
           시작돼요.
         </p>
+
+        <div className="row" style={{ marginTop: 16 }}>
+          <span>음성 인식 자동 시작</span>
+          <button
+            className={`toggle ${autoStartVoice ? 'on' : ''}`}
+            onClick={() => setAutoStartVoice(!autoStartVoice)}
+            aria-label="음성 인식 자동 시작 전환"
+          >
+            <span className="knob" />
+          </button>
+        </div>
+        <p className="text-muted" style={{ marginTop: 8 }}>
+          켜두면 요리 모드에 들어갈 때 마이크 버튼을 누르지 않아도 바로 음성 명령을 들어요. 요리 모드를
+          마치면 자동으로 꺼져요.
+        </p>
+
+        <div className="field" style={{ marginTop: 16 }}>
+          <label>안내 음성</label>
+          <select
+            value={selectedVoiceURI ?? ''}
+            onChange={(e) => setSelectedVoiceURI(e.target.value || null)}
+          >
+            <option value="">기기 기본값</option>
+            {availableVoices.map((voice) => (
+              <option key={voice.voiceURI} value={voice.voiceURI}>
+                {voice.name}
+              </option>
+            ))}
+          </select>
+          {availableVoices.length === 0 && (
+            <p className="text-muted" style={{ marginTop: 4 }}>
+              이 기기에서 사용 가능한 음성 목록을 아직 못 받아왔어요. 잠시 후 다시 열어보세요.
+            </p>
+          )}
+        </div>
       </div>
 
       {showMigrationBanner && (

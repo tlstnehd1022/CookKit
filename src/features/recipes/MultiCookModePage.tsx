@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStoredImage } from '../../data/imageStore';
-import { useAutoStartTimer } from '../../data/cookingModeSettings';
+import { useAutoStartTimer, useAutoStartVoice } from '../../data/cookingModeSettings';
 import { useWakeLock } from './useWakeLock';
 import { useVoiceAssistant } from './useVoiceAssistant';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -71,6 +71,7 @@ export function MultiCookModePage({
   const sessionTimingsRef = useRef<CookingLogStepTiming[]>([]);
 
   const autoStartTimer = useAutoStartTimer();
+  const autoStartVoice = useAutoStartVoice();
   const recipeById = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
   const isLastPlanStep = planIndex === order.length - 1;
   const currentRef = order[planIndex] as OrderedStepRef | undefined;
@@ -111,9 +112,30 @@ export function MultiCookModePage({
     else if (command === 'resetTimer') resetTimerFor(targetRecipeId, speak);
   }
 
-  const { micSupported, micBlockedByIos, listening, lastHeard, toggleListening, speak } = useVoiceAssistant({
-    onTranscript: handleTranscript,
-  });
+  const {
+    micSupported,
+    micBlockedByIos,
+    listening,
+    lastHeard,
+    toggleListening,
+    startListening,
+    stopListening,
+    speak,
+  } = useVoiceAssistant({ onTranscript: handleTranscript });
+
+  // "음성 인식 자동 시작"이 켜져 있으면 요리 모드에 들어오자마자 마이크를 켠다(CookingModePage와
+  // 같은 이유로 아래 단계 안내 effect보다 먼저 선언). 나가면(언마운트) 자동으로 끈다.
+  useEffect(() => {
+    if (autoStartVoice && micSupported) startListening();
+    return () => stopListening();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 모든 레시피를 완료하면 더 이상 명령을 들을 필요가 없어 마이크를 끈다.
+  useEffect(() => {
+    if (finished) stopListening();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finished]);
 
   // 단계가 바뀔 때마다 안내 — 어느 레시피의 몇 단계인지 레시피 이름과 함께 말해준다(복합 요리의
   // 핵심 차이점). 이미 그 단계 타이머가 돌고 있으면(이전에 시작해둔 경우) 자동 시작 문구는

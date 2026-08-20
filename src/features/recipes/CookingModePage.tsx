@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStoredImage } from '../../data/imageStore';
-import { useAutoStartTimer } from '../../data/cookingModeSettings';
+import { useAutoStartTimer, useAutoStartVoice } from '../../data/cookingModeSettings';
 import { fetchTodayCookingCount } from '../../data/cookingLog';
 import { scaleAmount } from '../../data/computed';
 import { findStepIngredients } from '../../lib/stepIngredientMatch';
@@ -81,6 +81,7 @@ export function CookingModePage({
   const sessionTimingsRef = useRef<CookingLogStepTiming[]>([]);
 
   const autoStartTimer = useAutoStartTimer();
+  const autoStartVoice = useAutoStartVoice();
   const steps = recipe.steps;
   const currentStep = steps[stepIndex] as RecipeStep | undefined;
   const isLastStep = stepIndex === steps.length - 1;
@@ -102,9 +103,32 @@ export function CookingModePage({
     else speak('다시 말씀해주시겠어요?');
   }
 
-  const { micSupported, micBlockedByIos, listening, lastHeard, toggleListening, speak } = useVoiceAssistant({
-    onTranscript: handleTranscript,
-  });
+  const {
+    micSupported,
+    micBlockedByIos,
+    listening,
+    lastHeard,
+    toggleListening,
+    startListening,
+    stopListening,
+    speak,
+  } = useVoiceAssistant({ onTranscript: handleTranscript });
+
+  // "음성 인식 자동 시작"이 켜져 있으면 요리 모드에 들어오자마자 마이크를 켠다 — 첫 단계 안내
+  // (아래 stepIndex effect)보다 먼저 실행돼야 keepListeningRef가 미리 true가 되어 speak()의
+  // "말하는 동안 잠깐 듣기 중지" 로직이 첫 안내부터 정상 동작한다(effect는 선언 순서대로 실행됨).
+  // 요리 모드를 나가면(언마운트) 자동으로 끈다.
+  useEffect(() => {
+    if (autoStartVoice && micSupported) startListening();
+    return () => stopListening();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 완료 화면에 도달하면(요리를 마치면) 더 이상 명령을 들을 필요가 없어 마이크를 끈다.
+  useEffect(() => {
+    if (finished) stopListening();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finished]);
 
   // 단계가 바뀔 때마다 TTS로 안내하고, 이전 단계의 타이머 상태는 초기화한다. "타이머 자동 시작"이
   // 켜져 있고 이 단계에 타이머가 있으면 안내 문구에 자동 시작을 언급하고 바로 시작한다(별도

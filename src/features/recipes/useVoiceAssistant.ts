@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getSpeechRecognitionCtor, isIosStandalonePwa, type MinimalSpeechRecognition } from '../../lib/cookingVoiceCommands';
+import { useSelectedVoiceURI } from '../../data/cookingModeSettings';
 
 /**
  * 요리 모드(1개/여러 개 레시피)가 공유하는 TTS+STT 인프라. 마이크는 한 번 켜면(첫 실행은 브라우저
@@ -21,6 +22,7 @@ export function useVoiceAssistant({
   const pausedForSpeechRef = useRef(false);
   const onTranscriptRef = useRef(onTranscript);
   onTranscriptRef.current = onTranscript;
+  const selectedVoiceURI = useSelectedVoiceURI();
 
   const micCtor = getSpeechRecognitionCtor();
   const micBlockedByIos = isIosStandalonePwa();
@@ -38,6 +40,10 @@ export function useVoiceAssistant({
     if (!('speechSynthesis' in window)) return;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'ko-KR';
+    if (selectedVoiceURI) {
+      const voice = window.speechSynthesis.getVoices().find((v) => v.voiceURI === selectedVoiceURI);
+      if (voice) utterance.voice = voice;
+    }
     if (keepListeningRef.current) {
       pausedForSpeechRef.current = true;
       recognitionRef.current?.stop();
@@ -78,18 +84,25 @@ export function useVoiceAssistant({
     recognition.start();
   }
 
-  function toggleListening() {
-    if (!micCtor) return;
-    if (keepListeningRef.current) {
-      keepListeningRef.current = false;
-      recognitionRef.current?.stop();
-      setListening(false);
-      return;
-    }
+  function startListening() {
+    if (!micCtor || keepListeningRef.current) return;
     keepListeningRef.current = true;
     setListening(true);
     startRecognition();
   }
 
-  return { micSupported, micBlockedByIos, listening, lastHeard, toggleListening, speak };
+  function stopListening() {
+    if (!keepListeningRef.current) return;
+    keepListeningRef.current = false;
+    recognitionRef.current?.stop();
+    setListening(false);
+  }
+
+  function toggleListening() {
+    if (!micCtor) return;
+    if (keepListeningRef.current) stopListening();
+    else startListening();
+  }
+
+  return { micSupported, micBlockedByIos, listening, lastHeard, toggleListening, startListening, stopListening, speak };
 }

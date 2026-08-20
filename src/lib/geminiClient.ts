@@ -543,7 +543,9 @@ const GEMINI_RECEIPT_ITEMS_SCHEMA = {
       unit: { type: 'STRING', description: '단위(개, g, 팩, 봉지 등 흔히 쓰는 단위), 모르면 생략', nullable: true },
       categoryName: {
         type: 'STRING',
-        description: '이 재료의 카테고리(예: 채소, 육류·해산물, 유제품, 곡류, 소스·양념, 기타). 모르면 생략.',
+        description:
+          '이 재료의 카테고리(예: 채소, 과일, 육류·해산물·두부, 계란·유제품, 곡류·면류, 소스·양념, ' +
+          '가공·냉동식품, 기타). 모르면 생략.',
         nullable: true,
       },
       uncertain: {

@@ -171,6 +171,16 @@ begin
            ('디저트·베이킹'), ('음료'), ('샌드위치·토스트')
   ) as v(name);
 
+  -- 재료 카테고리 기본 시딩(0036) — 이것 없이는 "재료 직접 추가" 화면에서 고를 카테고리가
+  -- 하나도 없어 막힌다. 두부는 찌개 등에서 고기 대신 쓰이는 단백질 재료라 "육류·해산물"과
+  -- 묶었다.
+  insert into public.categories (household_id, name)
+  select new_household_id, v.name
+  from (
+    values ('채소'), ('과일'), ('육류·해산물·두부'), ('계란·유제품'),
+           ('곡류·면류'), ('소스·양념'), ('가공·냉동식품'), ('기타')
+  ) as v(name);
+
   return new_household_id;
 end;
 $$;

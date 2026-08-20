@@ -155,8 +155,10 @@ begin
   insert into public.household_members (household_id, user_id)
   values (new_household_id, auth.uid());
 
-  -- 국가/장르 + 요리 스타일 기본 태그(0031) — 하나도 없이 시작하면 레시피 편집 화면의 해당
-  -- 섹션이 비어 아무것도 고를 수 없어서 실사용에 번거롭다.
+  -- 국가/장르 + 요리 스타일 기본 태그(0031, 0035) — 하나도 없이 시작하면 레시피 편집 화면의
+  -- 해당 섹션이 비어 아무것도 고를 수 없어서 실사용에 번거롭다. 스타일 태그는 전부 조리법/형태
+  -- 기준으로 통일한다(0035) — "고기요리"(재료 기준)/"매콤한맛"(맛 기준)은 축이 달라 거의 모든
+  -- 레시피와 중복될 수 있어 뺐다.
   insert into public.tags (household_id, name, type)
   select new_household_id, v.name, 'cuisine'
   from (values ('한식'), ('양식'), ('중식'), ('일식'), ('퓨전'), ('동남아식'), ('인도식'), ('멕시칸'), ('분식')) as v(name);
@@ -164,9 +166,9 @@ begin
   insert into public.tags (household_id, name, type)
   select new_household_id, v.name, 'style'
   from (
-    values ('크림류'), ('토마토류'), ('고기요리'), ('국물요리'), ('볶음요리'),
-           ('구이요리'), ('튀김요리'), ('찜·조림'), ('면요리'), ('밥·죽류'),
-           ('무침·샐러드'), ('매콤한맛')
+    values ('크림류'), ('토마토류'), ('국물요리'), ('볶음요리'), ('구이요리'), ('튀김요리'),
+           ('찜·조림'), ('면요리'), ('밥·죽류'), ('무침·샐러드'), ('부침·전'),
+           ('디저트·베이킹'), ('음료'), ('샌드위치·토스트')
   ) as v(name);
 
   return new_household_id;

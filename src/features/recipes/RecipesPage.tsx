@@ -30,8 +30,9 @@ import type { Difficulty, Recipe, Tag } from '../../data/types';
 export const TAG_PLACEHOLDER_EMOJI: Record<string, string> = {
   크림류: '🥛',
   토마토류: '🍅',
-  고기요리: '🥩',
   국물요리: '🍲',
+  디저트·베이킹: '🍰',
+  음료: '🥤',
 };
 export const DEFAULT_PLACEHOLDER_EMOJI = '🍽️';
 

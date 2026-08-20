@@ -207,10 +207,6 @@ export function RecipeChatPanel({
           {pendingRecipe.tagline && (
             <p style={{ margin: '0 0 8px', fontStyle: 'italic' }}>“{pendingRecipe.tagline}”</p>
           )}
-          <div className="chip-row" style={{ marginTop: 0, marginBottom: 8 }}>
-            {pendingRecipe.difficulty && <span className="chip">{DIFFICULTY_LABEL[pendingRecipe.difficulty]}</span>}
-            <span className="chip">약 {estimateCookMinutes(pendingRecipe.steps)}분</span>
-          </div>
           <strong style={{ fontSize: 13 }}>AI가 제안한 변경사항</strong>
           {pendingReply && (
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>{pendingReply}</p>

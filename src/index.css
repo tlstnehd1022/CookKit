@@ -986,6 +986,10 @@ h2 {
   background: var(--bg-page);
   color: var(--text-primary);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  /* input의 브라우저 기본 최소 너비(placeholder 길이와 무관하게 대략 20자분) 때문에, .field가
+     flex:1로 옆 버튼과 한 줄(.row)에 있을 때 좁은 화면에서 버튼이 화면 밖으로 밀려나 잘리는
+     문제가 있었다(유튜브 변환 버튼 등) — 진짜 필요한 만큼만 줄어들 수 있게 최소 너비를 없앤다. */
+  min-width: 0;
 }
 
 .field input:focus,
@@ -1081,6 +1085,10 @@ select:focus {
   max-width: 640px;
   max-height: 85vh;
   overflow-y: auto;
+  /* 안에 폭을 안 줄이는 요소(긴 줄 + shrink 안 되는 버튼 등)가 있으면 모달 전체가 옆으로
+     스크롤되며 왼쪽 내용이 화면 밖으로 밀려나 보이는 문제가 실기기에서 있었다 — 가로 스크롤은
+     항상 막아서 내부 요소가 알아서 줄어들거나 잘리게 한다. */
+  overflow-x: hidden;
   box-shadow: var(--shadow-soft);
 }
 

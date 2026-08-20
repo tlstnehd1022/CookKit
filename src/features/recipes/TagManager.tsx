@@ -163,9 +163,11 @@ function TagRow({
     );
   }
   return (
-    <div className="row" style={{ marginBottom: 8 }}>
-      <span>{name}</span>
-      <div className="chip-row" style={{ marginTop: 0 }}>
+    <div className="row" style={{ marginBottom: 8, gap: 8 }}>
+      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {name}
+      </span>
+      <div className="chip-row" style={{ marginTop: 0, flexShrink: 0 }}>
         <button className="chip selectable" onClick={onStartRename}>
           이름변경
         </button>

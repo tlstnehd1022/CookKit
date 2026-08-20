@@ -54,12 +54,19 @@ export function PantryTidyModal({
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showExpiredReview, setShowExpiredReview] = useState(false);
+  const [showNoExpirationReview, setShowNoExpirationReview] = useState(false);
 
   // A-4: 유통기한이 지나 확인이 필요한 재료 개수 — 있으면 "확인하기" 액션을 노출한다. 이 목록은
   // 있어요/없어요 박스의 로컬 드래프트(localOwned)와 무관하게 실제 DB 상태(ingredients) 기준으로
   // 판단한다(확인 흐름 자체가 즉시 저장되는 별도 액션이라 — 아래 ExpiredReviewModal 참고).
   const expiredUnconfirmedCount = useMemo(
     () => ingredients.filter((i) => getPantryAvailability(i) === 'expired_unconfirmed').length,
+    [ingredients],
+  );
+  // 보유 중인데 유통기한이 아예 입력 안 된 재료 개수 — owned가 아닌 재료는 유통기한 개념이
+  // 없어서(27차 확장 기준) 대상에서 제외한다.
+  const noExpirationCount = useMemo(
+    () => ingredients.filter((i) => i.owned && !i.expirationDate).length,
     [ingredients],
   );
 
@@ -152,8 +159,8 @@ export function PantryTidyModal({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <h2>냉장고 정리하기</h2>
-        <p className="text-muted" style={{ marginTop: -4 }}>
-          재료를 탭하면 반대편 박스로 옮겨져요. 적용을 눌러야 실제로 저장돼요.
+        <p className="text-muted" style={{ marginTop: -4, fontSize: 13 }}>
+          탭하면 반대편으로 옮겨져요, 적용해야 저장돼요.
         </p>
 
         {expiredUnconfirmedCount > 0 && (
@@ -164,6 +171,16 @@ export function PantryTidyModal({
             onClick={() => setShowExpiredReview(true)}
           >
             ⏰ 유통기한 지난 재료 확인하기 ({expiredUnconfirmedCount}개)
+          </button>
+        )}
+        {noExpirationCount > 0 && (
+          <button
+            type="button"
+            className="btn"
+            style={{ width: '100%', marginBottom: 12 }}
+            onClick={() => setShowNoExpirationReview(true)}
+          >
+            📅 유통기한 없는 재료들이 있어요 ({noExpirationCount}개)
           </button>
         )}
 
@@ -183,6 +200,7 @@ export function PantryTidyModal({
       </div>
 
       {showExpiredReview && <ExpiredReviewModal onClose={() => setShowExpiredReview(false)} />}
+      {showNoExpirationReview && <NoExpirationReviewModal onClose={() => setShowNoExpirationReview(false)} />}
     </div>
   );
 }
@@ -249,6 +267,75 @@ function ExpiredReviewModal({ onClose }: { onClose: () => void }) {
                   버렸어요
                 </button>
               </div>
+            </div>
+          ))
+        )}
+        {error && <p style={{ color: 'var(--danger)', marginTop: 8 }}>{error}</p>}
+        <button className="btn" style={{ width: '100%', marginTop: 16 }} onClick={onClose}>
+          닫기
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** 보유 중인데 유통기한이 아예 없는 재료를 한 번에 훑으며 입력하는 빠른 화면 — 위
+ * ExpiredReviewModal과 같은 목록형 즉시-저장 패턴. 날짜를 고르는 순간 바로 저장돼서(따로
+ * "저장" 버튼을 안 눌러도 됨) 한 번의 탭으로 끝난다. */
+function NoExpirationReviewModal({ onClose }: { onClose: () => void }) {
+  const { ingredients, saveIngredient } = useIngredients();
+  const [resolvedIds, setResolvedIds] = useState<Set<string>>(new Set());
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const remaining = ingredients.filter((i) => i.owned && !i.expirationDate && !resolvedIds.has(i.id));
+
+  async function handleSetDate(ingredient: Ingredient, date: string) {
+    if (!date) return;
+    setBusyId(ingredient.id);
+    setError(null);
+    try {
+      await saveIngredient({ ...ingredient, expirationDate: date });
+      setResolvedIds((prev) => new Set(prev).add(ingredient.id));
+    } catch (err) {
+      setError(getErrorMessage(err, '저장 중 오류가 발생했어요. 다시 시도해주세요.'));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function handleSkip(ingredient: Ingredient) {
+    setResolvedIds((prev) => new Set(prev).add(ingredient.id));
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <h2>유통기한 입력하기</h2>
+        {remaining.length === 0 ? (
+          <p className="empty-hint">입력할 재료가 없어요.</p>
+        ) : (
+          remaining.map((ingredient) => (
+            <div
+              className="row"
+              key={ingredient.id}
+              style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', gap: 8 }}
+            >
+              <span style={{ flexShrink: 0 }}>{ingredient.name}</span>
+              <input
+                type="date"
+                style={{ flex: 1 }}
+                disabled={busyId === ingredient.id}
+                onChange={(e) => handleSetDate(ingredient, e.target.value)}
+              />
+              <button
+                className="btn small"
+                style={{ flexShrink: 0 }}
+                disabled={busyId === ingredient.id}
+                onClick={() => handleSkip(ingredient)}
+              >
+                건너뛰기
+              </button>
             </div>
           ))
         )}

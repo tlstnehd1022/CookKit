@@ -322,12 +322,13 @@ function NoExpirationReviewModal({ onClose }: { onClose: () => void }) {
               style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', gap: 8 }}
             >
               <span style={{ flexShrink: 0 }}>{ingredient.name}</span>
-              <input
-                type="date"
-                style={{ flex: 1 }}
-                disabled={busyId === ingredient.id}
-                onChange={(e) => handleSetDate(ingredient, e.target.value)}
-              />
+              <div className="field" style={{ flex: 1, margin: 0 }}>
+                <input
+                  type="date"
+                  disabled={busyId === ingredient.id}
+                  onChange={(e) => handleSetDate(ingredient, e.target.value)}
+                />
+              </div>
               <button
                 className="btn small"
                 style={{ flexShrink: 0 }}

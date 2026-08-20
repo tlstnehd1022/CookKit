@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent } from 'react';
-import { ChevronLeft, X, User, Home, Settings, Tags, LogOut, ChevronRight, Bell, Compass } from 'lucide-react';
+import { ChevronLeft, X, User, Home, Settings, LogOut, ChevronRight, Bell, Compass, Camera } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSettings } from '../../data/settings';
 import { useSession } from '../../data/session';
@@ -14,27 +14,25 @@ import { useNotifications, type AppNotification } from '../../data/notifications
 import { useIngredients, useRecipes } from '../../data/store';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { getErrorMessage } from '../../lib/errorMessage';
-import { TagManager } from '../recipes/TagManager';
-import { CategoryManager } from '../ingredients/CategoryManager';
 import { ConfirmDialog } from '../recipes/ConfirmDialog';
 
 const API_KEY_MIGRATION_FLAG = 'cookkit:apiKeyMigrated';
 
-type Section = 'menu' | 'notifications' | 'profile' | 'household' | 'app' | 'tags';
+type Section = 'menu' | 'notifications' | 'profile' | 'household' | 'app';
 
 const SECTION_TITLE: Record<Exclude<Section, 'menu'>, string> = {
   notifications: '알림',
   profile: '내 프로필',
   household: '가구 설정',
   app: '앱 설정',
-  tags: '태그·카테고리 관리',
 };
 
 /**
- * 홈 화면 우상단 프로필 아이콘 → 바텀시트. 예전 SettingsPage.tsx의 내용을 4개 메뉴로 재분류했다
- * (내 프로필 / 가구 설정 / 앱 설정 / 태그·카테고리 관리) + 알림함을 최상단에 추가 — 로그아웃은
- * 메뉴 목록에 바로 노출. 각 섹션은 기존 SettingsPage.tsx 로직/컴포넌트(InlineEditRow,
- * TagManager, CategoryManager)를 최대한 그대로 재사용한다.
+ * 홈 화면 우상단 프로필 아이콘 → 바텀시트. 예전 SettingsPage.tsx의 내용을 3개 메뉴로 재분류했다
+ * (내 프로필 / 가구 설정 / 앱 설정) + 알림함을 최상단에 추가 — 로그아웃은 메뉴 목록에 바로 노출.
+ * 각 섹션은 기존 SettingsPage.tsx 로직/컴포넌트(InlineEditRow)를 최대한 그대로 재사용한다.
+ * 태그/카테고리 관리는 각자의 홈(레시피 탭 "태그 관리"/냉장고 탭 "카테고리 관리")이 이미 있어
+ * 여기 중복으로 두지 않는다.
  */
 export function ProfileSheet({
   onClose,
@@ -55,7 +53,6 @@ export function ProfileSheet({
     { section: 'profile', icon: User, label: '내 프로필' },
     { section: 'household', icon: Home, label: '가구 설정' },
     { section: 'app', icon: Settings, label: '앱 설정' },
-    { section: 'tags', icon: Tags, label: '태그·카테고리 관리' },
   ];
 
   return (
@@ -132,7 +129,6 @@ export function ProfileSheet({
         {section === 'profile' && <ProfileSection />}
         {section === 'household' && <HouseholdSection />}
         {section === 'app' && <AppSettingsSection />}
-        {section === 'tags' && <TagsCategoriesSection />}
       </div>
     </div>
   );
@@ -223,37 +219,59 @@ function ProfileSection() {
 
   return (
     <div className="card">
-      <div className="row" style={{ justifyContent: 'flex-start', gap: 10 }}>
-        {profile?.avatarUrl && (
-          <img
-            src={profile.avatarUrl}
-            alt=""
-            style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover' }}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+        <div style={{ position: 'relative', width: 72, height: 72 }}>
+          {profile?.avatarUrl ? (
+            <img
+              src={profile.avatarUrl}
+              alt=""
+              style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover' }}
+            />
+          ) : (
+            <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--chip-bg)' }} />
+          )}
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleAvatarFileChange}
           />
-        )}
-        <p className="text-muted" style={{ margin: 0 }}>
-          {user?.email}로 로그인되어 있습니다.
+          <button
+            type="button"
+            disabled={avatarUploading}
+            onClick={() => avatarInputRef.current?.click()}
+            aria-label="프로필 사진 변경"
+            style={{
+              position: 'absolute',
+              right: -2,
+              bottom: -2,
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              background: 'var(--accent)',
+              color: 'var(--accent-contrast)',
+              border: '2px solid var(--bg-card)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <Camera size={14} strokeWidth={2.75} />
+          </button>
+        </div>
+        <p className="text-muted" style={{ margin: 0, fontSize: 12, textAlign: 'center' }}>
+          {avatarUploading ? '업로드 중...' : `${user?.email}로 로그인되어 있습니다.`}
         </p>
-      </div>
-      <div className="row" style={{ justifyContent: 'flex-start', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-        <input
-          ref={avatarInputRef}
-          type="file"
-          accept="image/*"
-          style={{ display: 'none' }}
-          onChange={handleAvatarFileChange}
-        />
-        <button className="btn" disabled={avatarUploading} onClick={() => avatarInputRef.current?.click()}>
-          {avatarUploading ? '업로드 중...' : '프로필 사진 변경'}
-        </button>
         {user?.googleAvatarUrl && user.googleAvatarUrl !== profile?.avatarUrl && (
-          <button className="btn" disabled={avatarUploading} onClick={handleRevertToGoogleAvatar}>
+          <button className="btn small" disabled={avatarUploading} onClick={handleRevertToGoogleAvatar}>
             구글 사진으로 되돌리기
           </button>
         )}
       </div>
       {avatarError && (
-        <p className="text-muted" style={{ color: 'var(--danger)', marginTop: 4 }}>
+        <p className="text-muted" style={{ color: 'var(--danger)', marginTop: 4, textAlign: 'center' }}>
           {avatarError}
         </p>
       )}
@@ -624,29 +642,6 @@ function AppSettingsSection() {
         </>
       )}
     </>
-  );
-}
-
-function TagsCategoriesSection() {
-  const [showTagManager, setShowTagManager] = useState(false);
-  const [showCategoryManager, setShowCategoryManager] = useState(false);
-
-  return (
-    <div className="card">
-      <p className="text-muted" style={{ marginTop: 0 }}>
-        레시피 태그(요리 스타일/국가·장르)와 재료 카테고리를 관리해요.
-      </p>
-      <div className="row" style={{ justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
-        <button className="btn" onClick={() => setShowTagManager(true)}>
-          태그 관리
-        </button>
-        <button className="btn" onClick={() => setShowCategoryManager(true)}>
-          카테고리 관리
-        </button>
-      </div>
-      {showTagManager && <TagManager onClose={() => setShowTagManager(false)} />}
-      {showCategoryManager && <CategoryManager onClose={() => setShowCategoryManager(false)} />}
-    </div>
   );
 }
 

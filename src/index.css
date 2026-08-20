@@ -896,10 +896,14 @@ h2 {
   font-size: 14px;
   box-shadow: var(--shadow-soft);
   transition: box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
-  /* white-space가 없으면 .row(flex) 안에서 flex:1 형제가 공간을 차지할 때 버튼이 내용보다
-     좁게 눌리고, 한글은 글자 단위로도 줄바꿈되는 기본 규칙 때문에 텍스트가 세로로 한 글자씩
-     쌓이는 버그가 생긴다(유튜브 변환 버튼에서 실기기로 확인됨) — 버튼 라벨은 항상 한 줄. */
-  white-space: nowrap;
+  /* 한글은 기본적으로 글자 단위로도 줄바꿈되는데, .row(flex) 안에서 flex:1 형제가 공간을
+     차지해 버튼이 눌리면 "유튜브 변환"이 "유/튜/브/변/환"처럼 세로로 쌓이는 버그가 있었다.
+     white-space:nowrap(줄바꿈 금지)으로 고쳤더니, 실기기(폰 글자 크기 설정 등으로 텍스트가
+     더 넓게 렌더링되는 경우)에서는 반대로 버튼이 화면 밖으로 잘리는 문제가 새로 생겼다 —
+     word-break:keep-all로 "단어(공백) 단위로만" 줄바꿈을 허용해서, 공간이 정말 부족할 때는
+     "유튜브"/"변환"처럼 최대 2줄로 자연스럽게 줄바꿈되고 화면 밖으로 잘리는 일은 없게 한다. */
+  white-space: normal;
+  word-break: keep-all;
 }
 
 .btn:hover:not(:disabled) {

@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useCategories, useIngredients, makeId } from '../../data/store';
+import { useShoppingExtraItems } from '../../data/shoppingExtraItems';
 import { useSettings } from '../../data/settings';
 import { extractReceiptItems, ApiProxyError } from '../../lib/aiProxy';
 import type { ReceiptItem } from '../../lib/geminiClient';
@@ -52,6 +53,7 @@ function buildReviewRow(item: ReceiptItem, categories: Category[]): ReviewRow {
 export function ReceiptScanModal({ onClose }: { onClose: () => void }) {
   const { ingredients, markIngredientFilled } = useIngredients();
   const { categories, saveCategory } = useCategories();
+  const { items: extraItems, remove: removeExtraItem } = useShoppingExtraItems();
   const { settings } = useSettings();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -140,6 +142,12 @@ export function ReceiptScanModal({ onClose }: { onClose: () => void }) {
           // 이미 owned=true였어도 영수증에 다시 찍혔다는 건 실제로 다시 산 것이므로 채움으로 취급
           await markIngredientFilled(existing);
           markedOwnedCount += 1;
+          // 장보기에 "직접 추가"로 담아뒀던 항목이면 이미 사왔으니 목록에서 지운다(E-4의
+          // "담은 재료 냉장고로 옮기기"와 같은 이유 — 레시피 유래 항목은 owned:true가 되면
+          // "구매 필요" 필터에서 자연히 빠지므로 이 정리가 필요 없지만, 직접 추가 항목은
+          // 필터와 무관하게 계속 목록에 남아있어서 명시적으로 지워야 한다).
+          const extra = extraItems.find((e) => e.ingredientId === existing.id);
+          if (extra) await removeExtraItem(extra.id);
           continue;
         }
 

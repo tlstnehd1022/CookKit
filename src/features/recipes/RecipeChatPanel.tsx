@@ -34,6 +34,7 @@ export function RecipeChatPanel({
   const [error, setError] = useState<string | null>(null);
   const [pendingRecipe, setPendingRecipe] = useState<ExtractedRecipe | null>(null);
   const [pendingDiff, setPendingDiff] = useState<DiffLine[]>([]);
+  const [pendingReply, setPendingReply] = useState('');
   const [missingApiKey, setMissingApiKey] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -80,6 +81,7 @@ export function RecipeChatPanel({
       if (result.updatedRecipe) {
         setPendingRecipe(result.updatedRecipe);
         setPendingDiff(summarizeRecipeDiff(currentRecipe, result.updatedRecipe));
+        setPendingReply(result.reply);
       }
     } catch (err) {
       if (err instanceof ApiProxyError && err.code === 'no_api_key') {
@@ -100,6 +102,7 @@ export function RecipeChatPanel({
       setMessages((prev) => [...prev, { role: 'assistant', text: '✅ 아래 폼에 반영했어요.' }]);
       setPendingRecipe(null);
       setPendingDiff([]);
+      setPendingReply('');
     } catch (err) {
       console.error('레시피 반영 실패:', err);
       setError(getErrorMessage(err, '반영 중 오류가 발생했습니다.'));
@@ -111,6 +114,7 @@ export function RecipeChatPanel({
   function discardPending() {
     setPendingRecipe(null);
     setPendingDiff([]);
+    setPendingReply('');
   }
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -208,12 +212,19 @@ export function RecipeChatPanel({
             <span className="chip">약 {estimateCookMinutes(pendingRecipe.steps)}분</span>
           </div>
           <strong style={{ fontSize: 13 }}>AI가 제안한 변경사항</strong>
+          {pendingReply && (
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>{pendingReply}</p>
+          )}
           <ul style={{ margin: '6px 0', paddingLeft: 18, fontSize: 13 }}>
             {pendingDiff.map((line, index) => (
               <li key={index} style={{ color: diffLineColor(line.kind) }}>
                 {line.text}
               </li>
             ))}
+            <li style={{ color: diffLineColor('info') }}>
+              난이도: {pendingRecipe.difficulty ? DIFFICULTY_LABEL[pendingRecipe.difficulty] : '-'} / 조리시간: 약{' '}
+              {estimateCookMinutes(pendingRecipe.steps)}분
+            </li>
           </ul>
           <div className="row" style={{ gap: 6 }}>
             <button className="btn small" onClick={discardPending} disabled={applying}>

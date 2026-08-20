@@ -871,6 +871,10 @@ export function RecipeEditor({
                   {line.text}
                 </li>
               ))}
+              <li style={{ color: diffLineColor('info') }}>
+                난이도: {pendingYoutubeResult.difficulty ? DIFFICULTY_LABEL[pendingYoutubeResult.difficulty] : '-'} /
+                조리시간: 약 {estimateCookMinutes(pendingYoutubeResult.steps)}분
+              </li>
             </ul>
             {pendingYoutubeVideoId && (
               <div className="row" style={{ alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>

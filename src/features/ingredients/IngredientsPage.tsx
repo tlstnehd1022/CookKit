@@ -565,7 +565,6 @@ export function AddIngredientModal({
   const { categories } = useCategories();
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState(categories[0]?.id ?? '');
-  const [defaultBuyUnit, setDefaultBuyUnit] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showDuplicateConfirm, setShowDuplicateConfirm] = useState(false);
@@ -580,7 +579,10 @@ export function AddIngredientModal({
         id: makeId(),
         name: name.trim(),
         categoryId,
-        defaultBuyUnit: defaultBuyUnit.trim() || '1개',
+        // 장보기 집계용 기본 단위 — 다른 재료 생성 경로(RecipeEditor/영수증 스캔 등)와 같이
+        // 사용자에게 따로 입력받지 않고 '1개'로 고정한다(재료마다 관리하기 번거롭다는 판단 —
+        // 입력 필드 자체를 없앰).
+        defaultBuyUnit: '1개',
         allergens: [],
         owned: defaultOwned,
       });
@@ -619,14 +621,6 @@ export function AddIngredientModal({
           {categories.length === 0 && (
             <p className="text-muted">먼저 카테고리 관리에서 카테고리를 추가해주세요.</p>
           )}
-        </div>
-        <div className="field">
-          <label>추천 구매 단위</label>
-          <input
-            value={defaultBuyUnit}
-            onChange={(e) => setDefaultBuyUnit(e.target.value)}
-            placeholder="예: 1개, 500g"
-          />
         </div>
         <div className="row">
           <button className="btn" onClick={onClose} disabled={saving}>

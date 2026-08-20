@@ -16,6 +16,8 @@ import {
   useAutoStartVoice,
   setSelectedVoiceURI,
   useSelectedVoiceURI,
+  setAnnouncementTone,
+  useAnnouncementTone,
 } from '../../data/cookingModeSettings';
 import { useNotifications, type AppNotification } from '../../data/notifications';
 import { useIngredients, useRecipes } from '../../data/store';
@@ -456,6 +458,7 @@ function AppSettingsSection() {
   const autoStartTimer = useAutoStartTimer();
   const autoStartVoice = useAutoStartVoice();
   const selectedVoiceURI = useSelectedVoiceURI();
+  const tone = useAnnouncementTone();
   const availableVoices = useAvailableVoices();
 
   const [migrating, setMigrating] = useState(false);
@@ -587,6 +590,29 @@ function AppSettingsSection() {
               이 기기에서 사용 가능한 음성 목록을 아직 못 받아왔어요. 잠시 후 다시 열어보세요.
             </p>
           )}
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>안내 말투</label>
+          <div className="chip-row" style={{ marginTop: 6 }}>
+            <button
+              type="button"
+              className={`chip selectable ${tone === 'formal' ? 'active' : ''}`}
+              onClick={() => setAnnouncementTone('formal')}
+            >
+              표준(존댓말)
+            </button>
+            <button
+              type="button"
+              className={`chip selectable ${tone === 'friendly' ? 'active' : ''}`}
+              onClick={() => setAnnouncementTone('friendly')}
+            >
+              친근하게
+            </button>
+          </div>
+          <p className="text-muted" style={{ marginTop: 6 }}>
+            타이머·단계 전환 같은 안내 문구의 말투예요(레시피 본문 내용은 그대로예요).
+          </p>
         </div>
       </div>
 

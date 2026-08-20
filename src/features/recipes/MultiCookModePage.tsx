@@ -1,16 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStoredImage } from '../../data/imageStore';
-import { useAutoStartTimer, useAutoStartVoice } from '../../data/cookingModeSettings';
+import { useAutoStartTimer, useAutoStartVoice, useAnnouncementTone } from '../../data/cookingModeSettings';
 import { useWakeLock } from './useWakeLock';
 import { useVoiceAssistant } from './useVoiceAssistant';
 import { ConfirmDialog } from './ConfirmDialog';
+import { COMMAND_EXAMPLES, detectTargetRecipeId, formatCountdown, matchCommand } from '../../lib/cookingVoiceCommands';
 import {
-  COMMAND_EXAMPLES,
-  detectTargetRecipeId,
-  formatCountdown,
-  formatSpokenDuration,
-  matchCommand,
-} from '../../lib/cookingVoiceCommands';
+  phraseMultiStepPrefix,
+  phraseTimerAutoStart,
+  phraseTimerAvailable,
+  phraseMultiFinished,
+  phraseTimerStart,
+  phraseTimerPause,
+  phraseTimerReset,
+  phraseTimerRemaining,
+  phraseTimerDone,
+  phraseNoActiveTimer,
+  phraseNoStartableTimer,
+  phraseNoResettableTimer,
+  phraseAskRepeat,
+} from '../../lib/cookingAnnouncements';
 import type { OrderedStepRef } from '../../lib/multiCookOrdering';
 import type { CookingLogStepTiming, Recipe } from '../../data/types';
 
@@ -72,6 +81,7 @@ export function MultiCookModePage({
 
   const autoStartTimer = useAutoStartTimer();
   const autoStartVoice = useAutoStartVoice();
+  const tone = useAnnouncementTone();
   const recipeById = useMemo(() => new Map(recipes.map((r) => [r.id, r])), [recipes]);
   const isLastPlanStep = planIndex === order.length - 1;
   const currentRef = order[planIndex] as OrderedStepRef | undefined;
@@ -89,7 +99,7 @@ export function MultiCookModePage({
   function handleTranscript(transcript: string, speak: (message: string) => void) {
     const command = matchCommand(transcript);
     if (!command) {
-      speak('다시 말씀해주시겠어요?');
+      speak(phraseAskRepeat(tone));
       return;
     }
     if (command === 'next') {
@@ -144,12 +154,12 @@ export function MultiCookModePage({
     if (!currentRecipe || !currentStep || !currentRef) return;
     const alreadyHasTimer = Boolean(findTimerForStep(timersRef.current, currentRef.recipeId, currentRef.stepIndex));
     const shouldAutoStart = autoStartTimer && Boolean(currentStep.timerSeconds) && !alreadyHasTimer;
-    const parts = [`${currentRecipe.name}.`, currentStep.title, currentStep.content];
+    const parts = [phraseMultiStepPrefix(tone, currentRecipe.name), currentStep.title, currentStep.content];
     if (currentStep.timerSeconds && !alreadyHasTimer) {
       parts.push(
         shouldAutoStart
-          ? `이 단계는 ${formatSpokenDuration(currentStep.timerSeconds)} 타이머가 자동으로 시작돼요.`
-          : `이 단계는 ${formatSpokenDuration(currentStep.timerSeconds)} 타이머가 있어요.`,
+          ? phraseTimerAutoStart(tone, currentStep.timerSeconds)
+          : phraseTimerAvailable(tone, currentStep.timerSeconds),
       );
     }
     speak(parts.join(' '));
@@ -199,7 +209,7 @@ export function MultiCookModePage({
       const key = timerKey(t);
       if (t.remainingSeconds === 0 && !t.running && !handledCompletionsRef.current.has(key)) {
         handledCompletionsRef.current.add(key);
-        speak(`${t.recipeName} 타이머가 끝났어요.`);
+        speak(phraseTimerDone(tone, t.recipeName));
         sessionTimingsRef.current.push({
           recipeId: t.recipeId,
           stepIndex: t.stepIndex,
@@ -214,7 +224,7 @@ export function MultiCookModePage({
   }, [timers]);
 
   useEffect(() => {
-    if (finished) speak('모든 레시피를 완성했어요! 수고하셨어요.');
+    if (finished) speak(phraseMultiFinished(tone));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finished]);
 
@@ -234,11 +244,11 @@ export function MultiCookModePage({
     const existing = findLatestTimerForRecipe(timersRef.current, targetRecipeId);
     if (existing) {
       setTimers((prev) => prev.map((t) => (t === existing ? { ...t, running: true } : t)));
-      speak(`${existing.recipeName} 타이머를 다시 시작할게요.`);
+      speak(phraseTimerStart(tone, true, existing.recipeName));
       return;
     }
     if (!currentRecipe || !currentStep || !currentRef || targetRecipeId !== currentRef.recipeId || !currentStep.timerSeconds) {
-      speak('지금 시작할 수 있는 타이머가 없어요.');
+      speak(phraseNoStartableTimer(tone));
       return;
     }
     setTimers((prev) => [
@@ -254,39 +264,39 @@ export function MultiCookModePage({
         running: true,
       },
     ]);
-    speak('타이머를 시작할게요.');
+    speak(phraseTimerStart(tone, false));
   }
 
   function pauseTimerFor(targetRecipeId: string, speak: (message: string) => void) {
     const existing = findLatestTimerForRecipe(timersRef.current, targetRecipeId);
     if (!existing || !existing.running) {
-      speak('지금 실행 중인 타이머가 없어요.');
+      speak(phraseNoActiveTimer(tone));
       return;
     }
     setTimers((prev) => prev.map((t) => (t === existing ? { ...t, running: false } : t)));
-    speak(`${existing.recipeName} 타이머를 멈췄어요.`);
+    speak(phraseTimerPause(tone, existing.recipeName));
   }
 
   function resetTimerFor(targetRecipeId: string, speak: (message: string) => void) {
     const existing = findLatestTimerForRecipe(timersRef.current, targetRecipeId);
     if (!existing) {
-      speak('초기화할 타이머가 없어요.');
+      speak(phraseNoResettableTimer(tone));
       return;
     }
     handledCompletionsRef.current.delete(timerKey(existing));
     setTimers((prev) =>
       prev.map((t) => (t === existing ? { ...t, remainingSeconds: t.totalSeconds, elapsedSeconds: 0, running: false } : t)),
     );
-    speak(`${existing.recipeName} 타이머를 초기화했어요.`);
+    speak(phraseTimerReset(tone, existing.recipeName));
   }
 
   function announceRemainingFor(targetRecipeId: string, speak: (message: string) => void) {
     const existing = findLatestTimerForRecipe(timersRef.current, targetRecipeId);
     if (!existing || !existing.running) {
-      speak('지금 실행 중인 타이머가 없어요.');
+      speak(phraseNoActiveTimer(tone));
       return;
     }
-    speak(`${existing.recipeName} 타이머 ${formatSpokenDuration(existing.remainingSeconds)} 남았어요.`);
+    speak(phraseTimerRemaining(tone, existing.remainingSeconds, existing.recipeName));
   }
 
   function confirmExit() {

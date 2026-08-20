@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { AnnouncementTone } from '../lib/cookingAnnouncements';
 
 // 요리 모드의 "타이머 자동 시작"/"음성 인식 자동 시작" 선호는 기기별 UI 취향이라(household
 // 공유 데이터가 아님) viewMode.ts/theme.ts와 같은 방식으로 localStorage에만 저장한다. 기본값은
@@ -6,6 +7,7 @@ import { useSyncExternalStore } from 'react';
 const TIMER_STORAGE_KEY = 'cookkit:cookingMode:autoStartTimer';
 const VOICE_STORAGE_KEY = 'cookkit:cookingMode:autoStartVoice';
 const SELECTED_VOICE_KEY = 'cookkit:cookingMode:selectedVoiceURI';
+const TONE_KEY = 'cookkit:cookingMode:announcementTone';
 
 function readStoredBool(key: string): boolean {
   return localStorage.getItem(key) === 'true';
@@ -14,6 +16,8 @@ function readStoredBool(key: string): boolean {
 let currentAutoStartTimer = readStoredBool(TIMER_STORAGE_KEY);
 let currentAutoStartVoice = readStoredBool(VOICE_STORAGE_KEY);
 let currentSelectedVoiceURI: string | null = localStorage.getItem(SELECTED_VOICE_KEY);
+let currentTone: AnnouncementTone =
+  localStorage.getItem(TONE_KEY) === 'friendly' ? 'friendly' : 'formal';
 const listeners = new Set<() => void>();
 
 function notify() {
@@ -70,5 +74,23 @@ export function useSelectedVoiceURI(): string | null {
       return () => listeners.delete(listener);
     },
     () => currentSelectedVoiceURI,
+  );
+}
+
+/** 요리 모드가 붙이는 안내 문구(타이머/단계 전환/완료 등)의 말투 — 레시피 본문 자체는 그대로,
+ * 이 부가 문구만 톤이 바뀐다(cookingAnnouncements.ts). 기본값은 'formal'(존댓말). */
+export function setAnnouncementTone(value: AnnouncementTone) {
+  currentTone = value;
+  localStorage.setItem(TONE_KEY, value);
+  notify();
+}
+
+export function useAnnouncementTone(): AnnouncementTone {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    () => currentTone,
   );
 }

@@ -1,31 +1,44 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStoredImage } from '../../data/imageStore';
-import { useAutoStartTimer, useAutoStartVoice } from '../../data/cookingModeSettings';
+import { useAutoStartTimer, useAutoStartVoice, useAnnouncementTone } from '../../data/cookingModeSettings';
+import {
+  phraseStepPrefix,
+  phraseTimerAutoStart,
+  phraseTimerAvailable,
+  phraseLastStep,
+  phraseFinished,
+  phraseTimerStart,
+  phraseTimerPause,
+  phraseNoActiveTimer,
+  phraseTimerReset,
+  phraseTimerRemaining,
+  phraseTimerDone,
+  phraseAskRepeat,
+  type AnnouncementTone,
+} from '../../lib/cookingAnnouncements';
 import { fetchTodayCookingCount } from '../../data/cookingLog';
 import { scaleAmount } from '../../data/computed';
 import { findStepIngredients } from '../../lib/stepIngredientMatch';
 import { useWakeLock } from './useWakeLock';
 import { useVoiceAssistant } from './useVoiceAssistant';
 import { ConfirmDialog } from './ConfirmDialog';
-import {
-  COMMAND_EXAMPLES,
-  formatCountdown,
-  formatSpokenDuration,
-  matchCommand,
-  type Command,
-} from '../../lib/cookingVoiceCommands';
+import { COMMAND_EXAMPLES, formatCountdown, matchCommand, type Command } from '../../lib/cookingVoiceCommands';
 import type { CookingLogStepTiming, Ingredient, Recipe, RecipeStep } from '../../data/types';
 
-function buildStepAnnouncement(step: RecipeStep, index: number, total: number, autoStarting: boolean): string {
-  const parts = [`${index + 1}단계.`, step.title, step.content];
+function buildStepAnnouncement(
+  tone: AnnouncementTone,
+  step: RecipeStep,
+  index: number,
+  total: number,
+  autoStarting: boolean,
+): string {
+  const parts = [phraseStepPrefix(tone, index), step.title, step.content];
   if (step.timerSeconds) {
     parts.push(
-      autoStarting
-        ? `이 단계는 ${formatSpokenDuration(step.timerSeconds)} 타이머가 자동으로 시작돼요.`
-        : `이 단계는 ${formatSpokenDuration(step.timerSeconds)} 타이머가 있어요.`,
+      autoStarting ? phraseTimerAutoStart(tone, step.timerSeconds) : phraseTimerAvailable(tone, step.timerSeconds),
     );
   }
-  if (index === total - 1) parts.push('마지막 단계예요.');
+  if (index === total - 1) parts.push(phraseLastStep(tone));
   return parts.join(' ');
 }
 
@@ -82,6 +95,7 @@ export function CookingModePage({
 
   const autoStartTimer = useAutoStartTimer();
   const autoStartVoice = useAutoStartVoice();
+  const tone = useAnnouncementTone();
   const steps = recipe.steps;
   const currentStep = steps[stepIndex] as RecipeStep | undefined;
   const isLastStep = stepIndex === steps.length - 1;
@@ -100,7 +114,7 @@ export function CookingModePage({
   function handleTranscript(transcript: string, speak: (message: string) => void) {
     const command = matchCommand(transcript);
     if (command) handleCommand(command);
-    else speak('다시 말씀해주시겠어요?');
+    else speak(phraseAskRepeat(tone));
   }
 
   const {
@@ -144,7 +158,7 @@ export function CookingModePage({
       cookElapsedSeconds: 0,
     };
     const shouldAutoStart = autoStartTimer && Boolean(currentStep.timerSeconds);
-    speak(buildStepAnnouncement(currentStep, stepIndex, steps.length, shouldAutoStart));
+    speak(buildStepAnnouncement(tone, currentStep, stepIndex, steps.length, shouldAutoStart));
     if (shouldAutoStart) {
       setTimerRemaining(currentStep.timerSeconds!);
       setTimerRunning(true);
@@ -163,7 +177,7 @@ export function CookingModePage({
     if (timerRemaining <= 0) {
       setTimerRunning(false);
       setTimerRemaining(null);
-      speak('타이머가 끝났어요.');
+      speak(phraseTimerDone(tone));
       return;
     }
     const timeout = setTimeout(() => {
@@ -176,7 +190,7 @@ export function CookingModePage({
 
   useEffect(() => {
     if (!finished) return;
-    speak('요리를 완성했어요! 수고하셨어요.');
+    speak(phraseFinished(tone));
     if (householdId) {
       // 이 세션의 기록은 아직 안 남았으니(onFinish 이후 CookingLogModal에서 확정) +1로 표시.
       fetchTodayCookingCount(householdId)
@@ -225,15 +239,15 @@ export function CookingModePage({
       if (timingDraftRef.current) timingDraftRef.current.timerStartedAt = Date.now();
     }
     setTimerRunning(true);
-    speak(isResume ? '타이머를 다시 시작할게요.' : '타이머를 시작할게요.');
+    speak(phraseTimerStart(tone, isResume));
   }
 
   function pauseTimer() {
     if (timerRunning) {
       setTimerRunning(false);
-      speak('타이머를 멈췄어요.');
+      speak(phraseTimerPause(tone));
     } else {
-      speak('지금 실행 중인 타이머가 없어요.');
+      speak(phraseNoActiveTimer(tone));
     }
   }
 
@@ -248,14 +262,14 @@ export function CookingModePage({
       timingDraftRef.current.timerStartedAt = null;
       timingDraftRef.current.cookElapsedSeconds = 0;
     }
-    speak('타이머를 초기화했어요.');
+    speak(phraseTimerReset(tone));
   }
 
   function announceRemaining() {
     if (timerRunning && timerRemaining !== null) {
-      speak(`${formatSpokenDuration(timerRemaining)} 남았어요.`);
+      speak(phraseTimerRemaining(tone, timerRemaining));
     } else {
-      speak('지금 실행 중인 타이머가 없어요.');
+      speak(phraseNoActiveTimer(tone));
     }
   }
 

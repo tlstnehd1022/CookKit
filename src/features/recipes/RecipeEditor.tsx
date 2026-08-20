@@ -843,7 +843,7 @@ export function RecipeEditor({
         </div>
         {isGemini && (
           <div className="field" style={{ marginTop: 8 }}>
-            <label>영상 자막/설명 직접 붙여넣기 (선택, 자동 추출 실패 시 대체용)</label>
+            <label>영상 자막/설명 직접 붙여넣기</label>
             <textarea
               rows={4}
               value={youtubeManualText}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, MoreVertical, ClipboardList, Tags, Plus } from 'lucide-react';
 import { useIngredientsById, useRecipes, useTags } from '../../data/store';
 import {
   collectAllAllergens,
@@ -84,6 +84,7 @@ export function RecipesPage({
   const [difficulties, setDifficulties] = useState<Difficulty[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [showFilterSheet, setShowFilterSheet] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [categoryDetail, setCategoryDetail] = useState<{ title: string; items: RecipeRowItem[] } | null>(null);
   // 태그별 행(cuisine+style)이 29차 확장으로 최대 16개까지 늘어날 수 있어 기본은 접어둔다
   // (요구사항 3) — "보유 재료로 가능"/"최근 추가됨"만 항상 펼쳐진 상태로 보임.
@@ -295,31 +296,22 @@ export function RecipesPage({
         </button>
       )}
 
-      <h1 className="page-header-title">레시피 관리</h1>
-      <div className="page-header-actions">
-        {/* 첫 화면(행 구조)에서는 그리드/리스트 toggle이 필요 없음 — 검색/필터로 넘어가거나
-            행에서 "더보기"로 들어간 카테고리 상세 화면에서만 다시 노출됨 */}
-        {!isRowMode && (
-          <button
-            className="btn small"
-            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-            title={viewMode === 'grid' ? '리스트로 보기' : '그리드로 보기'}
-          >
-            {viewMode === 'grid' ? '☰' : '▦'}
-          </button>
-        )}
-        <button className="btn small" onClick={onOpenCookingHistory}>
-          📋 요리 기록
-        </button>
-        <button className="btn small" onClick={onManageTags}>
-          태그 관리
-        </button>
-        <button className="btn primary small" onClick={onAddRecipe}>
-          + 레시피 추가
+      <div className="row" style={{ alignItems: 'center', marginBottom: 4 }}>
+        <h1 className="page-header-title" style={{ margin: 0, flex: 1, minWidth: 0 }}>
+          레시피 관리
+        </h1>
+        <button
+          type="button"
+          className="home-avatar-btn"
+          style={{ marginLeft: 8, flexShrink: 0 }}
+          onClick={() => setShowMenu(true)}
+          aria-label="메뉴"
+        >
+          <MoreVertical size={20} strokeWidth={2.5} />
         </button>
       </div>
 
-      <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+      <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 14, marginBottom: 14 }}>
         <div className="pill-input-row" style={{ flex: 1, marginBottom: 0 }}>
           <input
             value={search}
@@ -327,11 +319,65 @@ export function RecipesPage({
             placeholder="레시피 이름 또는 재료로 검색"
           />
         </div>
+        {/* 첫 화면(행 구조)에서는 그리드/리스트 toggle이 필요 없음 — 검색/필터로 넘어가거나
+            행에서 "더보기"로 들어간 카테고리 상세 화면에서만 다시 노출됨 */}
+        {!isRowMode && (
+          <button
+            className="btn small"
+            style={{ flexShrink: 0 }}
+            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+            title={viewMode === 'grid' ? '리스트로 보기' : '그리드로 보기'}
+          >
+            {viewMode === 'grid' ? '☰' : '▦'}
+          </button>
+        )}
         <button type="button" className="recipe-filter-btn" onClick={() => setShowFilterSheet(true)} aria-label="필터">
           <SlidersHorizontal size={19} strokeWidth={2.5} />
           {appliedFilterCount > 0 && <span className="recipe-filter-badge">{appliedFilterCount}</span>}
         </button>
       </div>
+
+      {showMenu && (
+        <div className="modal-backdrop" onClick={() => setShowMenu(false)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="profile-sheet-menu">
+              <button
+                type="button"
+                className="profile-sheet-menu-item"
+                onClick={() => {
+                  setShowMenu(false);
+                  onOpenCookingHistory();
+                }}
+              >
+                <ClipboardList size={19} strokeWidth={2.75} />
+                <span>요리 기록</span>
+              </button>
+              <button
+                type="button"
+                className="profile-sheet-menu-item"
+                onClick={() => {
+                  setShowMenu(false);
+                  onManageTags();
+                }}
+              >
+                <Tags size={19} strokeWidth={2.75} />
+                <span>태그 관리</span>
+              </button>
+              <button
+                type="button"
+                className="profile-sheet-menu-item"
+                onClick={() => {
+                  setShowMenu(false);
+                  onAddRecipe();
+                }}
+              >
+                <Plus size={19} strokeWidth={2.75} />
+                <span>레시피 추가</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {appliedFilterChips.length > 0 && (
         <div className="chip-row-scroll" style={{ marginTop: 8 }}>

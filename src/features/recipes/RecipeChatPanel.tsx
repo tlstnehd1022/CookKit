@@ -122,7 +122,7 @@ export function RecipeChatPanel({
     <div className="card">
       <h2 style={{ fontSize: 14, marginBottom: 4 }}>💬 대화로 레시피 만들기/수정하기</h2>
       <p className="text-muted" style={{ marginBottom: 8 }}>
-        만들고 싶거나 고치고 싶은 걸 편하게 말해보세요. 반영 전에 항상 미리 보여드려요.
+        만들고 싶거나 고치고 싶은 걸 편하게 말해보세요.
       </p>
 
       {(currentRecipe.name.trim() || currentRecipe.ingredients.length > 0) && (
@@ -173,7 +173,7 @@ export function RecipeChatPanel({
         }}
       >
         {messages.length === 0 && (
-          <p className="text-muted">예: "고추기름 넣은 얼큰 라면 끓이는 법 알려줘" 처럼 말을 걸어보세요.</p>
+          <p className="text-muted">"고추기름 넣은 얼큰 라면 끓이는 법 알려줘"</p>
         )}
         {messages.map((message, index) => (
           <div

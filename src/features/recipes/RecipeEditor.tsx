@@ -825,7 +825,7 @@ export function RecipeEditor({
           링크만 넣으면 자막을 읽고 레시피로 정리해요.
         </p>
         <div className="row" style={{ gap: 6, alignItems: 'flex-end' }}>
-          <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+          <div className="field" style={{ flex: 1, maxWidth: '62%', marginBottom: 0 }}>
             <label>유튜브 링크</label>
             <input
               value={youtubeUrl}
@@ -909,7 +909,7 @@ export function RecipeEditor({
         <h2>✏️ 레시피 내용</h2>
       </div>
       <p className="text-muted" style={{ marginTop: -2, marginBottom: 4 }}>
-        여기부터 실제로 저장되는 내용이에요. 위에서 AI로 채웠다면 한 번 확인해주세요.
+        여기부터 실제로 저장되는 내용이에요.
       </p>
 
       <div className="section-title">기본 정보</div>
@@ -919,12 +919,13 @@ export function RecipeEditor({
       </div>
       <div className="field">
         <label>기준 인분 수</label>
-        <input
-          type="number"
-          min={1}
-          value={servingsBase}
-          onChange={(e) => setServingsBase(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
-        />
+        <select value={servingsBase} onChange={(e) => setServingsBase(Number(e.target.value))}>
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+            <option key={n} value={n}>
+              {n}인분
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="section-title">완성 사진 (선택)</div>

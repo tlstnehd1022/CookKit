@@ -26,6 +26,8 @@ export interface ExtractedRecipe {
   warning?: string | null;
   difficulty?: 'easy' | 'medium' | 'hard' | null;
   difficultyReason?: string | null;
+  /** 이 요리를 소개하는 위트있고 감성적인 한 줄(선택) — 제안 미리보기 상단에 표시됨. */
+  tagline?: string | null;
 }
 
 const RECIPE_SCHEMA = {
@@ -90,6 +92,12 @@ const RECIPE_SCHEMA = {
       type: ['string', 'null'],
       description: '난이도를 이렇게 판단한 근거를 한국어 한 문장으로.',
     },
+    tagline: {
+      type: ['string', 'null'],
+      description:
+        '이 요리를 소개하는 위트있고 감성적인 한 줄 문구. 15자 내외로 짧게, 광고 카피처럼. ' +
+        '예: "비 오는 날엔 역시 뜨끈한 국물" (재료 나열이나 설명체 금지, 느낌 있게).',
+    },
   },
   required: [
     'name',
@@ -100,6 +108,7 @@ const RECIPE_SCHEMA = {
     'warning',
     'difficulty',
     'difficultyReason',
+    'tagline',
   ],
   additionalProperties: false,
 } as const;

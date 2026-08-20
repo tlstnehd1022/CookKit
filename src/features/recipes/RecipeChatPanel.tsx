@@ -7,6 +7,8 @@ import type { ChatTurn, ExistingContext } from '../../lib/aiChat';
 import type { ExtractedRecipe } from '../../lib/claudeClient';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
 import { getErrorMessage } from '../../lib/errorMessage';
+import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
+import { estimateCookMinutes } from '../../lib/recipeTime';
 
 export function RecipeChatPanel({
   onApply,
@@ -198,6 +200,13 @@ export function RecipeChatPanel({
 
       {pendingRecipe && (
         <div className="card" style={{ background: 'var(--chip-bg)', marginBottom: 8 }}>
+          {pendingRecipe.tagline && (
+            <p style={{ margin: '0 0 8px', fontStyle: 'italic' }}>“{pendingRecipe.tagline}”</p>
+          )}
+          <div className="chip-row" style={{ marginTop: 0, marginBottom: 8 }}>
+            {pendingRecipe.difficulty && <span className="chip">{DIFFICULTY_LABEL[pendingRecipe.difficulty]}</span>}
+            <span className="chip">약 {estimateCookMinutes(pendingRecipe.steps)}분</span>
+          </div>
           <strong style={{ fontSize: 13 }}>AI가 제안한 변경사항</strong>
           <ul style={{ margin: '6px 0', paddingLeft: 18, fontSize: 13 }}>
             {pendingDiff.map((line, index) => (

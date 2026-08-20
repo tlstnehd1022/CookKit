@@ -30,6 +30,8 @@ export interface ExtractedRecipe {
   warning?: string | null;
   difficulty?: 'easy' | 'medium' | 'hard' | null;
   difficultyReason?: string | null;
+  /** 이 요리를 소개하는 위트있고 감성적인 한 줄(선택) — 제안 미리보기 상단에 표시됨. */
+  tagline?: string | null;
 }
 
 // Gemini의 responseSchema는 JSON Schema와 비슷하지만 타입이 대문자이고 nullable 필드를 별도로 표기한다.
@@ -97,6 +99,13 @@ const GEMINI_RECIPE_SCHEMA = {
     difficultyReason: {
       type: 'STRING',
       description: '난이도를 이렇게 판단한 근거를 한국어 한 문장으로.',
+      nullable: true,
+    },
+    tagline: {
+      type: 'STRING',
+      description:
+        '이 요리를 소개하는 위트있고 감성적인 한 줄 문구. 15자 내외로 짧게, 광고 카피처럼. ' +
+        '예: "비 오는 날엔 역시 뜨끈한 국물" (재료 나열이나 설명체 금지, 느낌 있게).',
       nullable: true,
     },
   },

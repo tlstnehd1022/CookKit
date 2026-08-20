@@ -855,6 +855,15 @@ export function RecipeEditor({
 
         {pendingYoutubeResult && (
           <div className="card" style={{ background: 'var(--chip-bg)', marginTop: 8 }}>
+            {pendingYoutubeResult.tagline && (
+              <p style={{ margin: '0 0 8px', fontStyle: 'italic' }}>“{pendingYoutubeResult.tagline}”</p>
+            )}
+            <div className="chip-row" style={{ marginTop: 0, marginBottom: 8 }}>
+              {pendingYoutubeResult.difficulty && (
+                <span className="chip">{DIFFICULTY_LABEL[pendingYoutubeResult.difficulty]}</span>
+              )}
+              <span className="chip">약 {estimateCookMinutes(pendingYoutubeResult.steps)}분</span>
+            </div>
             <strong style={{ fontSize: 13 }}>유튜브 변환 결과 — 변경사항</strong>
             <ul style={{ margin: '6px 0', paddingLeft: 18, fontSize: 13 }}>
               {pendingYoutubeDiff.map((line, index) => (

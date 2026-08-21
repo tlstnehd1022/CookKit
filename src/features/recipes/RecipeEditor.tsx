@@ -1415,7 +1415,7 @@ function UnitPicker({ unit, onChange }: { unit: string; onChange: (unit: string)
   const selectValue = isKnown ? unit : CUSTOM_UNIT_VALUE;
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 92 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 108 }}>
       <select
         value={selectValue}
         onChange={(e) => {
@@ -1434,7 +1434,9 @@ function UnitPicker({ unit, onChange }: { unit: string; onChange: (unit: string)
         <option value={CUSTOM_UNIT_VALUE}>직접입력</option>
       </select>
       {!isKnown && (
-        <input value={unit} onChange={(e) => onChange(e.target.value)} placeholder="단위 입력" />
+        <div className="field" style={{ margin: 0 }}>
+          <input value={unit} onChange={(e) => onChange(e.target.value)} placeholder="단위 입력" />
+        </div>
       )}
     </div>
   );

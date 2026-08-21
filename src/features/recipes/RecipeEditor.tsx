@@ -1108,12 +1108,13 @@ export function RecipeEditor({
               </option>
             ))}
           </select>
-          <input
-            type="number"
-            value={row.amount}
-            onChange={(e) => updateIngredientRow(index, { amount: Math.max(0, Number(e.target.value) || 0) })}
-            style={{ flex: 1, width: 60 }}
-          />
+          <div className="field" style={{ flex: '0 0 64px', margin: 0 }}>
+            <input
+              type="number"
+              value={row.amount}
+              onChange={(e) => updateIngredientRow(index, { amount: Math.max(0, Number(e.target.value) || 0) })}
+            />
+          </div>
           <UnitPicker unit={row.unit} onChange={(unit) => updateIngredientRow(index, { unit })} />
           <button className="btn small danger" onClick={() => removeIngredientRow(index)}>
             삭제
@@ -1385,7 +1386,7 @@ function UnitPicker({ unit, onChange }: { unit: string; onChange: (unit: string)
   const selectValue = isKnown ? unit : CUSTOM_UNIT_VALUE;
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 70 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 92 }}>
       <select
         value={selectValue}
         onChange={(e) => {

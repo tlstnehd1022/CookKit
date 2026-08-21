@@ -865,3 +865,26 @@ $$;
 
 revoke all on function public.create_household_recipe_added_notifications(uuid) from public;
 grant execute on function public.create_household_recipe_added_notifications(uuid) to authenticated;
+
+-- AI 대화 응답 피드백(👎) — 0037
+create table public.ai_chat_feedback (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references public.households(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  recipe_id uuid references public.recipes(id) on delete set null,
+  user_message text not null,
+  ai_response text not null,
+  feedback_type text not null default 'bad',
+  reason text,
+  created_at timestamptz not null default now()
+);
+
+create index ai_chat_feedback_household_id_idx on public.ai_chat_feedback (household_id, created_at desc);
+
+alter table public.ai_chat_feedback enable row level security;
+
+create policy "ai_chat_feedback_select_household" on public.ai_chat_feedback
+  for select using (public.is_household_member(household_id));
+
+create policy "ai_chat_feedback_insert_own" on public.ai_chat_feedback
+  for insert with check (public.is_household_member(household_id) and user_id = auth.uid());

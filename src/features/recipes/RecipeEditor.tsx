@@ -836,6 +836,7 @@ export function RecipeEditor({
         currentRecipe={currentRecipeSnapshot}
         autoSendText={initialChatPrompt}
         initialInputText={initialChatText}
+        recipeId={recipeId}
       />
       {undoStack.length > 0 && (
         <button className="btn small" style={{ marginBottom: 12 }} onClick={undoLastApply}>

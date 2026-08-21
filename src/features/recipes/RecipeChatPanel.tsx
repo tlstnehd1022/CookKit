@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSettings } from '../../data/settings';
 import { requestProfileSheet } from '../../data/profileSheet';
+import { useSession } from '../../data/session';
+import { getCurrentHouseholdId } from '../../data/store';
+import { submitAiChatFeedback } from '../../data/aiChatFeedback';
 import * as aiProxy from '../../lib/aiProxy';
 import { ApiProxyError } from '../../lib/aiProxy';
 import type { ChatTurn, ExistingContext } from '../../lib/aiChat';
@@ -16,6 +19,7 @@ export function RecipeChatPanel({
   currentRecipe,
   autoSendText,
   initialInputText,
+  recipeId,
 }: {
   onApply: (result: ExtractedRecipe) => Promise<void>;
   existingContext: ExistingContext;
@@ -26,9 +30,13 @@ export function RecipeChatPanel({
   /** 공유하기로 들어온 텍스트 등을 입력창에 미리 채워두기만 한다(autoSendText와 달리 자동
    * 전송하지 않음 — 사용자가 확인/수정 후 직접 보낼 수 있게). */
   initialInputText?: string;
+  /** 지금 편집 중인 레시피 id(신규 레시피면 없음) — 👎 피드백에 참고용으로만 같이 저장 */
+  recipeId?: string;
 }) {
   const { settings } = useSettings();
   const isGemini = settings.aiProvider === 'gemini';
+  const { user } = useSession();
+  const householdId = getCurrentHouseholdId();
 
   const [messages, setMessages] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState(initialInputText ?? '');
@@ -41,6 +49,15 @@ export function RecipeChatPanel({
   const [pendingReply, setPendingReply] = useState('');
   const [missingApiKey, setMissingApiKey] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // AI 응답 👎 피드백 — feedbackTarget은 지금 이유 입력 중인 메시지의 index, feedbackGiven은
+  // 이미 제출해서 다시 못 누르게 숨길 index 목록, feedbackThanksIndex는 "피드백 감사해요"를
+  // 잠깐 보여줄 index.
+  const [feedbackTarget, setFeedbackTarget] = useState<number | null>(null);
+  const [feedbackReason, setFeedbackReason] = useState('');
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackGiven, setFeedbackGiven] = useState<Set<number>>(new Set());
+  const [feedbackThanksIndex, setFeedbackThanksIndex] = useState<number | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -121,6 +138,33 @@ export function RecipeChatPanel({
     setPendingReply('');
   }
 
+  async function submitFeedback(index: number) {
+    const assistantMessage = messages[index];
+    const userMessage = messages[index - 1];
+    if (!assistantMessage || !user || !householdId) return;
+    setFeedbackSubmitting(true);
+    try {
+      await submitAiChatFeedback({
+        householdId,
+        userId: user.id,
+        recipeId,
+        userMessage: userMessage?.text ?? '',
+        aiResponse: assistantMessage.text,
+        feedbackType: 'bad',
+        reason: feedbackReason,
+      });
+      setFeedbackTarget(null);
+      setFeedbackReason('');
+      setFeedbackGiven((prev) => new Set(prev).add(index));
+      setFeedbackThanksIndex(index);
+      setTimeout(() => setFeedbackThanksIndex((cur) => (cur === index ? null : cur)), 2500);
+    } catch (err) {
+      console.error('AI 피드백 저장 실패:', err);
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  }
+
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -190,16 +234,74 @@ export function RecipeChatPanel({
             key={index}
             style={{
               alignSelf: message.role === 'user' ? 'flex-end' : 'flex-start',
-              background: message.role === 'user' ? 'var(--accent)' : 'var(--chip-bg)',
-              color: message.role === 'user' ? 'var(--accent-contrast)' : 'var(--text)',
-              borderRadius: 12,
-              padding: '8px 12px',
               maxWidth: '85%',
-              whiteSpace: 'pre-wrap',
-              fontSize: 14,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
             }}
           >
-            {message.text}
+            <div
+              style={{
+                background: message.role === 'user' ? 'var(--accent)' : 'var(--chip-bg)',
+                color: message.role === 'user' ? 'var(--accent-contrast)' : 'var(--text)',
+                borderRadius: 12,
+                padding: '8px 12px',
+                whiteSpace: 'pre-wrap',
+                fontSize: 14,
+              }}
+            >
+              {message.text}
+            </div>
+            {message.role === 'assistant' &&
+              (feedbackTarget === index ? (
+                <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+                  <div className="field" style={{ flex: 1, margin: 0 }}>
+                    <input
+                      value={feedbackReason}
+                      onChange={(e) => setFeedbackReason(e.target.value)}
+                      placeholder="어떤 점이 아쉬웠나요? (선택)"
+                      style={{ fontSize: 13, padding: '6px 10px' }}
+                    />
+                  </div>
+                  <button className="btn small" onClick={() => setFeedbackTarget(null)} disabled={feedbackSubmitting}>
+                    취소
+                  </button>
+                  <button
+                    className="btn small primary"
+                    onClick={() => submitFeedback(index)}
+                    disabled={feedbackSubmitting}
+                  >
+                    제출
+                  </button>
+                </div>
+              ) : feedbackThanksIndex === index ? (
+                <span className="text-muted" style={{ fontSize: 12 }}>
+                  피드백 감사해요
+                </span>
+              ) : (
+                !feedbackGiven.has(index) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFeedbackTarget(index);
+                      setFeedbackReason('');
+                    }}
+                    aria-label="이 답변이 별로였어요"
+                    title="이 답변이 별로였어요"
+                    style={{
+                      alignSelf: 'flex-start',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      opacity: 0.4,
+                      fontSize: 13,
+                      padding: '2px 4px',
+                    }}
+                  >
+                    👎
+                  </button>
+                )
+              ))}
           </div>
         ))}
         {loading && <p className="text-muted">생각하는 중...</p>}

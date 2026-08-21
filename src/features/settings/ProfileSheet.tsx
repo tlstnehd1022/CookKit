@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import { ChevronLeft, X, User, Home, Settings, LogOut, ChevronRight, Bell, Compass, Camera } from 'lucide-react';
+import { ChevronLeft, X, User, Home, Settings, LogOut, ChevronRight, Bell, Compass, Camera, Search } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useSettings } from '../../data/settings';
 import { useSession } from '../../data/session';
@@ -20,6 +20,7 @@ import {
   useAnnouncementTone,
 } from '../../data/cookingModeSettings';
 import { useNotifications, type AppNotification } from '../../data/notifications';
+import { fetchAiChatFeedback, type AiChatFeedbackEntry } from '../../data/aiChatFeedback';
 import { useIngredients, useRecipes } from '../../data/store';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { getErrorMessage } from '../../lib/errorMessage';
@@ -27,13 +28,14 @@ import { ConfirmDialog } from '../recipes/ConfirmDialog';
 
 const API_KEY_MIGRATION_FLAG = 'cookkit:apiKeyMigrated';
 
-type Section = 'menu' | 'notifications' | 'profile' | 'household' | 'app';
+type Section = 'menu' | 'notifications' | 'profile' | 'household' | 'app' | 'ai-feedback';
 
 const SECTION_TITLE: Record<Exclude<Section, 'menu'>, string> = {
   notifications: '알림',
   profile: '내 프로필',
   household: '가구 설정',
   app: '앱 설정',
+  'ai-feedback': 'AI 피드백 기록',
 };
 
 /**
@@ -137,7 +139,8 @@ export function ProfileSheet({
         )}
         {section === 'profile' && <ProfileSection />}
         {section === 'household' && <HouseholdSection />}
-        {section === 'app' && <AppSettingsSection />}
+        {section === 'app' && <AppSettingsSection onOpenFeedback={() => setSection('ai-feedback')} />}
+        {section === 'ai-feedback' && <AiChatFeedbackSection />}
       </div>
     </div>
   );
@@ -448,7 +451,7 @@ function useAvailableVoices(): SpeechSynthesisVoice[] {
   return korean.length > 0 ? korean : voices;
 }
 
-function AppSettingsSection() {
+function AppSettingsSection({ onOpenFeedback }: { onOpenFeedback: () => void }) {
   const { settings, updateSettings } = useSettings();
   const { theme, toggleTheme } = useTheme();
   const anthropicKeyStatus = useApiKeyStatus('anthropic');
@@ -733,7 +736,67 @@ function AppSettingsSection() {
           </div>
         </>
       )}
+
+      <div className="section-title">AI 피드백</div>
+      <div className="profile-sheet-menu">
+        <button type="button" className="profile-sheet-menu-item" onClick={onOpenFeedback}>
+          <Search size={19} strokeWidth={2.75} />
+          <span>AI 피드백 기록</span>
+          <ChevronRight size={16} strokeWidth={2.75} className="profile-sheet-menu-chevron" />
+        </button>
+      </div>
     </>
+  );
+}
+
+/** "🔍 AI 피드백 기록" — RecipeChatPanel의 👎로 남긴 기록을 최신순으로 보여주기만 하는 최소
+ * 조회 화면(검색/필터 없음, 최신 50건). 여기서 프롬프트를 직접 고치는 기능은 넣지 않는다 —
+ * 그건 CLAUDE.md/Claude Code로 진행. */
+function AiChatFeedbackSection() {
+  const { household } = useHousehold();
+  const [entries, setEntries] = useState<AiChatFeedbackEntry[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!household) return;
+    let cancelled = false;
+    fetchAiChatFeedback(household.id)
+      .then((result) => {
+        if (!cancelled) setEntries(result);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(getErrorMessage(err, 'AI 피드백 기록을 불러오지 못했습니다.'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [household?.id]);
+
+  return (
+    <div>
+      <p className="text-muted" style={{ marginBottom: 12 }}>
+        AI 대화에서 👎로 남긴 피드백을 최신순으로 최대 50건 보여줘요.
+      </p>
+      {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
+      {!error && entries === null && <p className="text-muted">불러오는 중...</p>}
+      {entries && entries.length === 0 && <div className="empty-hint">아직 남겨진 피드백이 없어요.</div>}
+      {entries?.map((entry) => (
+        <div className="card" key={entry.id} style={{ marginBottom: 10 }}>
+          <span className="text-muted" style={{ fontSize: 12 }}>
+            {new Date(entry.createdAt).toLocaleString('ko-KR')}
+          </span>
+          <p style={{ marginTop: 6 }}>
+            <strong>사용자:</strong> {entry.userMessage}
+          </p>
+          <p style={{ marginTop: 4 }}>
+            <strong>AI:</strong> {entry.aiResponse}
+          </p>
+          {entry.reason && (
+            <p style={{ marginTop: 4, color: 'var(--danger)' }}>👎 이유: {entry.reason}</p>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 

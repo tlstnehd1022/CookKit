@@ -109,11 +109,12 @@ textarea {
   overflow-y: auto;
 }
 
-/* 이미지 일괄 생성 진행 배너 — 어떤 탭을 보고 있어도(레시피 탭이 hidden이어도) 항상 보이도록
-   app-main보다 앞에 둔다. 실제 스크롤은 #root가 아니라 문서(body) 레벨에서 일어나므로
-   (min-height:100vh라 내용이 길어지면 #root 자체가 늘어남 — app-nav가 이미 같은 이유로
-   position:sticky를 쓰고 있는 것과 동일한 사정) sticky로 스크롤해도 화면 상단에 붙어있게 함. */
-.image-gen-banner {
+/* 상단 고정 배너(오프라인 안내/이미지 생성 등 상태 배너 공용) — 어떤 탭을 보고 있어도(레시피
+   탭이 hidden이어도) 항상 보이도록 app-main보다 앞에 둔다. 실제 스크롤은 #root가 아니라
+   문서(body) 레벨에서 일어나므로(min-height:100vh라 내용이 길어지면 #root 자체가 늘어남 —
+   app-nav가 이미 같은 이유로 position:sticky를 쓰고 있는 것과 동일한 사정) sticky로 스크롤해도
+   화면 상단에 붙어있게 함. */
+.top-banner {
   position: sticky;
   top: 0;
   z-index: 50;
@@ -124,6 +125,74 @@ textarea {
   font-size: 13px;
   text-align: center;
   border-bottom: 1px solid var(--border);
+}
+
+/* 로딩 배너(대화 응답 대기/유튜브 변환/이미지 생성 공통, 26차~) — 그냥 조용히 떠 있으면
+   눈에 잘 안 들어와서 accent 연한 배경 + 은은한 테두리/그림자로 "떠 있는" 느낌을 살짝 더하고,
+   아주 미묘한 밝기 펄스로 가만히 있는 배너보다 시선을 끈다. 과하지 않게 최소한만. */
+.top-banner.loading {
+  position: relative;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  box-shadow: var(--shadow-soft);
+  color: var(--text-primary);
+  padding-bottom: 11px; /* 하단 프로그레스 바(3px) 자리 확보 */
+  animation: top-banner-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes top-banner-pulse {
+  0%,
+  100% {
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+  }
+  50% {
+    background: color-mix(in srgb, var(--accent) 18%, var(--bg-card));
+  }
+}
+
+.top-banner-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  overflow: hidden;
+}
+
+.top-banner-progress-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.top-banner-progress-bar.indeterminate {
+  width: 35%;
+  animation: top-banner-progress-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes top-banner-progress-slide {
+  0% {
+    left: -35%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .top-banner.loading {
+    animation: none;
+    background: color-mix(in srgb, var(--accent) 14%, var(--bg-card));
+  }
+  .top-banner-progress-bar.indeterminate {
+    animation: none;
+    left: 0;
+    width: 100%;
+  }
 }
 
 .toast {

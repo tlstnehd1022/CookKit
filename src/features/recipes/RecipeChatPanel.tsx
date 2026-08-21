@@ -4,6 +4,7 @@ import { requestProfileSheet } from '../../data/profileSheet';
 import { useSession } from '../../data/session';
 import { getCurrentHouseholdId } from '../../data/store';
 import { submitAiChatFeedback } from '../../data/aiChatFeedback';
+import { setChatLoading } from '../../data/chatLoadingStatus';
 import * as aiProxy from '../../lib/aiProxy';
 import { ApiProxyError } from '../../lib/aiProxy';
 import type { ChatTurn, ExistingContext } from '../../lib/aiChat';
@@ -89,6 +90,7 @@ export function RecipeChatPanel({
     setError(null);
     setMissingApiKey(false);
     setLoading(true);
+    setChatLoading(true);
     try {
       const result = await aiProxy.chatAboutRecipe(
         settings.aiProvider,
@@ -111,6 +113,7 @@ export function RecipeChatPanel({
       setError(getErrorMessage(err, '대화 중 오류가 발생했습니다.'));
     } finally {
       setLoading(false);
+      setChatLoading(false);
     }
   }
 

@@ -18,6 +18,13 @@ import { COMMON_UNITS, CUSTOM_UNIT_VALUE } from '../../data/units';
 import { RecipeChatPanel } from './RecipeChatPanel';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
 import { extractYoutubeVideoId, fetchYoutubeTranscript } from '../../lib/youtubeTranscript';
+import { getRecipeAddTab, setRecipeAddTab, type RecipeAddTab } from '../../data/recipeAddTab';
+import {
+  startYoutubeConversion,
+  setYoutubeConversionStage,
+  finishYoutubeConversion,
+} from '../../data/youtubeConversionStatus';
+import { showInfoToast } from '../../data/infoToast';
 import {
   buildImagePath,
   deleteImage,
@@ -118,6 +125,21 @@ export function RecipeEditor({
   const [useYoutubeThumbnail, setUseYoutubeThumbnail] = useState(true);
   /** 자막(supadata STT 포함) 추출은 성공했지만 텍스트가 너무 짧을 때(숏츠 등) — 정보 부족 안내용 */
   const [pendingYoutubeShort, setPendingYoutubeShort] = useState(false);
+
+  // 신규 레시피 추가 화면만 탭으로 나눈다(기존 레시피 수정 화면은 원래 구조 그대로 영향 없음).
+  // 공유하기로 유튜브 링크를 받았으면 유튜브 탭으로, 대화를 자동 시작하는 진입(홈 "있는 재료로
+  // 만들기"/공유하기 텍스트)이면 대화 탭으로 강제 진입하고, 그 외에는 마지막으로 쓴 탭을 기억한다.
+  const [addTab, setAddTabState] = useState<RecipeAddTab>(() => {
+    if (initialYoutubeUrl) return 'youtube';
+    if (initialChatPrompt || initialChatText) return 'chat';
+    return getRecipeAddTab();
+  });
+  function selectAddTab(tab: RecipeAddTab) {
+    setAddTabState(tab);
+    setRecipeAddTab(tab);
+  }
+  const showChatTab = existing || addTab === 'chat';
+  const showYoutubeTab = existing || addTab === 'youtube';
 
   interface FormSnapshot {
     name: string;
@@ -237,6 +259,7 @@ export function RecipeEditor({
     setAiWarning(null);
     setPendingYoutubeShort(false);
     setYoutubeStage('extracting');
+    startYoutubeConversion();
     try {
       let transcriptText = '';
       let transcriptLanguage = '';
@@ -261,6 +284,7 @@ export function RecipeEditor({
       }
 
       setYoutubeStage('analyzing');
+      setYoutubeConversionStage('analyzing');
       let result: ExtractedRecipe;
       if (isGemini) {
         // 키가 없거나 조회 실패해도 서버가 meta: null로 응답(선택 사항 — 자막만으로 계속 진행)
@@ -281,6 +305,7 @@ export function RecipeEditor({
       setPendingYoutubeLanguage(transcriptLanguage);
       setPendingYoutubeVideoId(extractYoutubeVideoId(trimmedUrl));
       setUseYoutubeThumbnail(true);
+      showInfoToast('🎬 유튜브 변환이 끝났어요');
     } catch (err) {
       if (err instanceof ApiProxyError && err.code === 'no_api_key') {
         setAiMissingApiKey(true);
@@ -289,6 +314,7 @@ export function RecipeEditor({
     } finally {
       setAiLoading(false);
       setYoutubeStage('idle');
+      finishYoutubeConversion();
     }
   }
 
@@ -830,20 +856,46 @@ export function RecipeEditor({
         </button>
       )}
 
-      <RecipeChatPanel
-        onApply={applyExtractedResult}
-        existingContext={existingContext}
-        currentRecipe={currentRecipeSnapshot}
-        autoSendText={initialChatPrompt}
-        initialInputText={initialChatText}
-        recipeId={recipeId}
-      />
-      {undoStack.length > 0 && (
-        <button className="btn small" style={{ marginBottom: 12 }} onClick={undoLastApply}>
-          ↩ AI 반영 이전으로 되돌리기 ({undoStack.length})
-        </button>
+      {/* 대화/유튜브 둘 다 한 화면에 떠 있으면 화면만 길어지고 실제로 동시에 쓸 일이 없어
+          탭으로 나눔 — 기존 레시피 수정 화면(existing)은 원래 구조 그대로 두 섹션이 함께
+          보이며 이번 변경과 무관하다. 탭 전환은 unmount가 아니라 display:none으로만 숨겨서
+          대화 메시지/유튜브 입력값이 사라지지 않는다. */}
+      {!existing && (
+        <div className="row" style={{ gap: 8, marginBottom: 12 }}>
+          <button
+            type="button"
+            className={`btn small ${addTab === 'chat' ? 'primary' : ''}`}
+            onClick={() => selectAddTab('chat')}
+          >
+            💬 대화로 만들기
+          </button>
+          <button
+            type="button"
+            className={`btn small ${addTab === 'youtube' ? 'primary' : ''}`}
+            onClick={() => selectAddTab('youtube')}
+          >
+            🎬 유튜브로 만들기
+          </button>
+        </div>
       )}
 
+      <div style={{ display: showChatTab ? undefined : 'none' }}>
+        <RecipeChatPanel
+          onApply={applyExtractedResult}
+          existingContext={existingContext}
+          currentRecipe={currentRecipeSnapshot}
+          autoSendText={initialChatPrompt}
+          initialInputText={initialChatText}
+          recipeId={recipeId}
+        />
+        {undoStack.length > 0 && (
+          <button className="btn small" style={{ marginBottom: 12 }} onClick={undoLastApply}>
+            ↩ AI 반영 이전으로 되돌리기 ({undoStack.length})
+          </button>
+        )}
+      </div>
+
+      <div style={{ display: showYoutubeTab ? undefined : 'none' }}>
       <div className="card">
         <h2 style={{ fontSize: 14, marginBottom: 4 }}>🎬 유튜브 링크로 변환</h2>
         <p className="text-muted" style={{ marginBottom: 8 }}>
@@ -939,8 +991,12 @@ export function RecipeEditor({
             )}
           </div>
         )}
-        {aiWarning && <p className="text-muted" style={{ marginTop: 8 }}>⚠️ {aiWarning}</p>}
       </div>
+      </div>
+
+      {/* aiWarning은 대화/유튜브 두 반영 경로 모두에서 설정될 수 있어(applyExtractedResult가
+          공용) 탭과 무관하게 항상 보이는 위치에 둔다. */}
+      {aiWarning && <p className="text-muted" style={{ marginTop: 8 }}>⚠️ {aiWarning}</p>}
 
       <div className="recipe-editor-divider">
         <h2>✏️ 레시피 내용</h2>

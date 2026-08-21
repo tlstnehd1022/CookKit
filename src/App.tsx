@@ -17,9 +17,29 @@ import {
 import { initializeShoppingExtraItems, resetShoppingExtraItems } from './data/shoppingExtraItems';
 import { initializeNotifications, resetNotifications } from './data/notifications';
 import { useImageGenerationCompletionMessage, useImageGenerationStatus } from './data/imageGenerationStatus';
+import { useChatLoading } from './data/chatLoadingStatus';
+import { useYoutubeConversionStatus } from './data/youtubeConversionStatus';
+import { useInfoToast } from './data/infoToast';
 import { setActiveTab, useActiveTab, type Tab } from './data/activeTab';
 import { useOnlineStatus } from './data/useOnlineStatus';
 import { useUndoToast, triggerUndo } from './data/undoToast';
+
+/** 대화 응답 대기/유튜브 변환/이미지 생성 로딩을 같은 시각적 패턴(상단 고정 배너 + 하단
+ * 프로그레스 바)으로 통일해 보여준다 — progress를 모르면(대화 응답처럼) 무한 로딩 애니메이션,
+ * 알면(유튜브 단계/이미지 생성 개수) 실제 진행률을 보여준다. */
+function LoadingBanner({ message, progress }: { message: string; progress?: number }) {
+  return (
+    <div className="top-banner loading">
+      {message}
+      <div className="top-banner-progress">
+        <div
+          className={`top-banner-progress-bar ${progress == null ? 'indeterminate' : ''}`}
+          style={progress != null ? { width: `${Math.round(progress * 100)}%` } : undefined}
+        />
+      </div>
+    </div>
+  );
+}
 
 const TABS: { id: Tab; label: string; icon: typeof House }[] = [
   { id: 'home', label: '홈', icon: House },
@@ -35,6 +55,9 @@ function App() {
   const tab = useActiveTab();
   const imageGenStatus = useImageGenerationStatus();
   const imageGenCompletionMessage = useImageGenerationCompletionMessage();
+  const chatLoading = useChatLoading();
+  const youtubeConversionStatus = useYoutubeConversionStatus();
+  const infoToast = useInfoToast();
   const [dataLoadError, setDataLoadError] = useState<string | null>(null);
   const shoppingNeededCount = useShoppingNeededCount();
   const isOnline = useOnlineStatus();
@@ -103,12 +126,20 @@ function App() {
   return (
     <>
       {!isOnline && (
-        <div className="image-gen-banner">📴 오프라인 상태예요. 변경사항이 저장되지 않을 수 있어요.</div>
+        <div className="top-banner">📴 오프라인 상태예요. 변경사항이 저장되지 않을 수 있어요.</div>
+      )}
+      {chatLoading && <LoadingBanner message="💬 답변 준비 중..." />}
+      {youtubeConversionStatus.active && (
+        <LoadingBanner
+          message={youtubeConversionStatus.stage === 'extracting' ? '🎬 자막 추출 중...' : '🎬 레시피 분석 중...'}
+          progress={youtubeConversionStatus.stage === 'extracting' ? 0.4 : 0.85}
+        />
       )}
       {imageGenStatus.active && (
-        <div className="image-gen-banner">
-          🖼 "{imageGenStatus.recipeName}" 이미지 생성 중... ({imageGenStatus.done}/{imageGenStatus.total})
-        </div>
+        <LoadingBanner
+          message={`🖼 "${imageGenStatus.recipeName}" 이미지 생성 중... (${imageGenStatus.done}/${imageGenStatus.total})`}
+          progress={imageGenStatus.total > 0 ? imageGenStatus.done / imageGenStatus.total : undefined}
+        />
       )}
       <main className="app-main">
         {/* 탭 전환 시 조건부 렌더링(마운트/언마운트)이 아니라 hidden 속성으로 숨기기만 한다.
@@ -148,6 +179,7 @@ function App() {
         })}
       </nav>
       {imageGenCompletionMessage && <div className="toast">{imageGenCompletionMessage}</div>}
+      {infoToast && <div className="toast">{infoToast}</div>}
       {undoToast && (
         <div className="toast toast-undo">
           <span>{undoToast.message}</span>

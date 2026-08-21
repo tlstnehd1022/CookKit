@@ -110,6 +110,8 @@ export function RecipeEditor({
   const [applyingYoutube, setApplyingYoutube] = useState(false);
   const [pendingYoutubeVideoId, setPendingYoutubeVideoId] = useState<string | null>(null);
   const [useYoutubeThumbnail, setUseYoutubeThumbnail] = useState(true);
+  /** 자막(supadata STT 포함) 추출은 성공했지만 텍스트가 너무 짧을 때(숏츠 등) — 정보 부족 안내용 */
+  const [pendingYoutubeShort, setPendingYoutubeShort] = useState(false);
 
   interface FormSnapshot {
     name: string;
@@ -226,6 +228,7 @@ export function RecipeEditor({
     setAiError(null);
     setAiMissingApiKey(false);
     setAiWarning(null);
+    setPendingYoutubeShort(false);
     setYoutubeStage('extracting');
     try {
       let transcriptText = '';
@@ -236,6 +239,8 @@ export function RecipeEditor({
         transcriptText = transcriptResult.transcript;
         transcriptLanguage = transcriptResult.language;
         transcriptSource = transcriptResult.source;
+        // 숏츠처럼 영상이 짧으면 자막도 짧아 AI가 참고할 정보가 부족할 수 있다.
+        setPendingYoutubeShort(transcriptText.trim().length < 50);
       } catch (err) {
         // 자막을 아예 못 가져온 경우(자막 없음/비공개 영상 등) — AI 호출 없이 바로 중단하고
         // 대체 경로(직접 붙여넣기 또는 상단 대화창)로 유도한다.
@@ -857,6 +862,11 @@ export function RecipeEditor({
           <div className="card" style={{ background: 'var(--chip-bg)', marginTop: 8 }}>
             {pendingYoutubeResult.tagline && (
               <p style={{ margin: '0 0 8px', fontStyle: 'italic' }}>“{pendingYoutubeResult.tagline}”</p>
+            )}
+            {pendingYoutubeShort && (
+              <p style={{ margin: '0 0 8px', color: 'var(--warning)', fontSize: 13 }}>
+                ⚠️ 영상이 짧아서 정보가 부족할 수 있어요. 내용을 꼭 확인해주세요.
+              </p>
             )}
             <strong style={{ fontSize: 13 }}>유튜브 변환 결과 — 변경사항</strong>
             <ul style={{ margin: '6px 0', paddingLeft: 18, fontSize: 13 }}>

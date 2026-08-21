@@ -8,6 +8,7 @@ import {
   YoutubeTranscriptVideoUnavailableError,
 } from 'youtube-transcript';
 import { requireUser, AuthError } from './_lib/auth.js';
+import { extractYoutubeVideoId } from '../src/lib/youtubeTranscript.js';
 
 // Supadata 폴백이 긴 영상은 작업(job) 방식으로 처리하고 폴링이 필요할 수 있어 기본 실행시간보다 늘려둔다.
 // Vercel Hobby 플랜에서 60초를 넘기려면 프로젝트에서 Fluid Compute가 켜져 있어야 한다.
@@ -33,10 +34,10 @@ interface TranscriptResult {
   source: 'captions' | 'supadata';
 }
 
-async function fetchOwnCaptions(url: string): Promise<TranscriptResult> {
+async function fetchOwnCaptions(videoId: string): Promise<TranscriptResult> {
   for (const lang of LANG_PRIORITY) {
     try {
-      const items = await YoutubeTranscript.fetchTranscript(url, { lang });
+      const items = await YoutubeTranscript.fetchTranscript(videoId, { lang });
       return { transcript: items.map((item) => item.text).join(' '), language: lang, source: 'captions' };
     } catch (err) {
       if (err instanceof YoutubeTranscriptNotAvailableLanguageError) continue;
@@ -44,7 +45,7 @@ async function fetchOwnCaptions(url: string): Promise<TranscriptResult> {
     }
   }
   // ko/en 자막 트랙이 없으면 기본(자동생성 등) 트랙으로 마지막 한 번 더 시도
-  const items = await YoutubeTranscript.fetchTranscript(url);
+  const items = await YoutubeTranscript.fetchTranscript(videoId);
   return {
     transcript: items.map((item) => item.text).join(' '),
     language: items[0]?.lang ?? '자동생성',
@@ -102,10 +103,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(400).json({ error: 'invalid_url', message: '유튜브 링크가 필요합니다.' });
     return;
   }
+  // youtube-transcript 패키지 자체의 URL 파싱 정규식은 shorts 링크를 못 알아봐서(watch/youtu.be만
+  // 지원), 영상 ID를 우리 쪽에서 먼저 뽑아 넘긴다(watch/youtu.be/shorts 전부 지원) — 그래야
+  // shorts 링크가 엉뚱하게 일반 500 에러로 떨어지지 않고 정상적으로 처리되거나, 진짜 자막이 없을
+  // 때만 아래 Supadata 폴백으로 넘어간다.
+  const videoId = extractYoutubeVideoId(url);
+  if (!videoId) {
+    res.status(400).json({ error: 'invalid_url', message: '유튜브 링크를 알아볼 수 없어요.' });
+    return;
+  }
 
   try {
     await requireUser(req);
-    const result = await fetchOwnCaptions(url);
+    const result = await fetchOwnCaptions(videoId);
     res.status(200).json(result);
   } catch (err) {
     if (err instanceof AuthError) {

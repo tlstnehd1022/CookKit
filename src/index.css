@@ -975,6 +975,11 @@ h2 {
   flex-direction: column;
   gap: 4px;
   margin-bottom: 14px;
+  /* .field 자신이 .row 안에서 flex:1 아이템으로 쓰일 때, min-width:auto(기본값)가 바닥으로
+     작용해서 내용물(예: 숫자 input)의 최소 크기 아래로 줄어들지 못해 옆 필드를 밀어내며 화면
+     밖으로 넘치는 문제가 있었다(난이도/예상 조리시간 줄) — input 자체엔 이미 min-width:0을
+     줬지만 실제 flex 아이템은 .field이므로 여기에도 필요하다. */
+  min-width: 0;
 }
 
 .field label {

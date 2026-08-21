@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SlidersHorizontal, MoreVertical, ClipboardList, Tags, Plus } from 'lucide-react';
+import { SlidersHorizontal, ClipboardList, Tags, Plus, ChefHat, X } from 'lucide-react';
 import { useIngredientsById, useRecipes, useTags } from '../../data/store';
 import {
   collectAllAllergens,
@@ -85,7 +85,7 @@ export function RecipesPage({
   const [difficulties, setDifficulties] = useState<Difficulty[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [showFilterSheet, setShowFilterSheet] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
+  const [showFabMenu, setShowFabMenu] = useState(false);
   const [categoryDetail, setCategoryDetail] = useState<{ title: string; items: RecipeRowItem[] } | null>(null);
   // 태그별 행(cuisine+style)이 29차 확장으로 최대 16개까지 늘어날 수 있어 기본은 접어둔다
   // (요구사항 3) — "보유 재료로 가능"/"최근 추가됨"만 항상 펼쳐진 상태로 보임.
@@ -288,29 +288,76 @@ export function RecipesPage({
 
   return (
     <div>
-      {/* B-2: FAB → "🍳 요리하기" 선택 화면(MultiCookSelectPage)에서 레시피를 하나 고르면 그
-          레시피 요리 모드로 바로 들어가고, 여러 개 고르면 복합 요리 흐름으로 이어진다
-          (RecipesFeature의 분기 로직 참고) — 굳이 speed dial로 펼치지 않고 단일 FAB으로 처리. */}
+      {/* 상단 "+ 레시피 추가"/☰(요리 기록·태그 관리) 버튼과 FAB("🍳 요리하기")을 speed dial 하나로
+          통합 — FAB을 누르면 두 그룹(레시피 추가·요리 기록·태그 관리 / 요리하기)이 펼쳐지고,
+          FAB 자체가 🍳 ↔ ✕로 바뀌며 닫기 버튼을 겸한다(당근마켓 "글쓰기" 메뉴 참고). */}
+      {showFabMenu && <div className="modal-backdrop" onClick={() => setShowFabMenu(false)} />}
+      {showFabMenu && (
+        <div className="recipe-fab-menu">
+          <div className="recipe-fab-menu-group">
+            <button
+              type="button"
+              className="profile-sheet-menu-item"
+              onClick={() => {
+                setShowFabMenu(false);
+                onAddRecipe();
+              }}
+            >
+              <Plus size={19} strokeWidth={2.75} />
+              <span>레시피 추가</span>
+            </button>
+            <button
+              type="button"
+              className="profile-sheet-menu-item"
+              onClick={() => {
+                setShowFabMenu(false);
+                onOpenCookingHistory();
+              }}
+            >
+              <ClipboardList size={19} strokeWidth={2.75} />
+              <span>요리 기록</span>
+            </button>
+            <button
+              type="button"
+              className="profile-sheet-menu-item"
+              onClick={() => {
+                setShowFabMenu(false);
+                onManageTags();
+              }}
+            >
+              <Tags size={19} strokeWidth={2.75} />
+              <span>태그 관리</span>
+            </button>
+          </div>
+          <div className="recipe-fab-menu-group">
+            <button
+              type="button"
+              className="profile-sheet-menu-item accent"
+              onClick={() => {
+                setShowFabMenu(false);
+                onOpenMultiCook();
+              }}
+            >
+              <ChefHat size={19} strokeWidth={2.75} />
+              <span>요리하기</span>
+            </button>
+          </div>
+        </div>
+      )}
       {recipes.length > 0 && (
-        <button type="button" className="recipe-fab" onClick={onOpenMultiCook} aria-label="요리하기">
-          🍳
+        <button
+          type="button"
+          className="recipe-fab"
+          onClick={() => setShowFabMenu((v) => !v)}
+          aria-label={showFabMenu ? '닫기' : '레시피 메뉴 열기'}
+        >
+          {showFabMenu ? <X size={26} strokeWidth={2.5} /> : '🍳'}
         </button>
       )}
 
-      <div className="row" style={{ alignItems: 'center', marginBottom: 4 }}>
-        <h1 className="page-header-title" style={{ margin: 0, flex: 1, minWidth: 0 }}>
-          레시피 관리
-        </h1>
-        <button
-          type="button"
-          className="home-avatar-btn"
-          style={{ marginLeft: 8, flexShrink: 0 }}
-          onClick={() => setShowMenu(true)}
-          aria-label="메뉴"
-        >
-          <MoreVertical size={20} strokeWidth={2.5} />
-        </button>
-      </div>
+      <h1 className="page-header-title" style={{ margin: 0 }}>
+        레시피 관리
+      </h1>
 
       <div className="row" style={{ gap: 8, alignItems: 'center', marginTop: 14, marginBottom: 14 }}>
         <div className="pill-input-row" style={{ flex: 1, marginBottom: 0 }}>
@@ -337,48 +384,6 @@ export function RecipesPage({
           {appliedFilterCount > 0 && <span className="recipe-filter-badge">{appliedFilterCount}</span>}
         </button>
       </div>
-
-      {showMenu && (
-        <div className="modal-backdrop" onClick={() => setShowMenu(false)}>
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="profile-sheet-menu">
-              <button
-                type="button"
-                className="profile-sheet-menu-item"
-                onClick={() => {
-                  setShowMenu(false);
-                  onOpenCookingHistory();
-                }}
-              >
-                <ClipboardList size={19} strokeWidth={2.75} />
-                <span>요리 기록</span>
-              </button>
-              <button
-                type="button"
-                className="profile-sheet-menu-item"
-                onClick={() => {
-                  setShowMenu(false);
-                  onManageTags();
-                }}
-              >
-                <Tags size={19} strokeWidth={2.75} />
-                <span>태그 관리</span>
-              </button>
-              <button
-                type="button"
-                className="profile-sheet-menu-item"
-                onClick={() => {
-                  setShowMenu(false);
-                  onAddRecipe();
-                }}
-              >
-                <Plus size={19} strokeWidth={2.75} />
-                <span>레시피 추가</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {appliedFilterChips.length > 0 && (
         <div className="chip-row-scroll" style={{ marginTop: 8 }}>

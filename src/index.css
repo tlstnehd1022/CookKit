@@ -360,7 +360,45 @@ h2 {
   justify-content: center;
   font-size: 24px;
   cursor: pointer;
-  z-index: 40;
+  /* speed dial이 열렸을 때 뒤에 깔리는 .modal-backdrop(z-index:100)보다 위에 있어야 FAB
+     자체가 계속 눌려서 닫기 버튼(🍳 ↔ ✕) 역할을 겸할 수 있다. */
+  z-index: 101;
+}
+
+/* 레시피 목록 FAB의 speed dial(레시피 추가/요리 기록/태그 관리 + 요리하기) — 당근마켓
+   "글쓰기" 메뉴처럼 그룹마다 별도 카드로 분리하고 FAB 위에 쌓아 올린다. */
+.recipe-fab-menu {
+  position: fixed;
+  right: max(20px, calc((100vw - 640px) / 2 + 20px));
+  bottom: 184px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  z-index: 101;
+}
+
+.recipe-fab-menu-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 190px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-soft-hover);
+  padding: 4px;
+}
+
+.recipe-fab-menu-group .profile-sheet-menu-item {
+  padding: 13px 10px;
+}
+
+.recipe-fab-menu-group .profile-sheet-menu-item:last-child {
+  border-bottom: none;
+}
+
+.recipe-fab-menu-group .profile-sheet-menu-item.accent {
+  color: var(--accent);
 }
 
 /* 레시피 화면 검색창 옆 필터 아이콘 버튼(B-1) — 홈 아바타 버튼과 같은 원형 톤 */

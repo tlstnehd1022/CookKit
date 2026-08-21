@@ -4,5 +4,8 @@
       "path": "/api/check-expiring-ingredients",
       "schedule": "0 0 * * *"
     }
+  ],
+  "rewrites": [
+    { "source": "/share-recipe", "destination": "/index.html" }
   ]
 }

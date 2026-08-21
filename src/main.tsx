@@ -4,6 +4,8 @@ import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import { setActiveTab, type Tab } from './data/activeTab'
 import { setHighlightIngredientIds } from './data/highlightIngredients'
+import { requestSharedRecipe } from './data/sharedRecipeRequest'
+import { extractYoutubeVideoId } from './lib/youtubeTranscript'
 
 // PWA(standalone)로 계속 켜둔 채 쓰면 브라우저가 새 배포를 확인할 "페이지 이동"이 거의 안
 // 일어나서, registerType:'autoUpdate'만으로는 실제로 갱신될 일이 드물다(사용자가 수동으로
@@ -49,6 +51,24 @@ if (isTab(initialTab)) setActiveTab(initialTab)
 if (initialHighlight) setHighlightIngredientIds(initialHighlight.split(',').filter(Boolean))
 if (initialTab || initialHighlight) {
   window.history.replaceState({}, '', window.location.pathname)
+}
+
+// 안드로이드 "공유하기"(vite.config.ts의 share_target)로 들어오면 /share-recipe?title=&text=&url=
+// 로 열린다 — 유튜브 링크가 섞여 있으면 바로 변환 파이프라인으로, 아니면 대화 입력창에 미리
+// 채워넣도록 신호만 세팅하고 실제 화면 전환은 RecipesFeature.tsx가 담당한다.
+if (window.location.pathname === '/share-recipe') {
+  const shareParams = new URLSearchParams(window.location.search)
+  const sharedTitle = shareParams.get('title')?.trim() ?? ''
+  const sharedText = shareParams.get('text')?.trim() ?? ''
+  const sharedUrl = shareParams.get('url')?.trim() ?? ''
+  const youtubeId = extractYoutubeVideoId(`${sharedUrl} ${sharedText}`)
+  if (youtubeId) {
+    requestSharedRecipe({ youtubeUrl: `https://www.youtube.com/watch?v=${youtubeId}` })
+  } else {
+    const chatText = [sharedTitle, sharedText, sharedUrl].filter((v, i, arr) => v && arr.indexOf(v) === i).join('\n')
+    if (chatText) requestSharedRecipe({ chatText })
+  }
+  window.history.replaceState({}, '', '/')
 }
 
 // theme/App은 동적 import로 불러온다 — 정적 import였다면 supabaseClient.ts 같은 곳에서

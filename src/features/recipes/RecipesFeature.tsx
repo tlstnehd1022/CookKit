@@ -24,6 +24,7 @@ import {
 import { useSession } from '../../data/session';
 import { useHousehold } from '../../data/household';
 import { useDiscoverTabRequested, clearDiscoverTabRequest } from '../../data/discoverTabRequest';
+import { useSharedRecipeRequest, clearSharedRecipeRequest } from '../../data/sharedRecipeRequest';
 import { copyImage, isStorageImagePath } from '../../data/imageStore';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { logCooking } from '../../data/cookingLog';
@@ -33,7 +34,7 @@ import type { CookingLogStepTiming, Recipe, RecipeIngredient, RecipeStep } from 
 type View =
   | { screen: 'list' }
   | { screen: 'detail'; recipeId: string; autoCook?: boolean; initialServings?: number }
-  | { screen: 'edit'; recipeId?: string }
+  | { screen: 'edit'; recipeId?: string; initialYoutubeUrl?: string; initialChatText?: string }
   | { screen: 'discover-detail'; entry: PublicRecipeEntry; ingredientNameById: Map<string, string> }
   | { screen: 'cooking-history' }
   | { screen: 'multi-cook-select' }
@@ -71,6 +72,18 @@ export function RecipesFeature() {
     setView({ screen: 'list' });
     clearDiscoverTabRequest();
   }, [discoverRequested]);
+
+  const sharedRecipeRequest = useSharedRecipeRequest();
+  useEffect(() => {
+    if (!sharedRecipeRequest) return;
+    setListMode('mine');
+    setView({
+      screen: 'edit',
+      initialYoutubeUrl: 'youtubeUrl' in sharedRecipeRequest ? sharedRecipeRequest.youtubeUrl : undefined,
+      initialChatText: 'chatText' in sharedRecipeRequest ? sharedRecipeRequest.chatText : undefined,
+    });
+    clearSharedRecipeRequest();
+  }, [sharedRecipeRequest]);
 
   /**
    * 복합 요리 완료 확인 — 선택한 레시피 각각에 대해 별도로 CookingLog를 남긴다(하나로 합치지
@@ -243,6 +256,8 @@ export function RecipesFeature() {
       {view.screen === 'edit' && (
         <RecipeEditor
           recipeId={view.recipeId}
+          initialYoutubeUrl={view.initialYoutubeUrl}
+          initialChatText={view.initialChatText}
           onDone={() =>
             setView(view.recipeId ? { screen: 'detail', recipeId: view.recipeId } : { screen: 'list' })
           }

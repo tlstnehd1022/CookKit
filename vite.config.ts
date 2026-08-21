@@ -28,6 +28,15 @@ export default defineConfig({
         description: '알러지 있는 가족/친구와 함께 요리하는 레시피·재료 관리 앱',
         start_url: '/',
         display: 'standalone',
+        // 안드로이드에서 유튜브 등 다른 앱의 "공유하기" 메뉴에 CookKit이 뜨게 한다(iOS는 Web
+        // Share Target API 자체를 지원하지 않아 이 항목이 있어도 공유 시트에 나타나지 않는다 —
+        // 별도 분기 불필요). main.tsx가 /share-recipe?title=&text=&url= 쿼리스트링을 읽어
+        // src/data/sharedRecipeRequest.ts로 넘긴다.
+        share_target: {
+          action: '/share-recipe',
+          method: 'GET',
+          params: { title: 'title', text: 'text', url: 'url' },
+        },
         background_color: '#f5ead8',
         theme_color: '#c67139',
         icons: [

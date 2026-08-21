@@ -39,11 +39,17 @@ export function RecipeEditor({
   recipeId,
   onDone,
   initialChatPrompt,
+  initialYoutubeUrl,
+  initialChatText,
 }: {
   recipeId?: string;
   onDone: () => void;
   /** 홈 "있는 재료로 만들기"처럼 바로 대화를 시작시키고 싶을 때 첫 메시지를 미리 지정 */
   initialChatPrompt?: string;
+  /** 공유하기로 들어온 유튜브 링크 — 있으면 유튜브 변환을 자동으로 시작한다 */
+  initialYoutubeUrl?: string;
+  /** 공유하기로 들어온 텍스트 — 대화 입력창에 미리 채워두기만 하고 자동 전송은 하지 않는다 */
+  initialChatText?: string;
 }) {
   const { recipes, saveRecipe } = useRecipes();
   const { ingredients, saveIngredient } = useIngredients();
@@ -222,8 +228,9 @@ export function RecipeEditor({
 
   const isGemini = settings.aiProvider === 'gemini';
 
-  async function runYoutubeConversion() {
-    if (!youtubeUrl.trim()) return;
+  async function runYoutubeConversion(overrideUrl?: string) {
+    const trimmedUrl = (overrideUrl ?? youtubeUrl).trim();
+    if (!trimmedUrl) return;
     setAiLoading(true);
     setAiError(null);
     setAiMissingApiKey(false);
@@ -235,7 +242,7 @@ export function RecipeEditor({
       let transcriptLanguage = '';
       let transcriptSource: 'captions' | 'supadata' = 'captions';
       try {
-        const transcriptResult = await fetchYoutubeTranscript(youtubeUrl.trim());
+        const transcriptResult = await fetchYoutubeTranscript(trimmedUrl);
         transcriptText = transcriptResult.transcript;
         transcriptLanguage = transcriptResult.language;
         transcriptSource = transcriptResult.source;
@@ -257,7 +264,7 @@ export function RecipeEditor({
       let result: ExtractedRecipe;
       if (isGemini) {
         // 키가 없거나 조회 실패해도 서버가 meta: null로 응답(선택 사항 — 자막만으로 계속 진행)
-        const meta = await aiProxy.fetchYoutubeVideoMeta(youtubeUrl.trim()).catch(() => null);
+        const meta = await aiProxy.fetchYoutubeVideoMeta(trimmedUrl).catch(() => null);
         const combinedTranscript = [transcriptText, youtubeManualText.trim()].filter(Boolean).join('\n\n');
         result = await aiProxy.extractRecipeFromYoutubeMeta(
           settings.geminiModel,
@@ -272,7 +279,7 @@ export function RecipeEditor({
       setPendingYoutubeDiff(summarizeRecipeDiff(currentRecipeSnapshot, result));
       setPendingYoutubeSource(transcriptSource);
       setPendingYoutubeLanguage(transcriptLanguage);
-      setPendingYoutubeVideoId(extractYoutubeVideoId(youtubeUrl.trim()));
+      setPendingYoutubeVideoId(extractYoutubeVideoId(trimmedUrl));
       setUseYoutubeThumbnail(true);
     } catch (err) {
       if (err instanceof ApiProxyError && err.code === 'no_api_key') {
@@ -284,6 +291,17 @@ export function RecipeEditor({
       setYoutubeStage('idle');
     }
   }
+
+  // 공유하기로 유튜브 링크를 받고 들어온 경우, 화면을 열자마자 변환을 자동으로 시작한다
+  // (ref로 StrictMode 이중 실행 방지 — RecipeChatPanel의 autoSendText와 같은 패턴).
+  const autoYoutubeRef = useRef(false);
+  useEffect(() => {
+    if (!initialYoutubeUrl || autoYoutubeRef.current) return;
+    autoYoutubeRef.current = true;
+    setYoutubeUrl(initialYoutubeUrl);
+    runYoutubeConversion(initialYoutubeUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function confirmYoutubeApply() {
     if (!pendingYoutubeResult) return;
@@ -817,6 +835,7 @@ export function RecipeEditor({
         existingContext={existingContext}
         currentRecipe={currentRecipeSnapshot}
         autoSendText={initialChatPrompt}
+        initialInputText={initialChatText}
       />
       {undoStack.length > 0 && (
         <button className="btn small" style={{ marginBottom: 12 }} onClick={undoLastApply}>
@@ -838,7 +857,7 @@ export function RecipeEditor({
               placeholder="https://www.youtube.com/watch?v=..."
             />
           </div>
-          <button className="btn primary" onClick={runYoutubeConversion} disabled={aiLoading}>
+          <button className="btn primary" onClick={() => runYoutubeConversion()} disabled={aiLoading}>
             {aiLoading
               ? youtubeStage === 'extracting'
                 ? '자막 추출 중...'

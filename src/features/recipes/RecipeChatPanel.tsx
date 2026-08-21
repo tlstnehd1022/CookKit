@@ -15,6 +15,7 @@ export function RecipeChatPanel({
   existingContext,
   currentRecipe,
   autoSendText,
+  initialInputText,
 }: {
   onApply: (result: ExtractedRecipe) => Promise<void>;
   existingContext: ExistingContext;
@@ -22,12 +23,15 @@ export function RecipeChatPanel({
   /** 홈 화면 "있는 재료로 만들기" 같은 진입점에서, 채팅을 열자마자 이 텍스트를 첫 사용자 메시지로
    * 자동 전송한다. */
   autoSendText?: string;
+  /** 공유하기로 들어온 텍스트 등을 입력창에 미리 채워두기만 한다(autoSendText와 달리 자동
+   * 전송하지 않음 — 사용자가 확인/수정 후 직접 보낼 수 있게). */
+  initialInputText?: string;
 }) {
   const { settings } = useSettings();
   const isGemini = settings.aiProvider === 'gemini';
 
   const [messages, setMessages] = useState<ChatTurn[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(initialInputText ?? '');
   const [useWebSearch, setUseWebSearch] = useState(true);
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);

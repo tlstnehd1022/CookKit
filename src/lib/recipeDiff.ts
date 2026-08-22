@@ -96,6 +96,41 @@ export function summarizeRecipeDiff(before: RecipeSnapshot, after: ExtractedReci
   return lines;
 }
 
+export interface StepDiffEntry {
+  kind: 'add' | 'remove' | 'change';
+  /** 1-based 단계 번호(add/change는 after 기준, remove는 before 기준) */
+  index: number;
+  label: string;
+}
+
+type StepLike = { title: string; content: string; timerSeconds?: number | null };
+
+/**
+ * 조리 단계는 안정적인 id가 없어 위치 기준으로 비교한다 — 겹치는 구간(0~min(길이))은 내용
+ * 변경 여부만 보고, 더 긴 쪽의 나머지 꼬리는 통째로 추가/제거로 본다. AI가 단계를 덧붙이거나
+ * 잘라내는 흔한 패턴(예: 뒤에 2단계 추가)과 맞아떨어지는 단순한 근사치다.
+ */
+export function summarizeStepDiff(before: StepLike[], after: StepLike[]): StepDiffEntry[] {
+  const entries: StepDiffEntry[] = [];
+  const minLen = Math.min(before.length, after.length);
+
+  for (let i = 0; i < minLen; i++) {
+    const b = before[i];
+    const a = after[i];
+    if (b.title !== a.title || b.content !== a.content || (b.timerSeconds ?? null) !== (a.timerSeconds ?? null)) {
+      entries.push({ kind: 'change', index: i + 1, label: a.title || `${i + 1}단계` });
+    }
+  }
+  for (let i = minLen; i < after.length; i++) {
+    entries.push({ kind: 'add', index: i + 1, label: after[i].title || `${i + 1}단계` });
+  }
+  for (let i = minLen; i < before.length; i++) {
+    entries.push({ kind: 'remove', index: i + 1, label: before[i].title || `${i + 1}단계` });
+  }
+
+  return entries;
+}
+
 export function diffLineColor(kind: DiffLineKind): string {
   switch (kind) {
     case 'add':

@@ -110,7 +110,8 @@ export async function fetchYoutubeVideoMeta(url: string): Promise<YoutubeVideoMe
   return result.meta;
 }
 
-/** 온디맨드 전용 — 호출부(RecipeDetailPage의 "영양 정보 계산하기" 버튼)에서만 부른다. */
+/** RecipeDetailPage의 "영양 정보 계산하기" 버튼(수동) + RecipeEditor의 첫 저장 시 자동 호출
+ * (nutrition이 아직 없을 때만, fire-and-forget) 두 곳에서 쓰인다. */
 export async function estimateRecipeNutrition(
   provider: 'anthropic' | 'gemini',
   model: string,

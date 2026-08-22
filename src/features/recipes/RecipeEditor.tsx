@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ImagePlus } from 'lucide-react';
 import { useCategories, useIngredients, useRecipes, useTags, makeId, getCurrentHouseholdId } from '../../data/store';
 import { useSettings } from '../../data/settings';
 import { requestProfileSheet } from '../../data/profileSheet';
@@ -17,6 +18,7 @@ import type { Difficulty, Recipe, RecipeIngredient, RecipeStep, RecipeVisibility
 import { COMMON_UNITS, CUSTOM_UNIT_VALUE } from '../../data/units';
 import { RecipeChatPanel } from './RecipeChatPanel';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
+import { StepDiffSummary } from './StepDiffSummary';
 import { extractYoutubeVideoId, fetchYoutubeTranscript } from '../../lib/youtubeTranscript';
 import { getRecipeAddTab, setRecipeAddTab, type RecipeAddTab } from '../../data/recipeAddTab';
 import {
@@ -786,6 +788,30 @@ export function RecipeEditor({
     }
   }
 
+  /** 크레딧 절약을 위해 "처음 저장"이고(아직 nutrition 없음) 공공데이터 시드도 아닐 때만
+   * 자동으로 한 번 계산한다 — 저장을 기다리게 하지 않도록 결과를 기다리지 않고(fire-and-forget),
+   * 실패해도 조용히 건너뛴다. 이미 nutrition이 있는 레시피는 수정해서 저장할 때마다 재계산하면
+   * 저장할 때마다 AI를 호출하게 되어 크레딧이 빠르게 소진되므로, 그 뒤로는 상세 화면의 수동
+   * "영양 정보 계산하기" 버튼으로만 갱신한다. */
+  function maybeAutoEstimateNutrition(recipe: Recipe) {
+    if (existing?.nutrition) return;
+    if (existing?.nutritionSource === 'public_data') return;
+    if (recipe.ingredients.length === 0) return;
+    const model = isGemini ? settings.geminiModel : settings.model;
+    aiProxy
+      .estimateRecipeNutrition(settings.aiProvider, model, {
+        name: recipe.name,
+        servingsBase: recipe.servingsBase,
+        ingredients: recipe.ingredients.map((item) => ({
+          name: ingredients.find((i) => i.id === item.ingredientId)?.name ?? '재료',
+          amount: item.amount,
+          unit: item.unit,
+        })),
+      })
+      .then((nutrition) => saveRecipe({ ...recipe, nutrition, nutritionSource: 'ai_estimate' }))
+      .catch((err) => console.error('자동 영양 정보 계산 실패(건너뜀):', err));
+  }
+
   async function performSave(tagIdsOverride?: string[]) {
     try {
       if (shouldOfferImageGenerationOnSave()) {
@@ -824,6 +850,7 @@ export function RecipeEditor({
         nutritionSource: existing?.nutritionSource,
       };
       await saveRecipe(recipe);
+      maybeAutoEstimateNutrition(recipe);
       // 새 레시피(수정이 아님)이고 가구원이 볼 수 있는 공개범위일 때만 household에 알림 —
       // private면 다른 가구원이 애초에 열 수 없는 레시피라 알림을 보내는 게 의미가 없다.
       // 알림 생성 실패는 저장 자체를 막을 정도는 아니라 별도로 감싸서 조용히 로그만 남긴다.
@@ -941,6 +968,7 @@ export function RecipeEditor({
               </p>
             )}
             <strong style={{ fontSize: 13 }}>유튜브 변환 결과 — 변경사항</strong>
+            <StepDiffSummary beforeSteps={currentRecipeSnapshot.steps} afterSteps={pendingYoutubeResult.steps} />
             <ul style={{ margin: '6px 0', paddingLeft: 18, fontSize: 13 }}>
               {pendingYoutubeDiff.map((line, index) => (
                 <li key={index} style={{ color: diffLineColor(line.kind) }}>
@@ -1501,7 +1529,14 @@ function UnitPicker({ unit, onChange }: { unit: string; onChange: (unit: string)
 
 function ImagePreview({ imageId }: { imageId?: string }) {
   const dataUrl = useStoredImage(imageId);
-  if (!imageId) return null;
+  if (!imageId) {
+    return (
+      <div className="recipe-image-empty">
+        <ImagePlus size={26} strokeWidth={2} />
+        <span>아직 사진이 없어요</span>
+      </div>
+    );
+  }
   return (
     <div
       style={{

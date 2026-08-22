@@ -10,6 +10,7 @@ import { ApiProxyError } from '../../lib/aiProxy';
 import type { ChatTurn, ExistingContext } from '../../lib/aiChat';
 import type { ExtractedRecipe } from '../../lib/claudeClient';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
+import { StepDiffSummary } from './StepDiffSummary';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
 import { estimateCookMinutes } from '../../lib/recipeTime';
@@ -320,6 +321,7 @@ export function RecipeChatPanel({
           {pendingReply && (
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-secondary)' }}>{pendingReply}</p>
           )}
+          <StepDiffSummary beforeSteps={currentRecipe.steps} afterSteps={pendingRecipe.steps} />
           <ul style={{ margin: '6px 0', paddingLeft: 18, fontSize: 13 }}>
             {pendingDiff.map((line, index) => (
               <li key={index} style={{ color: diffLineColor(line.kind) }}>
@@ -380,7 +382,7 @@ export function RecipeChatPanel({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleInputKeyDown}
-          placeholder="레시피에 대해 말해보세요... (Shift+Enter로 줄바꿈)"
+          placeholder={'레시피에 대해 말해보세요...\n(Shift + Enter로 줄바꿈)'}
           rows={2}
           style={{ flex: 1, resize: 'vertical' }}
         />

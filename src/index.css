@@ -1161,6 +1161,22 @@ select:focus {
   color: var(--accent);
 }
 
+/* 완성 사진/조리 단계 이미지 둘 다 공유하는 ImagePreview의 빈 상태 — 버튼만 덩그러니 있어서
+   눈에 안 띄던 문제(5번)를 사진 영역 자체를 먼저 보여줘서 해결한다. */
+.recipe-image-empty {
+  aspect-ratio: 4 / 3;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--chip-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .section-title {
   font-size: 13px;
   font-weight: 600;

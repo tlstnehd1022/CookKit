@@ -88,8 +88,11 @@ export function RecipesPage({
   const [showFabMenu, setShowFabMenu] = useState(false);
   const [categoryDetail, setCategoryDetail] = useState<{ title: string; items: RecipeRowItem[] } | null>(null);
   // 태그별 행(cuisine+style)이 29차 확장으로 최대 16개까지 늘어날 수 있어 기본은 접어둔다
-  // (요구사항 3) — "보유 재료로 가능"/"최근 추가됨"만 항상 펼쳐진 상태로 보임.
-  const [tagRowsExpanded, setTagRowsExpanded] = useState(false);
+  // (요구사항 3) — "보유 재료로 가능"/"최근 추가됨"만 항상 펼쳐진 상태로 보임. 국가/장르와
+  // 요리 스타일은 서로 다른 축이라 독립된 접기/펼치기로 나눈다(하나 펼친다고 다른 하나까지
+  // 안 펼쳐짐).
+  const [cuisineRowsExpanded, setCuisineRowsExpanded] = useState(false);
+  const [styleRowsExpanded, setStyleRowsExpanded] = useState(false);
   const [cookingCountById, setCookingCountById] = useState<Map<string, number>>(new Map());
   const pantryFilterRequested = usePantryFilterRequested();
   const requestedMaxMinutes = useRequestedMaxMinutesFilter();
@@ -411,22 +414,39 @@ export function RecipesPage({
         <div>
           <RecipeRowSection title="🧺 보유 재료로 가능" items={pantryRowItems} onMore={() => setCategoryDetail({ title: '🧺 보유 재료로 가능', items: pantryRowItems })} />
           <RecipeRowSection title="🆕 최근 추가됨" items={rowItems} onMore={() => setCategoryDetail({ title: '🆕 최근 추가됨', items: rowItems })} />
-          {(cuisineRows.length > 0 || styleRows.length > 0) && (
+          {cuisineRows.length > 0 && (
             <div style={{ marginTop: 8 }}>
               <button
                 className="row"
                 style={{ width: '100%', background: 'none', border: 'none', padding: '8px 0', cursor: 'pointer' }}
-                onClick={() => setTagRowsExpanded((prev) => !prev)}
+                onClick={() => setCuisineRowsExpanded((prev) => !prev)}
               >
                 <span className="section-title" style={{ margin: 0 }}>
-                  {tagRowsExpanded ? '▾' : '▸'} 🍽 태그별로 보기
+                  {cuisineRowsExpanded ? '▾' : '▸'} 🌍 국가/장르
                 </span>
               </button>
-              {tagRowsExpanded && (
+              {cuisineRowsExpanded && (
                 <div>
                   {cuisineRows.map((row) => (
                     <RecipeRowSection key={row.title} title={row.title} items={row.items} onMore={() => openTagRow(row)} />
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+          {styleRows.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <button
+                className="row"
+                style={{ width: '100%', background: 'none', border: 'none', padding: '8px 0', cursor: 'pointer' }}
+                onClick={() => setStyleRowsExpanded((prev) => !prev)}
+              >
+                <span className="section-title" style={{ margin: 0 }}>
+                  {styleRowsExpanded ? '▾' : '▸'} 🍳 요리 스타일
+                </span>
+              </button>
+              {styleRowsExpanded && (
+                <div>
                   {styleRows.map((row) => (
                     <RecipeRowSection key={row.title} title={row.title} items={row.items} onMore={() => openTagRow(row)} />
                   ))}

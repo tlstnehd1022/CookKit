@@ -42,6 +42,26 @@ export function pickTodayRecommendation(
   return best;
 }
 
+const OVERLAPPING_RECIPES_LIMIT = 20;
+
+/** "있는 재료로 레시피 추가" 진입 시점의 보유 재료 중 하나 이상을 쓰는 기존 레시피를 뽑는다 —
+ * AI 호출 없이 로컬에서 단순 재료 매칭만 하고, 결과는 이름만 프롬프트에 실어 "이미 있는
+ * 레시피"로 알려줘 중복 제안을 줄이는 데 쓴다(토큰 절약을 위해 최근 추가순 상한). */
+export function pickRecipesUsingAnyIngredient(
+  recipes: Recipe[],
+  ingredientIds: Set<string>,
+  limit = OVERLAPPING_RECIPES_LIMIT,
+): Recipe[] {
+  if (ingredientIds.size === 0) return [];
+  const matched = recipes.filter((recipe) => recipe.ingredients.some((i) => ingredientIds.has(i.ingredientId)));
+  const sorted = [...matched].sort((a, b) => {
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+  return sorted.slice(0, limit);
+}
+
 /** 특정 재료를 쓰는 레시피 중 보유 재료 매칭률이 가장 높은 것 — "유통기한이 다가와요" 행의
  * "레시피" 버튼용(이 재료를 마침 쓰는 레시피를 추천). */
 export function pickBestRecipeUsingIngredient(

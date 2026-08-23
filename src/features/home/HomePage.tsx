@@ -46,7 +46,7 @@ import type { MealPlan, Recipe } from '../../data/types';
 type View =
   | { screen: 'feed' }
   | { screen: 'detail'; recipeId: string; autoCook?: boolean; initialServings?: number }
-  | { screen: 'edit'; recipeId?: string; initialChatPrompt?: string }
+  | { screen: 'edit'; recipeId?: string; initialChatPrompt?: string; initialOwnedIngredientIds?: string[] }
   | { screen: 'weekly-plan' }
   | { screen: 'cooking-history' };
 
@@ -238,6 +238,7 @@ export function HomePage() {
       <RecipeEditor
         recipeId={view.recipeId}
         initialChatPrompt={view.initialChatPrompt}
+        initialOwnedIngredientIds={view.initialOwnedIngredientIds}
         onDone={() => setView(view.recipeId ? { screen: 'detail', recipeId: view.recipeId } : { screen: 'feed' })}
       />
     );
@@ -320,6 +321,7 @@ export function HomePage() {
               setView({
                 screen: 'edit',
                 initialChatPrompt: `지금 있는 재료는 ${usableIngredients.map((i) => i.name).join(', ')}이야. 이걸로 뭘 만들 수 있을까?`,
+                initialOwnedIngredientIds: usableIngredients.map((i) => i.id),
               })
             }
           >

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ImagePlus } from 'lucide-react';
+import { pickRecipesUsingAnyIngredient } from '../../lib/recipeRecommendation';
 import { useCategories, useIngredients, useRecipes, useTags, makeId, getCurrentHouseholdId } from '../../data/store';
 import { useSettings } from '../../data/settings';
 import { requestProfileSheet } from '../../data/profileSheet';
@@ -50,6 +51,7 @@ export function RecipeEditor({
   initialChatPrompt,
   initialYoutubeUrl,
   initialChatText,
+  initialOwnedIngredientIds,
 }: {
   recipeId?: string;
   onDone: () => void;
@@ -59,6 +61,9 @@ export function RecipeEditor({
   initialYoutubeUrl?: string;
   /** 공유하기로 들어온 텍스트 — 대화 입력창에 미리 채워두기만 하고 자동 전송은 하지 않는다 */
   initialChatText?: string;
+  /** 홈 "있는 재료로 레시피 추가" 진입 시점의 보유 재료 id — 이 재료를 쓰는 기존 레시피를
+   * AI에게 "이미 있음"으로 알려줘 중복 제안을 피한다(로컬 필터링, AI 호출 없음) */
+  initialOwnedIngredientIds?: string[];
 }) {
   const { recipes, saveRecipe } = useRecipes();
   const { ingredients, saveIngredient } = useIngredients();
@@ -163,6 +168,14 @@ export function RecipeEditor({
     setUndoStack((prev) => prev.slice(0, -1));
   }
 
+  const overlappingRecipeNames = useMemo(
+    () =>
+      initialOwnedIngredientIds && initialOwnedIngredientIds.length > 0
+        ? pickRecipesUsingAnyIngredient(recipes, new Set(initialOwnedIngredientIds)).map((r) => r.name)
+        : [],
+    [recipes, initialOwnedIngredientIds],
+  );
+
   const existingContext: ExistingContext = {
     tags: tags.map((tag) => tag.name),
     categories: categories.map((category) => category.name),
@@ -170,6 +183,7 @@ export function RecipeEditor({
     allergenIngredients: ingredients
       .filter((ingredient) => ingredient.allergens.length > 0)
       .map((ingredient) => ({ name: ingredient.name, allergens: ingredient.allergens })),
+    overlappingRecipeNames: overlappingRecipeNames.length > 0 ? overlappingRecipeNames : undefined,
   };
 
   const currentRecipeSnapshot: RecipeSnapshot = {

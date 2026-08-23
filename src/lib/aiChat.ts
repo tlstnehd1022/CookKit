@@ -22,6 +22,10 @@ export interface ExistingContext {
   ingredients: string[];
   /** allergens가 하나라도 등록된 재료만 담김 — AI가 레시피 제안 전에 확인 질문을 할지 판단하는 근거 */
   allergenIngredients?: AllergenIngredient[];
+  /** "있는 재료로 레시피 추가" 진입 시점의 보유 재료를 쓰는 기존 레시피 이름(최근순 상한 20개,
+   * 로컬 필터링 — AI 호출 없음). 이 필드가 있을 때만 프롬프트에 "이미 있는 레시피" 안내와
+   * 중복 제안 금지 규칙이 추가된다(그 외 일반 대화에서는 토큰 낭비라 붙지 않음). */
+  overlappingRecipeNames?: string[];
 }
 
 // 31차 확장(0번) — 규칙이 계속 추가만 되어 길어지길래 감사 후 재정리했다. 성격별 섹션으로 묶고
@@ -117,6 +121,10 @@ export function buildExistingContextNote(context: ExistingContext): string {
     `변형된 이름을 새로 만들지 마세요(예: 목록에 "양파"가 있으면 "다진 양파"/"양파(중)" 같은 이름을 새로 ` +
     `만들지 말고 "양파"를 그대로 쓰세요). 품종이 명확히 다른 경우에만 구분해서 새 이름을 쓰고(예: "적양파"는 ` +
     `"양파"와 다른 재료), 단순 수식어 차이는 기존 이름으로 통일하세요.` +
-    (allergenText ? `\n\n[알러지 주의]\n${allergenText}` : '')
+    (allergenText ? `\n\n[알러지 주의]\n${allergenText}` : '') +
+    (context.overlappingRecipeNames && context.overlappingRecipeNames.length > 0
+      ? `\n\n[이미 있는 레시피]\n${context.overlappingRecipeNames.join(', ')}\n` +
+        `위 목록과 겹치거나 명백히 같은 요리는 제안하지 마세요. 변형이나 재해석은 괜찮습니다.`
+      : '')
   );
 }

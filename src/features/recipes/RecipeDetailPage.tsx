@@ -378,55 +378,64 @@ export function RecipeDetailPage({
           ⏱ 조정 제안 있음
         </button>
       )}
+      {/* 좋아요/난이도/시간은 한 그룹, 태그·알러지는 별도 줄 — 예전엔 (ⓘ) 아이콘이 따로 있어서
+          "뭘 설명하는 아이콘인지" 모호했는데, 난이도/시간 배지 자체를 탭하면 바로 그 이유가
+          펼쳐지도록 바꿔서 아이콘 없이도 명확하게 했다. */}
       <div className="chip-row">
         {likeCount != null && <span className="chip">❤️ {likeCount}</span>}
-        {recipe.difficulty && <span className="chip">{DIFFICULTY_LABEL[recipe.difficulty]}</span>}
-        {recipe.estimatedMinutes != null && recipe.estimatedMinutes > 0 && (
-          <span className="chip">약 {recipe.estimatedMinutes}분</span>
-        )}
-        {recipe.difficultyReason && (
-          <button
-            className="chip selectable"
-            title={recipe.difficultyReason}
-            onClick={() => setShowDifficultyReason((v) => !v)}
-          >
-            ⓘ
-          </button>
-        )}
-        {recipeTags.map((tag) => (
-          <span className="chip" key={tag.id}>
-            {tag.name}
-          </span>
-        ))}
-        {recipeAllergens.map((allergen) => (
-          <span className="chip allergen" key={allergen}>
-            {allergen}
-          </span>
-        ))}
+        {recipe.difficulty &&
+          (recipe.difficultyReason ? (
+            <button type="button" className="chip selectable" onClick={() => setShowDifficultyReason((v) => !v)}>
+              {DIFFICULTY_LABEL[recipe.difficulty]}
+            </button>
+          ) : (
+            <span className="chip">{DIFFICULTY_LABEL[recipe.difficulty]}</span>
+          ))}
+        {recipe.estimatedMinutes != null &&
+          recipe.estimatedMinutes > 0 &&
+          (recipe.difficultyReason ? (
+            <button type="button" className="chip selectable" onClick={() => setShowDifficultyReason((v) => !v)}>
+              약 {recipe.estimatedMinutes}분
+            </button>
+          ) : (
+            <span className="chip">약 {recipe.estimatedMinutes}분</span>
+          ))}
       </div>
       {showDifficultyReason && recipe.difficultyReason && (
-        <p className="text-muted" style={{ marginTop: -6, marginBottom: 8 }}>
+        <p className="text-muted" style={{ marginTop: -2, marginBottom: 8 }}>
           {recipe.difficultyReason}
         </p>
+      )}
+      {(recipeTags.length > 0 || recipeAllergens.length > 0) && (
+        <div className="chip-row">
+          {recipeTags.map((tag) => (
+            <span className="chip" key={tag.id}>
+              {tag.name}
+            </span>
+          ))}
+          {recipeAllergens.map((allergen) => (
+            <span className="chip allergen" key={allergen}>
+              {allergen}
+            </span>
+          ))}
+        </div>
       )}
 
       <div className="section-title">영양 정보 ({servings}인분 기준)</div>
       <div className="card">
         {recipe.nutrition ? (
           <>
-            <div className="row" style={{ justifyContent: 'flex-start', gap: 10, alignItems: 'baseline' }}>
-              <strong style={{ fontSize: 22 }}>{Math.round(recipe.nutrition.calories * servings)} kcal</strong>
-              <span className="text-muted" style={{ fontSize: 12 }}>
-                {NUTRITION_SOURCE_LABEL[recipe.nutritionSource ?? 'manual']}
-                {recipe.nutritionSource === 'ai_estimate' ? ' · 실제와 다를 수 있어요' : ''}
-              </span>
-            </div>
+            <strong style={{ fontSize: 22 }}>{Math.round(recipe.nutrition.calories * servings)} kcal</strong>
             <div className="chip-row">
               <span className="chip">탄수화물 {Math.round(recipe.nutrition.carbs * servings)}g</span>
               <span className="chip">단백질 {Math.round(recipe.nutrition.protein * servings)}g</span>
               <span className="chip">지방 {Math.round(recipe.nutrition.fat * servings)}g</span>
               <span className="chip">나트륨 {Math.round(recipe.nutrition.sodium * servings)}mg</span>
             </div>
+            <p className="text-muted" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
+              {NUTRITION_SOURCE_LABEL[recipe.nutritionSource ?? 'manual']}
+              {recipe.nutritionSource === 'ai_estimate' ? ' · 실제와 다를 수 있어요' : ''}
+            </p>
           </>
         ) : (
           <>

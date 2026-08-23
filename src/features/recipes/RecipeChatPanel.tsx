@@ -26,7 +26,7 @@ export function RecipeChatPanel({
   onApply: (result: ExtractedRecipe) => Promise<void>;
   existingContext: ExistingContext;
   currentRecipe: RecipeSnapshot;
-  /** 홈 화면 "있는 재료로 만들기" 같은 진입점에서, 채팅을 열자마자 이 텍스트를 첫 사용자 메시지로
+  /** 홈 화면 "있는 재료로 레시피 추가" 같은 진입점에서, 채팅을 열자마자 이 텍스트를 첫 사용자 메시지로
    * 자동 전송한다. */
   autoSendText?: string;
   /** 공유하기로 들어온 텍스트 등을 입력창에 미리 채워두기만 한다(autoSendText와 달리 자동

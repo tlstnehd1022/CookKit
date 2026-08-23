@@ -150,7 +150,7 @@ export function HomePage() {
   }, [householdId, activeTab, view.screen]);
 
   const ownedIngredients = useMemo(() => ingredients.filter((i) => i.owned), [ingredients]);
-  // "있는 재료로 만들기"용 — 유통기한 지나 확인이 필요한 재료는 제안 재료 목록에서 제외한다.
+  // "있는 재료로 레시피 추가"용 — 유통기한 지나 확인이 필요한 재료는 제안 재료 목록에서 제외한다.
   const usableIngredients = useMemo(() => ownedIngredients.filter((i) => isPantryUsable(i)), [ownedIngredients]);
 
   // A-1: 예상 조리시간이 짧은 순으로, 최소 3개 이상일 때만 섹션 노출(빈약해 보이지 않게)
@@ -323,7 +323,7 @@ export function HomePage() {
               })
             }
           >
-            🍳 있는 재료로 만들기
+            🍳 있는 재료로 레시피 추가
           </button>
         )}
       </div>

@@ -53,7 +53,7 @@ export function RecipeEditor({
 }: {
   recipeId?: string;
   onDone: () => void;
-  /** 홈 "있는 재료로 만들기"처럼 바로 대화를 시작시키고 싶을 때 첫 메시지를 미리 지정 */
+  /** 홈 "있는 재료로 레시피 추가"처럼 바로 대화를 시작시키고 싶을 때 첫 메시지를 미리 지정 */
   initialChatPrompt?: string;
   /** 공유하기로 들어온 유튜브 링크 — 있으면 유튜브 변환을 자동으로 시작한다 */
   initialYoutubeUrl?: string;
@@ -129,8 +129,8 @@ export function RecipeEditor({
   const [pendingYoutubeShort, setPendingYoutubeShort] = useState(false);
 
   // 신규 레시피 추가 화면만 탭으로 나눈다(기존 레시피 수정 화면은 원래 구조 그대로 영향 없음).
-  // 공유하기로 유튜브 링크를 받았으면 유튜브 탭으로, 대화를 자동 시작하는 진입(홈 "있는 재료로
-  // 만들기"/공유하기 텍스트)이면 대화 탭으로 강제 진입하고, 그 외에는 마지막으로 쓴 탭을 기억한다.
+  // 공유하기로 유튜브 링크를 받았으면 유튜브 탭으로, 대화를 자동 시작하는 진입(홈 "있는 재료로 레시피
+  // 추가"/공유하기 텍스트)이면 대화 탭으로 강제 진입하고, 그 외에는 마지막으로 쓴 탭을 기억한다.
   const [addTab, setAddTabState] = useState<RecipeAddTab>(() => {
     if (initialYoutubeUrl) return 'youtube';
     if (initialChatPrompt || initialChatText) return 'chat';
@@ -888,17 +888,17 @@ export function RecipeEditor({
           보이며 이번 변경과 무관하다. 탭 전환은 unmount가 아니라 display:none으로만 숨겨서
           대화 메시지/유튜브 입력값이 사라지지 않는다. */}
       {!existing && (
-        <div className="row" style={{ gap: 8, marginBottom: 12 }}>
+        <div className="recipe-add-tabs">
           <button
             type="button"
-            className={`btn small ${addTab === 'chat' ? 'primary' : ''}`}
+            className={`recipe-add-tab ${addTab === 'chat' ? 'active' : ''}`}
             onClick={() => selectAddTab('chat')}
           >
             💬 대화로 만들기
           </button>
           <button
             type="button"
-            className={`btn small ${addTab === 'youtube' ? 'primary' : ''}`}
+            className={`recipe-add-tab ${addTab === 'youtube' ? 'active' : ''}`}
             onClick={() => selectAddTab('youtube')}
           >
             🎬 유튜브로 만들기

@@ -1147,16 +1147,17 @@ select:focus {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23c0b6a5' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
 }
 
-/* 레시피 추가 화면의 "대화로 만들기"/"유튜브로 만들기" 탭 — 가운데 정렬 알약(세그먼트 컨트롤)
-   대신 왼쪽 정렬 밑줄 탭으로. 선택된 탭은 강조색 텍스트+밑줄, 나머지는 흐린 보조색. */
-.recipe-add-tabs {
+/* 왼쪽 정렬 밑줄 탭 — 가운데 정렬 알약(세그먼트 컨트롤) 대신 쓰는 공용 탭 스타일. 선택된 탭은
+   강조색 텍스트+밑줄, 나머지는 흐린 보조색. 레시피 추가 화면("대화로 만들기"/"유튜브로
+   만들기")과 둘러보기 화면 검색 대상 탭("레시피"/"사용자")이 함께 쓴다. */
+.underline-tabs {
   display: flex;
   gap: 20px;
   border-bottom: 1px solid var(--border);
   margin-bottom: 12px;
 }
 
-.recipe-add-tab {
+.underline-tab {
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -1168,9 +1169,62 @@ select:focus {
   cursor: pointer;
 }
 
-.recipe-add-tab.active {
+.underline-tab.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
+}
+
+/* 둘러보기 "사용자" 탭 검색 결과 행 */
+.public-user-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.public-user-avatar {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--chip-bg);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.public-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.public-user-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.public-user-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.public-user-meta {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-top: 2px;
 }
 
 /* 레시피 편집 화면 — AI 도구(대화/유튜브 변환) 영역과 실제 저장되는 폼 영역의 경계를

@@ -902,17 +902,17 @@ export function RecipeEditor({
           보이며 이번 변경과 무관하다. 탭 전환은 unmount가 아니라 display:none으로만 숨겨서
           대화 메시지/유튜브 입력값이 사라지지 않는다. */}
       {!existing && (
-        <div className="recipe-add-tabs">
+        <div className="underline-tabs">
           <button
             type="button"
-            className={`recipe-add-tab ${addTab === 'chat' ? 'active' : ''}`}
+            className={`underline-tab ${addTab === 'chat' ? 'active' : ''}`}
             onClick={() => selectAddTab('chat')}
           >
             💬 대화로 만들기
           </button>
           <button
             type="button"
-            className={`recipe-add-tab ${addTab === 'youtube' ? 'active' : ''}`}
+            className={`underline-tab ${addTab === 'youtube' ? 'active' : ''}`}
             onClick={() => selectAddTab('youtube')}
           >
             🎬 유튜브로 만들기

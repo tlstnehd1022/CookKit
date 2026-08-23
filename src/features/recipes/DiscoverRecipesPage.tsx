@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, User } from 'lucide-react';
 import { useSession } from '../../data/session';
 import { useIngredients, useRecipes, useTags, getCurrentHouseholdId } from '../../data/store';
 import { useRecipeViewMode } from '../../data/viewMode';
@@ -24,6 +24,17 @@ import {
 
 const SEARCH_DEBOUNCE_MS = 300;
 type SortMode = 'recent' | 'name';
+// 검색 대상 탭 — "요리책"(컬렉션 단위, MenuSet) 탭은 대응 데이터가 아직 없어(스텁만 존재) 이번엔
+// 만들지 않고, 나중에 손님초대모드/MenuSet을 실제 구현할 때 3번째 탭으로 추가할 여지만 남겨둔다.
+type SearchTarget = 'recipes' | 'users';
+
+interface PublicUserSummary {
+  userId: string;
+  name: string;
+  avatarUrl?: string;
+  householdName?: string;
+  recipeCount: number;
+}
 
 /**
  * 다른 household의 전체공개(visibility='public') 레시피를 둘러보는 화면(우리 가구 것은 이미
@@ -54,6 +65,8 @@ export function DiscoverRecipesPage({
   const [activeTagNames, setActiveTagNames] = useState<string[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [showFilterSheet, setShowFilterSheet] = useState(false);
+  const [searchTarget, setSearchTarget] = useState<SearchTarget>('recipes');
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [categoryDetail, setCategoryDetail] = useState<{ title: string; items: RecipeRowItem[] } | null>(null);
   // null이면 "실제 사용자 레시피가 있으면 접힘, 없으면 펼침" 기본값을 그대로 따르고, 사용자가
   // 직접 펼치기/접기를 누르면 그 뒤로는 명시적으로 고정된다(요구사항 10).
@@ -141,6 +154,36 @@ export function DiscoverRecipesPage({
   const systemEntries = useMemo(() => entries.filter((e) => e.authorUserId === SYSTEM_USER_ID), [entries]);
   const systemExpanded = systemExpandedOverride ?? realEntries.length === 0;
 
+  // "사용자" 탭 — 새 쿼리 없이 realEntries(공개 레시피 목록, 이미 households_select_via_public_recipe
+  // 등 RLS로 "공개 레시피를 하나라도 가진 사용자만" 보이게 필터된 상태)를 작성자별로 묶어서
+  // 만든다. 레시피가 0개인 사용자는 애초에 realEntries에 등장할 수 없으므로 존재 자체가
+  // 노출되지 않는다(프라이버시 요구사항을 별도 코드 없이 자연히 만족).
+  const publicUsers = useMemo(() => {
+    const byUserId = new Map<string, PublicUserSummary>();
+    for (const entry of realEntries) {
+      const existing = byUserId.get(entry.authorUserId);
+      if (existing) {
+        existing.recipeCount += 1;
+      } else {
+        byUserId.set(entry.authorUserId, {
+          userId: entry.authorUserId,
+          name: entry.authorName,
+          avatarUrl: entry.authorAvatarUrl,
+          householdName: entry.authorHouseholdName,
+          recipeCount: 1,
+        });
+      }
+    }
+    return Array.from(byUserId.values()).sort((a, b) => b.recipeCount - a.recipeCount);
+  }, [realEntries]);
+
+  const filteredUsers = useMemo(
+    () => (debouncedSearch ? publicUsers.filter((u) => u.name.toLowerCase().includes(debouncedSearch)) : []),
+    [publicUsers, debouncedSearch],
+  );
+
+  const selectedUser = selectedUserId ? (publicUsers.find((u) => u.userId === selectedUserId) ?? null) : null;
+
   // 다른 household 레시피여도 "보유 재료로 가능"은 내 household의 재료 보유 현황 기준으로
   // 판단해야 한다(요구사항 8) — 레시피의 ingredientId는 원본 household 소유라 나와 id가 다르므로,
   // 이름으로 매칭한다(RecipesFeature.tsx의 "내 레시피로 복사하기"와 같은 이름 매칭 패턴).
@@ -215,17 +258,30 @@ export function DiscoverRecipesPage({
     );
   }
 
+  if (selectedUser) {
+    return (
+      <UserProfilePage
+        user={selectedUser}
+        entries={realEntries}
+        ingredientNameById={ingredientNameById}
+        likeInfoById={likeInfoById}
+        onSelectEntry={onSelectEntry}
+        onBack={() => setSelectedUserId(null)}
+      />
+    );
+  }
+
   return (
     <div>
-      <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 14 }}>
+      <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 4 }}>
         <div className="pill-input-row" style={{ flex: 1, marginBottom: 0 }}>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="레시피 이름 또는 재료로 검색"
+            placeholder={searchTarget === 'recipes' ? '레시피 이름 또는 재료로 검색' : '닉네임으로 검색'}
           />
         </div>
-        {!isRowMode && (
+        {searchTarget === 'recipes' && !isRowMode && (
           <button
             className="btn small"
             style={{ flexShrink: 0 }}
@@ -235,12 +291,58 @@ export function DiscoverRecipesPage({
             {viewMode === 'grid' ? '☰' : '▦'}
           </button>
         )}
-        <button type="button" className="recipe-filter-btn" onClick={() => setShowFilterSheet(true)} aria-label="필터">
-          <SlidersHorizontal size={19} strokeWidth={2.5} />
-          {appliedFilterCount > 0 && <span className="recipe-filter-badge">{appliedFilterCount}</span>}
+        {searchTarget === 'recipes' && (
+          <button type="button" className="recipe-filter-btn" onClick={() => setShowFilterSheet(true)} aria-label="필터">
+            <SlidersHorizontal size={19} strokeWidth={2.5} />
+            {appliedFilterCount > 0 && <span className="recipe-filter-badge">{appliedFilterCount}</span>}
+          </button>
+        )}
+      </div>
+
+      <div className="underline-tabs">
+        <button
+          type="button"
+          className={`underline-tab ${searchTarget === 'recipes' ? 'active' : ''}`}
+          onClick={() => setSearchTarget('recipes')}
+        >
+          레시피
+        </button>
+        <button
+          type="button"
+          className={`underline-tab ${searchTarget === 'users' ? 'active' : ''}`}
+          onClick={() => setSearchTarget('users')}
+        >
+          사용자
         </button>
       </div>
 
+      {searchTarget === 'users' ? (
+        <>
+          {!debouncedSearch && <div className="empty-hint">닉네임으로 다른 사용자를 찾아보세요.</div>}
+          {debouncedSearch && filteredUsers.length === 0 && (
+            <div className="empty-hint">일치하는 사용자가 없어요.</div>
+          )}
+          {filteredUsers.map((u) => (
+            <button
+              key={u.userId}
+              type="button"
+              className="public-user-row"
+              onClick={() => setSelectedUserId(u.userId)}
+            >
+              <span className="public-user-avatar">
+                {u.avatarUrl ? <img src={u.avatarUrl} alt="" /> : <User size={20} strokeWidth={2.5} />}
+              </span>
+              <span className="public-user-info">
+                <span className="public-user-name">{u.name}</span>
+                <span className="public-user-meta">
+                  {u.householdName ? `${u.householdName} · ` : ''}공개 레시피 {u.recipeCount}개
+                </span>
+              </span>
+            </button>
+          ))}
+        </>
+      ) : (
+        <>
       {appliedFilterChips.length > 0 && (
         <div className="chip-row-scroll" style={{ marginTop: -6, marginBottom: 8 }}>
           {appliedFilterChips.map((chip) => (
@@ -369,6 +471,8 @@ export function DiscoverRecipesPage({
           </>
         )
       )}
+        </>
+      )}
 
       {showFilterSheet && (
         <DiscoverFilterSheet
@@ -382,6 +486,95 @@ export function DiscoverRecipesPage({
             setShowFilterSheet(false);
           }}
         />
+      )}
+    </div>
+  );
+}
+
+/** "사용자" 탭 검색 결과 선택 시 진입하는 화면 — 그 사람이 공개한 레시피를 RecipeCard/
+ * RecipeListItem으로 그리드/리스트 전환하며 보여준다(기존 화면과 재사용 컴포넌트 공유).
+ * 이미 이 화면 자체가 "OO님" 맥락이라 카드마다 반복되던 ownerLabel/ownerAvatarUrl은 생략한다. */
+function UserProfilePage({
+  user,
+  entries,
+  ingredientNameById,
+  likeInfoById,
+  onSelectEntry,
+  onBack,
+}: {
+  user: PublicUserSummary;
+  entries: PublicRecipeEntry[];
+  ingredientNameById: Map<string, string>;
+  likeInfoById: Map<string, LikeInfo>;
+  onSelectEntry: (entry: PublicRecipeEntry, ingredientNameById: Map<string, string>) => void;
+  onBack: () => void;
+}) {
+  const { mode: viewMode, setMode: setViewMode } = useRecipeViewMode();
+
+  const userEntries = useMemo(
+    () =>
+      [...entries]
+        .filter((e) => e.authorUserId === user.userId)
+        .sort((a, b) => {
+          const aTime = a.recipe.createdAt ? new Date(a.recipe.createdAt).getTime() : 0;
+          const bTime = b.recipe.createdAt ? new Date(b.recipe.createdAt).getTime() : 0;
+          return bTime - aTime;
+        }),
+    [entries, user.userId],
+  );
+
+  return (
+    <div>
+      <button type="button" className="btn small" style={{ marginBottom: 12 }} onClick={onBack}>
+        ← 뒤로
+      </button>
+
+      <div className="row" style={{ gap: 12, alignItems: 'center', marginBottom: 16 }}>
+        <span className="public-user-avatar" style={{ width: 56, height: 56 }}>
+          {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <User size={26} strokeWidth={2.5} />}
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>{user.name}</div>
+          <div className="text-muted" style={{ fontSize: 13 }}>
+            {user.householdName ? `${user.householdName} · ` : ''}공개 레시피 {user.recipeCount}개
+          </div>
+        </div>
+        <button
+          type="button"
+          className="btn small"
+          onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+          title={viewMode === 'grid' ? '리스트로 보기' : '그리드로 보기'}
+        >
+          {viewMode === 'grid' ? '☰' : '▦'}
+        </button>
+      </div>
+
+      {viewMode === 'grid' ? (
+        <div className="recipe-grid">
+          {userEntries.map((entry) => (
+            <RecipeCard
+              key={entry.recipe.id}
+              recipe={entry.recipe}
+              tagNames={entry.tagNames}
+              onClick={() => onSelectEntry(entry, ingredientNameById)}
+              cornerBadge={entry.alreadyCopied ? '이미 있음' : undefined}
+              likeCount={likeInfoById.get(entry.recipe.id)?.likeCount ?? 0}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="recipe-list">
+          {userEntries.map((entry) => (
+            <RecipeListItem
+              key={entry.recipe.id}
+              recipe={entry.recipe}
+              tagNames={entry.tagNames}
+              onClick={() => onSelectEntry(entry, ingredientNameById)}
+              cornerBadge={entry.alreadyCopied ? '이미 있음' : undefined}
+              likeCount={likeInfoById.get(entry.recipe.id)?.likeCount ?? 0}
+            />
+          ))}
+        </div>
       )}
     </div>
   );

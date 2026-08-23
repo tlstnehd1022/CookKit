@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { SlidersHorizontal } from 'lucide-react';
 import { useSession } from '../../data/session';
 import { useIngredients, useRecipes, useTags, getCurrentHouseholdId } from '../../data/store';
 import { useRecipeViewMode } from '../../data/viewMode';
@@ -52,6 +53,7 @@ export function DiscoverRecipesPage({
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [activeTagNames, setActiveTagNames] = useState<string[]>([]);
   const [sortMode, setSortMode] = useState<SortMode>('recent');
+  const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [categoryDetail, setCategoryDetail] = useState<{ title: string; items: RecipeRowItem[] } | null>(null);
   // null이면 "실제 사용자 레시피가 있으면 접힘, 없으면 펼침" 기본값을 그대로 따르고, 사용자가
   // 직접 펼치기/접기를 누르면 그 뒤로는 명시적으로 고정된다(요구사항 10).
@@ -119,6 +121,15 @@ export function DiscoverRecipesPage({
   function toggleTagName(name: string) {
     setActiveTagNames((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
   }
+
+  // RecipesPage(우리집 레시피 관리)와 같은 필터 시트 메커니즘 — 적용된 태그는 검색창 아래
+  // 지울 수 있는 칩으로 나열된다.
+  const appliedFilterChips = activeTagNames.map((name) => ({
+    key: `tag-${name}`,
+    label: name,
+    onRemove: () => toggleTagName(name),
+  }));
+  const appliedFilterCount = appliedFilterChips.length;
 
   // 검색/태그 필터가 하나라도 걸려있으면 RecipesPage와 동일하게 행 구조 대신 기존 필터링된
   // 그리드/리스트 화면으로 전환한다(요구사항 3, 9 — 두 화면의 일관성).
@@ -206,29 +217,41 @@ export function DiscoverRecipesPage({
 
   return (
     <div>
-      <div className="field">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="레시피 이름 또는 재료로 검색"
-        />
+      <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 14 }}>
+        <div className="pill-input-row" style={{ flex: 1, marginBottom: 0 }}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="레시피 이름 또는 재료로 검색"
+          />
+        </div>
+        {!isRowMode && (
+          <button
+            className="btn small"
+            style={{ flexShrink: 0 }}
+            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+            title={viewMode === 'grid' ? '리스트로 보기' : '그리드로 보기'}
+          >
+            {viewMode === 'grid' ? '☰' : '▦'}
+          </button>
+        )}
+        <button type="button" className="recipe-filter-btn" onClick={() => setShowFilterSheet(true)} aria-label="필터">
+          <SlidersHorizontal size={19} strokeWidth={2.5} />
+          {appliedFilterCount > 0 && <span className="recipe-filter-badge">{appliedFilterCount}</span>}
+        </button>
       </div>
 
-      {allTagNames.length > 0 && (
-        <>
-          <div className="section-title">필터</div>
-          <div className="chip-row-scroll">
-            {allTagNames.map((name) => (
-              <button
-                key={name}
-                className={`chip selectable ${activeTagNames.includes(name) ? 'active' : ''}`}
-                onClick={() => toggleTagName(name)}
-              >
-                {name}
+      {appliedFilterChips.length > 0 && (
+        <div className="chip-row-scroll" style={{ marginTop: -6, marginBottom: 8 }}>
+          {appliedFilterChips.map((chip) => (
+            <span className="chip selectable active" key={chip.key}>
+              {chip.label}
+              <button onClick={chip.onRemove} aria-label={`${chip.label} 해제`}>
+                ✕
               </button>
-            ))}
-          </div>
-        </>
+            </span>
+          ))}
+        </div>
       )}
 
       {entries.length === 0 && (
@@ -307,23 +330,8 @@ export function DiscoverRecipesPage({
       ) : (
         entries.length > 0 && (
           <>
-            <div className="row">
-              <div className="section-title" style={{ margin: 0 }}>
-                둘러보기 ({sorted.length})
-              </div>
-              <div className="chip-row" style={{ marginTop: 0 }}>
-                <button
-                  className="btn small"
-                  onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                  title={viewMode === 'grid' ? '리스트로 보기' : '그리드로 보기'}
-                >
-                  {viewMode === 'grid' ? '☰' : '▦'}
-                </button>
-                <select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} style={{ width: 'auto', fontSize: 13 }}>
-                  <option value="recent">최근 추가순</option>
-                  <option value="name">이름순</option>
-                </select>
-              </div>
+            <div className="section-title" style={{ margin: '0 0 8px' }}>
+              둘러보기 ({sorted.length})
             </div>
 
             {sorted.length === 0 && <div className="empty-hint">조건에 맞는 레시피가 없어요.</div>}
@@ -361,6 +369,100 @@ export function DiscoverRecipesPage({
           </>
         )
       )}
+
+      {showFilterSheet && (
+        <DiscoverFilterSheet
+          allTagNames={allTagNames}
+          initialActiveTagNames={activeTagNames}
+          initialSortMode={sortMode}
+          onClose={() => setShowFilterSheet(false)}
+          onApply={(draft) => {
+            setActiveTagNames(draft.activeTagNames);
+            setSortMode(draft.sortMode);
+            setShowFilterSheet(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+const DISCOVER_SORT_OPTIONS: { value: SortMode; label: string }[] = [
+  { value: 'recent', label: '최근 추가순' },
+  { value: 'name', label: '이름순' },
+];
+
+/** RecipesPage(우리집 레시피 관리)의 RecipeFilterSheet와 같은 메커니즘 — 태그/정렬을 draft
+ * 상태로 고르다가 "적용"을 눌러야 반영된다. 둘러보기는 태그를 id가 아니라 이름으로 다룬다
+ * (공개 레시피는 조회 household와 태그 테이블이 다를 수 있어 이름 매칭이 기존부터의 방식). */
+function DiscoverFilterSheet({
+  allTagNames,
+  initialActiveTagNames,
+  initialSortMode,
+  onClose,
+  onApply,
+}: {
+  allTagNames: string[];
+  initialActiveTagNames: string[];
+  initialSortMode: SortMode;
+  onClose: () => void;
+  onApply: (draft: { activeTagNames: string[]; sortMode: SortMode }) => void;
+}) {
+  const [activeTagNames, setActiveTagNames] = useState(initialActiveTagNames);
+  const [sortMode, setSortMode] = useState(initialSortMode);
+
+  function toggleTagName(name: string) {
+    setActiveTagNames((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
+  }
+
+  function reset() {
+    setActiveTagNames([]);
+    setSortMode('recent');
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <h2>필터</h2>
+
+        <div className="section-title" style={{ marginTop: 0 }}>
+          태그
+        </div>
+        {allTagNames.length === 0 && <p className="empty-hint" style={{ padding: '4px 0' }}>등록된 태그가 없어요.</p>}
+        <div className="chip-row">
+          {allTagNames.map((name) => (
+            <button
+              key={name}
+              className={`chip selectable ${activeTagNames.includes(name) ? 'active' : ''}`}
+              onClick={() => toggleTagName(name)}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+
+        <div className="section-title">정렬</div>
+        <div className="chip-row">
+          {DISCOVER_SORT_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              className={`chip selectable ${sortMode === option.value ? 'active' : ''}`}
+              onClick={() => setSortMode(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="row" style={{ gap: 6, marginTop: 8 }}>
+          <button className="btn" onClick={reset}>
+            초기화
+          </button>
+          <button className="btn primary" onClick={() => onApply({ activeTagNames, sortMode })}>
+            적용
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

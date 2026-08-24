@@ -1,4 +1,5 @@
 import type { Ingredient, Recipe } from '../data/types';
+import type { CookingStats } from '../data/cookingLog';
 import { getPantryAvailability } from './pantryAvailability';
 
 export interface RecommendationResult {
@@ -40,6 +41,74 @@ export function pickTodayRecommendation(
     if (scored.ownedCount / scored.totalCount > bestRatio) best = scored;
   }
   return best;
+}
+
+export type RecommendationReason = 'pantry' | 'quick' | 'frequent';
+
+export interface RecommendationCandidate extends RecommendationResult {
+  reason: RecommendationReason;
+}
+
+const QUICK_MAX_MINUTES = 20;
+// mealPlanAutoFill.ts의 "자주 해먹은 정도(가중치 2, 최대 5회 캡) + 오래 안 해먹은 정도(가중치 1,
+// 최대 30일 캡)" 점수 로직을 그대로 재사용 — 한 번도 안 해먹은 레시피는 애초에 이 후보에서
+// 제외한다(count===0이면 "자주 해먹지만"이라는 전제 자체가 성립하지 않으므로).
+function frequentButNotRecentScore(stats: CookingStats): number {
+  const freqScore = Math.min(stats.count, 5) / 5;
+  const daysSinceCooked = stats.lastCookedAt
+    ? (Date.now() - new Date(stats.lastCookedAt).getTime()) / (24 * 60 * 60 * 1000)
+    : Infinity;
+  const recencyScore = Math.min(daysSinceCooked, 30) / 30;
+  return freqScore * 2 + recencyScore;
+}
+
+/**
+ * 홈 화면 "오늘 뭐 먹지?" 카드 — 서로 다른 이유를 가진 후보를 최대 3개까지 뽑는다: 보유 재료
+ * 매칭률 1위(pantry), 20분 이내 중 매칭률 1위(quick), 자주 해먹지만 최근엔 안 먹은 것(frequent).
+ * 이미 앞에서 뽑힌 레시피는 뒤 후보에서 제외해 서로 다른 레시피가 되게 하고, 후보가 부족하면
+ * 있는 것만 반환한다(무리해서 채우지 않음 — 호출부가 length===0이면 섹션을 숨긴다).
+ */
+export function pickTodayRecommendations(
+  recipes: Recipe[],
+  ingredientsById: Map<string, Ingredient>,
+  cookingStats: Map<string, CookingStats>,
+): RecommendationCandidate[] {
+  const picked: RecommendationCandidate[] = [];
+  const usedIds = new Set<string>();
+
+  const pantryBest = pickTodayRecommendation(recipes, ingredientsById);
+  if (pantryBest) {
+    picked.push({ ...pantryBest, reason: 'pantry' });
+    usedIds.add(pantryBest.recipe.id);
+  }
+
+  const quickCandidates = recipes.filter(
+    (r) => !usedIds.has(r.id) && r.estimatedMinutes != null && r.estimatedMinutes <= QUICK_MAX_MINUTES,
+  );
+  const quickBest = pickTodayRecommendation(quickCandidates, ingredientsById);
+  if (quickBest) {
+    picked.push({ ...quickBest, reason: 'quick' });
+    usedIds.add(quickBest.recipe.id);
+  }
+
+  const frequentRanked = recipes
+    .filter((r) => !usedIds.has(r.id))
+    .map((recipe) => {
+      const stats = cookingStats.get(recipe.id);
+      if (!stats || stats.count === 0) return null;
+      return { recipe, score: frequentButNotRecentScore(stats) };
+    })
+    .filter((c): c is { recipe: Recipe; score: number } => c !== null)
+    .sort((a, b) => b.score - a.score);
+  for (const candidate of frequentRanked) {
+    const scored = scoreRecipe(candidate.recipe, ingredientsById);
+    if (scored) {
+      picked.push({ ...scored, reason: 'frequent' });
+      break;
+    }
+  }
+
+  return picked;
 }
 
 const OVERLAPPING_RECIPES_LIMIT = 20;

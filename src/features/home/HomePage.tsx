@@ -22,14 +22,21 @@ import {
 import { useNotifications } from '../../data/notifications';
 import { getExpirationInfo, formatExpirationBadge } from '../../lib/expiration';
 import { isPantryUsable } from '../../lib/pantryAvailability';
-import { pickTodayRecommendation, pickBestRecipeUsingIngredient } from '../../lib/recipeRecommendation';
+import {
+  pickTodayRecommendations,
+  pickBestRecipeUsingIngredient,
+  type RecommendationCandidate,
+  type RecommendationReason,
+} from '../../lib/recipeRecommendation';
 import { fetchMealPlans } from '../../data/mealPlans';
 import { pickNextMealPlan } from '../../lib/mealTime';
 import {
   fetchTodayCookingLog,
   fetchMonthlyCookingCount,
   fetchUncleanedRecentCookingLog,
+  fetchCookingStats,
   type UncleanedCookingLog,
+  type CookingStats,
 } from '../../data/cookingLog';
 import { getCurrentWeekDates, formatWeekdayShort, formatDayOfMonth, todayDateString } from '../../lib/weekDates';
 import { pickGreeting, TIME_SLOT_LABEL } from '../../lib/homeGreeting';
@@ -63,6 +70,7 @@ export function HomePage() {
   const [cookedTodayRecipeName, setCookedTodayRecipeName] = useState<string | undefined>(undefined);
   const [monthlyCookingCount, setMonthlyCookingCount] = useState<number | null>(null);
   const [uncleanedLog, setUncleanedLog] = useState<UncleanedCookingLog | null>(null);
+  const [cookingStatsById, setCookingStatsById] = useState<Map<string, CookingStats>>(new Map());
   const [showPantryTidy, setShowPantryTidy] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const profileSheetRequested = useProfileSheetRequested();
@@ -149,6 +157,22 @@ export function HomePage() {
     };
   }, [householdId, activeTab, view.screen]);
 
+  // "오늘 뭐 먹지?" 추천의 "🔁 오랜만이에요" 후보(pickTodayRecommendations)용 — 위 두 조회와
+  // 같은 시점(홈 진입/복귀)에 다시 불러와서 요리 완료 직후에도 반영되게 한다.
+  useEffect(() => {
+    if (!householdId || activeTab !== 'home' || view.screen !== 'feed' || recipes.length === 0) return;
+    let cancelled = false;
+    fetchCookingStats(recipes.map((r) => r.id))
+      .then((result) => {
+        if (!cancelled) setCookingStatsById(result);
+      })
+      .catch((err) => console.error('요리 기록 통계 조회 실패:', err));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [householdId, activeTab, view.screen, recipes.map((r) => r.id).join(',')]);
+
   const ownedIngredients = useMemo(() => ingredients.filter((i) => i.owned), [ingredients]);
   // "있는 재료로 레시피 추가"용 — 유통기한 지나 확인이 필요한 재료는 제안 재료 목록에서 제외한다.
   const usableIngredients = useMemo(() => ownedIngredients.filter((i) => isPantryUsable(i)), [ownedIngredients]);
@@ -174,10 +198,10 @@ export function HomePage() {
       .slice(0, EXPIRING_LIMIT);
   }, [ingredients]);
 
-  const recommendation = useMemo(() => pickTodayRecommendation(recipes, ingredientsById), [recipes, ingredientsById]);
-  const recommendationImageId =
-    recommendation?.recipe.finalImageId ?? recommendation?.recipe.steps.find((s) => s.imageId)?.imageId;
-  const recommendationImageUrl = useStoredImage(recommendationImageId);
+  const recommendations = useMemo(
+    () => pickTodayRecommendations(recipes, ingredientsById, cookingStatsById),
+    [recipes, ingredientsById, cookingStatsById],
+  );
 
   const today = todayDateString();
   const greetingName = profile?.displayName ? `${profile.displayName}님` : '';
@@ -330,62 +354,29 @@ export function HomePage() {
         )}
       </div>
 
-      {recommendation && (
+      {recommendations.length > 0 && (
         <div className="home-section" data-tour="recommend">
-          <div className="home-recommend-card">
-            <button
-              type="button"
-              className="home-recommend-clickarea"
-              onClick={() => openRecipe(recommendation.recipe.id)}
-            >
-              <div className="home-recommend-image">
-                {recommendationImageUrl ? (
-                  <img src={recommendationImageUrl} alt="" />
-                ) : (
-                  <span className="home-recommend-placeholder">🍽️</span>
-                )}
-                <span className="home-recommend-badge">
-                  재료 {recommendation.totalCount}개 중 {recommendation.ownedCount}개 있어요
-                  {recommendation.unconfirmedCount > 0 && ` · 확인 필요 ${recommendation.unconfirmedCount}개`}
-                </span>
-              </div>
-              <div className="home-recommend-body">
-                <div className="home-recommend-kicker">오늘의 추천</div>
-                <div className="home-recommend-title">{recommendation.recipe.name}</div>
-                <div className="home-recommend-meta">
-                  {recommendation.recipe.estimatedMinutes != null && (
-                    <span>
-                      <Clock size={13} strokeWidth={2.75} /> {recommendation.recipe.estimatedMinutes}분
-                    </span>
-                  )}
-                  {recommendation.recipe.difficulty && (
-                    <span>
-                      <Flame size={13} strokeWidth={2.75} /> {DIFFICULTY_LABEL[recommendation.recipe.difficulty]}
-                    </span>
-                  )}
-                  <span>{recommendation.recipe.servingsBase}인분</span>
-                </div>
-              </div>
-            </button>
-            <div className="home-recommend-actions">
-              <button
-                type="button"
-                className="btn primary"
-                style={{ width: '100%' }}
-                onClick={() =>
+          <div className="home-section-head">
+            <span className="home-section-title">오늘 뭐 먹지?</span>
+          </div>
+          <div className="recipe-row-scroll">
+            {recommendations.map((candidate) => (
+              <RecommendCard
+                key={candidate.recipe.id}
+                candidate={candidate}
+                onOpen={() => openRecipe(candidate.recipe.id)}
+                onCook={() =>
                   setView({
                     screen: 'detail',
-                    recipeId: recommendation.recipe.id,
+                    recipeId: candidate.recipe.id,
                     autoCook: true,
                     // B-5: 상세 화면을 거치지 않고 곧바로 요리 모드로 들어가는 경로라 "그 화면에서
                     // 보고 있던 인분"이 없음 — 가구 기본 인원을 대신 쓴다(우선순위 3번, "그 외").
                     initialServings: household?.defaultServings ?? 2,
                   })
                 }
-              >
-                🍳 바로 요리하기
-              </button>
-            </div>
+              />
+            ))}
           </div>
         </div>
       )}
@@ -508,6 +499,63 @@ export function HomePage() {
       )}
 
       {showTour && <OnboardingTour onFinish={() => setShowTour(false)} />}
+    </div>
+  );
+}
+
+const RECOMMEND_REASON_LABEL: Record<RecommendationReason, string> = {
+  pantry: '🧺 보유 재료로 가능',
+  quick: '⏱ 20분 이내',
+  frequent: '🔁 오랜만이에요',
+};
+
+/** "오늘 뭐 먹지?" 가로 스크롤 행의 카드 — 예전엔 1개만 고정 표시하던 걸 서로 다른 이유의
+ * 후보 여러 개로 확장(pickTodayRecommendations)하면서, 카드마다 useStoredImage를 개별
+ * 호출해야 해서(hook은 반복문 안에서 호출 불가) QuickRecipeCard와 같은 이유로 분리했다. */
+function RecommendCard({
+  candidate,
+  onOpen,
+  onCook,
+}: {
+  candidate: RecommendationCandidate;
+  onOpen: () => void;
+  onCook: () => void;
+}) {
+  const imageId = candidate.recipe.finalImageId ?? candidate.recipe.steps.find((s) => s.imageId)?.imageId;
+  const imageUrl = useStoredImage(imageId);
+  return (
+    <div className="home-recommend-card">
+      <button type="button" className="home-recommend-clickarea" onClick={onOpen}>
+        <div className="home-recommend-image">
+          {imageUrl ? <img src={imageUrl} alt="" /> : <span className="home-recommend-placeholder">🍽️</span>}
+          <span className="home-recommend-badge">
+            재료 {candidate.totalCount}개 중 {candidate.ownedCount}개 있어요
+            {candidate.unconfirmedCount > 0 && ` · 확인 필요 ${candidate.unconfirmedCount}개`}
+          </span>
+        </div>
+        <div className="home-recommend-body">
+          <div className="home-recommend-kicker">{RECOMMEND_REASON_LABEL[candidate.reason]}</div>
+          <div className="home-recommend-title">{candidate.recipe.name}</div>
+          <div className="home-recommend-meta">
+            {candidate.recipe.estimatedMinutes != null && (
+              <span>
+                <Clock size={13} strokeWidth={2.75} /> {candidate.recipe.estimatedMinutes}분
+              </span>
+            )}
+            {candidate.recipe.difficulty && (
+              <span>
+                <Flame size={13} strokeWidth={2.75} /> {DIFFICULTY_LABEL[candidate.recipe.difficulty]}
+              </span>
+            )}
+            <span>{candidate.recipe.servingsBase}인분</span>
+          </div>
+        </div>
+      </button>
+      <div className="home-recommend-actions">
+        <button type="button" className="btn primary" style={{ width: '100%' }} onClick={onCook}>
+          🍳 바로 요리하기
+        </button>
+      </div>
     </div>
   );
 }

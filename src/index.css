@@ -1440,9 +1440,11 @@ select:focus {
   border: 1px dashed var(--border);
 }
 
+/* "오늘 뭐 먹지?" 가로 스크롤 행(.recipe-row-scroll)의 카드 — 예전엔 1개만 폭 100%로 고정
+   표시했지만, 서로 다른 이유의 후보 여러 개를 나란히 볼 수 있게 고정폭으로 바꿨다. */
 .home-recommend-card {
   display: block;
-  width: 100%;
+  width: 280px;
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft-hover);

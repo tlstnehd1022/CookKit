@@ -19,6 +19,7 @@ import { getPantryAvailability } from '../../lib/pantryAvailability';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { showUndoToast } from '../../data/undoToast';
 import type { Ingredient, Recipe } from '../../data/types';
+import { pushHistoryEntry, goBack, discardHistoryEntries } from '../../lib/navigationHistory';
 
 type FilterMode = 'all' | 'need' | 'owned';
 
@@ -214,7 +215,7 @@ export function ShoppingListPage() {
       await saveIngredient(ingredient);
     }
     await addExtraItem(ingredientId);
-    setShowAddExtra(false);
+    goBack();
   }
 
   const isEmpty = selectedRecipeIds.length === 0 && extraItems.length === 0;
@@ -244,10 +245,22 @@ export function ShoppingListPage() {
           아직 담은 게 없어요
           <span style={{ fontSize: 13 }}>레시피를 고르면 필요한 재료가 모여요</span>
           <div className="row" style={{ justifyContent: 'center', gap: 8, marginTop: 4 }}>
-            <button className="btn primary" onClick={() => setShowRecipeSelect(true)}>
+            <button
+              className="btn primary"
+              onClick={() => {
+                pushHistoryEntry(() => setShowRecipeSelect(false));
+                setShowRecipeSelect(true);
+              }}
+            >
               레시피에서 담기
             </button>
-            <button className="btn" onClick={() => setShowAddExtra(true)}>
+            <button
+              className="btn"
+              onClick={() => {
+                pushHistoryEntry(() => setShowAddExtra(false));
+                setShowAddExtra(true);
+              }}
+            >
               직접 추가
             </button>
           </div>
@@ -258,7 +271,15 @@ export function ShoppingListPage() {
             <span style={{ fontSize: 15, fontWeight: 600 }}>
               살 것 {neededCount}개 · 담은 것 {gotCount}개
             </span>
-            <button type="button" className="btn-icon-plain" onClick={() => setShowAddMenu(true)} aria-label="담기">
+            <button
+              type="button"
+              className="btn-icon-plain"
+              onClick={() => {
+                pushHistoryEntry(() => setShowAddMenu(false));
+                setShowAddMenu(true);
+              }}
+              aria-label="담기"
+            >
               <Plus size={22} strokeWidth={2.75} />
             </button>
           </div>
@@ -321,7 +342,14 @@ export function ShoppingListPage() {
 
       {checkedRows.length > 0 && (
         <div className="shopping-move-bar">
-          <button className="btn primary" style={{ width: '100%' }} onClick={() => setShowMoveToFridge(true)}>
+          <button
+            className="btn primary"
+            style={{ width: '100%' }}
+            onClick={() => {
+              pushHistoryEntry(() => setShowMoveToFridge(false));
+              setShowMoveToFridge(true);
+            }}
+          >
             담은 재료 {checkedRows.length}개 냉장고로 옮기기
           </button>
         </div>
@@ -329,13 +357,17 @@ export function ShoppingListPage() {
 
       {showAddMenu && (
         <AddMenuSheet
-          onClose={() => setShowAddMenu(false)}
+          onClose={goBack}
           onPickRecipe={() => {
+            discardHistoryEntries(1);
             setShowAddMenu(false);
+            pushHistoryEntry(() => setShowRecipeSelect(false));
             setShowRecipeSelect(true);
           }}
           onPickManual={() => {
+            discardHistoryEntries(1);
             setShowAddMenu(false);
+            pushHistoryEntry(() => setShowAddExtra(false));
             setShowAddExtra(true);
           }}
         />
@@ -346,7 +378,7 @@ export function ShoppingListPage() {
           recipes={recipes}
           selectedRecipeIds={selectedRecipeIds}
           onToggle={handleToggleRecipe}
-          onClose={() => setShowRecipeSelect(false)}
+          onClose={goBack}
         />
       )}
 
@@ -354,7 +386,7 @@ export function ShoppingListPage() {
         <AddIngredientModal
           existingNames={ingredients.map((i) => i.name.trim().toLowerCase())}
           defaultOwned={false}
-          onClose={() => setShowAddExtra(false)}
+          onClose={goBack}
           onSave={handleAddExtraIngredient}
         />
       )}
@@ -363,7 +395,7 @@ export function ShoppingListPage() {
         <MoveToFridgeModal
           rows={checkedRows}
           ingredientsById={ingredientsById}
-          onClose={() => setShowMoveToFridge(false)}
+          onClose={goBack}
           onApply={async (expirationDates) => {
             // 실행 취소(E)용 — 재료 원본과, 삭제될 shopping_extra_items 행(재추가에 필요한
             // ingredientId/amount/unit)을 미리 스냅샷으로 남겨둔다.
@@ -391,7 +423,7 @@ export function ShoppingListPage() {
               }
             }
             setCheckedKeys(new Set());
-            setShowMoveToFridge(false);
+            goBack();
             if (ingredientSnapshots.length > 0) {
               showUndoToast(`냉장고로 옮겼어요 (${ingredientSnapshots.length}개)`, async () => {
                 for (const snapshot of ingredientSnapshots) {

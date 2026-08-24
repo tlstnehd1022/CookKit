@@ -6,6 +6,10 @@ import { setActiveTab, type Tab } from './data/activeTab'
 import { setHighlightIngredientIds } from './data/highlightIngredients'
 import { requestSharedRecipe } from './data/sharedRecipeRequest'
 import { extractYoutubeVideoId } from './lib/youtubeTranscript'
+import { initNavigationHistory } from './lib/navigationHistory'
+
+// 브라우저/기기 뒤로가기 버튼을 앱 화면 전환과 맞물리게 하는 popstate 리스너 — 한 번만 등록.
+initNavigationHistory()
 
 // PWA(standalone)로 계속 켜둔 채 쓰면 브라우저가 새 배포를 확인할 "페이지 이동"이 거의 안
 // 일어나서, registerType:'autoUpdate'만으로는 실제로 갱신될 일이 드물다(사용자가 수동으로

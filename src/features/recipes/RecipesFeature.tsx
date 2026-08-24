@@ -25,6 +25,7 @@ import { useSession } from '../../data/session';
 import { useHousehold } from '../../data/household';
 import { useDiscoverTabRequested, clearDiscoverTabRequest } from '../../data/discoverTabRequest';
 import { useSharedRecipeRequest, clearSharedRecipeRequest } from '../../data/sharedRecipeRequest';
+import { pushHistoryEntry, goBack, discardHistoryEntries } from '../../lib/navigationHistory';
 import { copyImage, isStorageImagePath } from '../../data/imageStore';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { logCooking } from '../../data/cookingLog';
@@ -115,6 +116,9 @@ export function RecipesFeature() {
     setShowMultiCookLogModal(false);
     setMultiCookRecipes([]);
     setMultiCookStepTimings([]);
+    // 모달을 "확인"으로 닫는 것도 열었을 때 쌓아둔 history 항목을 소비해야 한다(취소/뒤로가기와
+    // 마찬가지로) — 안 그러면 다음 하드웨어 뒤로가기가 어긋난다.
+    discardHistoryEntries(1);
   }
 
   /**
@@ -195,7 +199,11 @@ export function RecipesFeature() {
       };
       await saveRecipe(newRecipe);
 
+      // 복사가 끝나면 discover-detail(진입 시 쌓아둔 history 항목 1개)을 벗어나는 시점이라,
+      // 어느 쪽으로 가든 그 항목은 먼저 지운다.
+      discardHistoryEntries(1);
       if (await confirmAsync('내 레시피로 추가됐어요, 편집 화면으로 이동할까요?')) {
+        pushHistoryEntry(() => setView({ screen: 'list' }));
         setView({ screen: 'edit', recipeId: newRecipeId });
       } else {
         setListMode('mine');
@@ -230,25 +238,44 @@ export function RecipesFeature() {
 
       {view.screen === 'list' && listMode === 'mine' && (
         <RecipesPage
-          onSelectRecipe={(id) => setView({ screen: 'detail', recipeId: id })}
-          onAddRecipe={() => setView({ screen: 'edit' })}
-          onManageTags={() => setShowTagManager(true)}
-          onOpenCookingHistory={() => setView({ screen: 'cooking-history' })}
-          onOpenMultiCook={() => setView({ screen: 'multi-cook-select' })}
+          onSelectRecipe={(id) => {
+            pushHistoryEntry(() => setView({ screen: 'list' }));
+            setView({ screen: 'detail', recipeId: id });
+          }}
+          onAddRecipe={() => {
+            pushHistoryEntry(() => setView({ screen: 'list' }));
+            setView({ screen: 'edit' });
+          }}
+          onManageTags={() => {
+            pushHistoryEntry(() => setShowTagManager(false));
+            setShowTagManager(true);
+          }}
+          onOpenCookingHistory={() => {
+            pushHistoryEntry(() => setView({ screen: 'list' }));
+            setView({ screen: 'cooking-history' });
+          }}
+          onOpenMultiCook={() => {
+            pushHistoryEntry(() => setView({ screen: 'list' }));
+            setView({ screen: 'multi-cook-select' });
+          }}
         />
       )}
       {view.screen === 'list' && listMode === 'discover' && (
         <DiscoverRecipesPage
-          onSelectEntry={(entry, ingredientNameById) =>
-            setView({ screen: 'discover-detail', entry, ingredientNameById })
-          }
+          onSelectEntry={(entry, ingredientNameById) => {
+            pushHistoryEntry(() => setView({ screen: 'list' }));
+            setView({ screen: 'discover-detail', entry, ingredientNameById });
+          }}
         />
       )}
       {view.screen === 'detail' && (
         <RecipeDetailPage
           recipeId={view.recipeId}
-          onBack={() => setView({ screen: 'list' })}
-          onEdit={() => setView({ screen: 'edit', recipeId: view.recipeId })}
+          onBack={goBack}
+          onEdit={() => {
+            pushHistoryEntry(() => setView(view));
+            setView({ screen: 'edit', recipeId: view.recipeId });
+          }}
           autoStartCookingMode={view.autoCook}
           initialServings={view.initialServings}
         />
@@ -258,30 +285,29 @@ export function RecipesFeature() {
           recipeId={view.recipeId}
           initialYoutubeUrl={view.initialYoutubeUrl}
           initialChatText={view.initialChatText}
-          onDone={() =>
-            setView(view.recipeId ? { screen: 'detail', recipeId: view.recipeId } : { screen: 'list' })
-          }
+          onDone={goBack}
         />
       )}
       {view.screen === 'discover-detail' && (
         <PublicRecipeDetailPage
           entry={view.entry}
           ingredientNameById={view.ingredientNameById}
-          onBack={() => setView({ screen: 'list' })}
+          onBack={goBack}
           onCopy={() => handleCopyPublicRecipe(view.entry, view.ingredientNameById)}
           copying={copying}
         />
       )}
       {view.screen === 'cooking-history' && householdId && (
-        <CookingHistoryPage householdId={householdId} onBack={() => setView({ screen: 'list' })} />
+        <CookingHistoryPage householdId={householdId} onBack={goBack} />
       )}
       {view.screen === 'multi-cook-select' && (
         <MultiCookSelectPage
-          onCancel={() => setView({ screen: 'list' })}
+          onCancel={goBack}
           onConfirm={(selectedRecipes) => {
             // 하나만 골랐으면 복합 요리 준비 화면을 거칠 필요 없이 그 레시피의 요리 모드로 바로
             // 들어간다(레시피 상세의 "요리 시작하기"와 같은 경로 — autoStartCookingMode). 상세
             // 화면을 거치지 않는 진입이라 가구 기본 인원을 쓴다(B-5 우선순위 3번).
+            pushHistoryEntry(() => setView({ screen: 'multi-cook-select' }));
             if (selectedRecipes.length === 1) {
               setView({
                 screen: 'detail',
@@ -298,20 +324,38 @@ export function RecipesFeature() {
       {view.screen === 'multi-cook-preview' && (
         <MultiCookPreviewPage
           recipes={view.recipes}
-          onCancel={() => setView({ screen: 'list' })}
-          onReselect={() => setView({ screen: 'multi-cook-select' })}
-          onStart={(order) => setView({ screen: 'multi-cook-mode', recipes: view.recipes, order })}
+          onCancel={() => {
+            // 선택 화면까지 건너뛰고 바로 목록으로 — list→select, select→preview 두 단계를
+            // 한꺼번에 되돌린다.
+            discardHistoryEntries(2);
+            setView({ screen: 'list' });
+          }}
+          onReselect={goBack}
+          onStart={(order) => {
+            pushHistoryEntry(() => setView({ screen: 'multi-cook-preview', recipes: view.recipes }));
+            setView({ screen: 'multi-cook-mode', recipes: view.recipes, order });
+          }}
         />
       )}
       {view.screen === 'multi-cook-mode' && (
         <MultiCookModePage
           recipes={view.recipes}
           order={view.order}
-          onExit={() => setView({ screen: 'list' })}
+          onExit={() => {
+            // list→select→preview→mode 세 단계를 한꺼번에 되돌린다.
+            discardHistoryEntries(3);
+            setView({ screen: 'list' });
+          }}
           onFinish={(stepTimings) => {
+            discardHistoryEntries(3);
             setMultiCookRecipes(view.recipes);
             setMultiCookStepTimings(stepTimings);
             setView({ screen: 'list' });
+            pushHistoryEntry(() => {
+              setShowMultiCookLogModal(false);
+              setMultiCookRecipes([]);
+              setMultiCookStepTimings([]);
+            });
             setShowMultiCookLogModal(true);
           }}
         />
@@ -320,15 +364,11 @@ export function RecipesFeature() {
         <MultiCookLogModal
           recipes={multiCookRecipes}
           ingredientsById={ingredientsById}
-          onClose={() => {
-            setShowMultiCookLogModal(false);
-            setMultiCookRecipes([]);
-            setMultiCookStepTimings([]);
-          }}
+          onClose={goBack}
           onConfirm={handleConfirmMultiCooking}
         />
       )}
-      {showTagManager && <TagManager onClose={() => setShowTagManager(false)} />}
+      {showTagManager && <TagManager onClose={goBack} />}
       {confirmDialog}
     </div>
   );

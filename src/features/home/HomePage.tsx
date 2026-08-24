@@ -14,6 +14,7 @@ import { useShoppingSelection } from '../../data/shoppingSelection';
 import { requestRecipeSearchFocus } from '../../data/recipeSearchFocus';
 import { requestMaxMinutesFilter } from '../../data/recipeTimeFilterRequest';
 import { useProfileSheetRequested, clearProfileSheetRequest } from '../../data/profileSheet';
+import { pushHistoryEntry, goBack, discardHistoryEntries } from '../../lib/navigationHistory';
 import {
   hasSeenOnboardingTour,
   useOnboardingTourRestartRequested,
@@ -88,6 +89,7 @@ export function HomePage() {
 
   useEffect(() => {
     if (profileSheetRequested) {
+      pushHistoryEntry(() => setShowProfileSheet(false));
       setShowProfileSheet(true);
       clearProfileSheetRequest();
     }
@@ -238,7 +240,18 @@ export function HomePage() {
   const todayWeekdayLabel = `${formatWeekdayShort(today)}요일 ${TIME_SLOT_LABEL[greeting.timeSlot]}`;
 
   function openRecipe(recipeId: string) {
+    pushHistoryEntry(() => setView({ screen: 'feed' }));
     setView({ screen: 'detail', recipeId });
+  }
+
+  function openWeeklyPlan() {
+    pushHistoryEntry(() => setView({ screen: 'feed' }));
+    setView({ screen: 'weekly-plan' });
+  }
+
+  function openCookingHistory() {
+    pushHistoryEntry(() => setView({ screen: 'feed' }));
+    setView({ screen: 'cooking-history' });
   }
 
   function findRecipeUsingIngredient(ingredientId: string) {
@@ -249,8 +262,11 @@ export function HomePage() {
     return (
       <RecipeDetailPage
         recipeId={view.recipeId}
-        onBack={() => setView({ screen: 'feed' })}
-        onEdit={() => setView({ screen: 'edit', recipeId: view.recipeId })}
+        onBack={goBack}
+        onEdit={() => {
+          pushHistoryEntry(() => setView(view));
+          setView({ screen: 'edit', recipeId: view.recipeId });
+        }}
         autoStartCookingMode={view.autoCook}
         initialServings={view.initialServings}
       />
@@ -263,19 +279,17 @@ export function HomePage() {
         recipeId={view.recipeId}
         initialChatPrompt={view.initialChatPrompt}
         initialOwnedIngredientIds={view.initialOwnedIngredientIds}
-        onDone={() => setView(view.recipeId ? { screen: 'detail', recipeId: view.recipeId } : { screen: 'feed' })}
+        onDone={goBack}
       />
     );
   }
 
   if (view.screen === 'weekly-plan') {
-    return <WeeklyPlanPage onBack={() => setView({ screen: 'feed' })} />;
+    return <WeeklyPlanPage onBack={goBack} />;
   }
 
   if (view.screen === 'cooking-history') {
-    return householdId ? (
-      <CookingHistoryPage householdId={householdId} onBack={() => setView({ screen: 'feed' })} />
-    ) : null;
+    return householdId ? <CookingHistoryPage householdId={householdId} onBack={goBack} /> : null;
   }
 
   return (
@@ -292,7 +306,10 @@ export function HomePage() {
           type="button"
           className="home-avatar-btn"
           data-tour="profile"
-          onClick={() => setShowProfileSheet(true)}
+          onClick={() => {
+            pushHistoryEntry(() => setShowProfileSheet(false));
+            setShowProfileSheet(true);
+          }}
           aria-label="프로필 및 설정"
         >
           {unreadCount > 0 && <span className="home-avatar-dot" />}
@@ -341,13 +358,14 @@ export function HomePage() {
             className="btn primary"
             data-tour="quick-start"
             style={{ width: '100%', marginTop: 10 }}
-            onClick={() =>
+            onClick={() => {
+              pushHistoryEntry(() => setView({ screen: 'feed' }));
               setView({
                 screen: 'edit',
                 initialChatPrompt: `지금 있는 재료는 ${usableIngredients.map((i) => i.name).join(', ')}이야. 이걸로 뭘 만들 수 있을까?`,
                 initialOwnedIngredientIds: usableIngredients.map((i) => i.id),
-              })
-            }
+              });
+            }}
           >
             🍳 있는 재료로 레시피 추가
           </button>
@@ -365,7 +383,8 @@ export function HomePage() {
                 key={candidate.recipe.id}
                 candidate={candidate}
                 onOpen={() => openRecipe(candidate.recipe.id)}
-                onCook={() =>
+                onCook={() => {
+                  pushHistoryEntry(() => setView({ screen: 'feed' }));
                   setView({
                     screen: 'detail',
                     recipeId: candidate.recipe.id,
@@ -373,8 +392,8 @@ export function HomePage() {
                     // B-5: 상세 화면을 거치지 않고 곧바로 요리 모드로 들어가는 경로라 "그 화면에서
                     // 보고 있던 인분"이 없음 — 가구 기본 인원을 대신 쓴다(우선순위 3번, "그 외").
                     initialServings: household?.defaultServings ?? 2,
-                  })
-                }
+                  });
+                }}
               />
             ))}
           </div>
@@ -400,7 +419,7 @@ export function HomePage() {
       <div className="home-section" data-tour="week">
         <div className="home-section-head">
           <span className="home-section-title">이번 주 일정</span>
-          <button type="button" className="home-link" onClick={() => setView({ screen: 'weekly-plan' })}>
+          <button type="button" className="home-link" onClick={openWeeklyPlan}>
             전체 보기
           </button>
         </div>
@@ -422,7 +441,7 @@ export function HomePage() {
                 type="button"
                 key={date}
                 className={`home-week-cell ${isToday ? 'today' : ''}`}
-                onClick={() => setView({ screen: 'weekly-plan' })}
+                onClick={openWeeklyPlan}
               >
                 <div className="home-week-day">{formatWeekdayShort(date)}</div>
                 <div className="home-week-date">{formatDayOfMonth(date)}</div>
@@ -459,7 +478,14 @@ export function HomePage() {
       )}
 
       {uncleanedLog && (
-        <button type="button" className="action-banner" onClick={() => setShowPantryTidy(true)}>
+        <button
+          type="button"
+          className="action-banner"
+          onClick={() => {
+            pushHistoryEntry(() => setShowPantryTidy(false));
+            setShowPantryTidy(true);
+          }}
+        >
           <span className="action-banner-text">
             🧹 요리 후 냉장고 정리를 하지 않았어요. 정리할까요?
           </span>
@@ -473,7 +499,7 @@ export function HomePage() {
         <button
           type="button"
           className="home-section home-cooking-history-entry"
-          onClick={() => setView({ screen: 'cooking-history' })}
+          onClick={openCookingHistory}
         >
           <span>📋 이번 달 {monthlyCookingCount}번 요리했어요</span>
           <ChevronRight size={16} strokeWidth={2.75} />
@@ -482,8 +508,11 @@ export function HomePage() {
 
       {showProfileSheet && (
         <ProfileSheet
-          onClose={() => setShowProfileSheet(false)}
+          onClose={goBack}
           onNavigateToRecipe={(recipeId) => {
+            // 프로필 바텀시트(depth1)를 닫고 그 자리에서 바로 레시피 상세(depth1)를 여는 것 —
+            // 바텀시트가 열려있던 항목을 지운 뒤 openRecipe가 새로 하나 쌓는다.
+            discardHistoryEntries(1);
             setShowProfileSheet(false);
             openRecipe(recipeId);
           }}
@@ -491,11 +520,7 @@ export function HomePage() {
       )}
 
       {showPantryTidy && (
-        <PantryTidyModal
-          onClose={() => setShowPantryTidy(false)}
-          cookingLogId={uncleanedLog?.id}
-          onApplied={() => setUncleanedLog(null)}
-        />
+        <PantryTidyModal onClose={goBack} cookingLogId={uncleanedLog?.id} onApplied={() => setUncleanedLog(null)} />
       )}
 
       {showTour && <OnboardingTour onFinish={() => setShowTour(false)} />}

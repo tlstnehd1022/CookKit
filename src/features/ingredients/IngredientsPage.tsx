@@ -13,6 +13,7 @@ import { getErrorMessage } from '../../lib/errorMessage';
 import { useHighlightIngredientIds, clearHighlightIngredientIds } from '../../data/highlightIngredients';
 import { useHousehold } from '../../data/household';
 import { ConfirmDialog } from '../recipes/ConfirmDialog';
+import { pushHistoryEntry, goBack, discardHistoryEntries } from '../../lib/navigationHistory';
 import type { Ingredient } from '../../data/types';
 
 export function IngredientsPage() {
@@ -90,8 +91,10 @@ export function IngredientsPage() {
   // "괜찮음/버림"을 정하기 전까지는 다른 설정(알러지 등)을 만지는 게 우선순위가 아니라서.
   function openIngredient(ingredient: Ingredient) {
     if (getPantryAvailability(ingredient) === 'expired_unconfirmed') {
+      pushHistoryEntry(() => setExpiredConfirmId(null));
       setExpiredConfirmId(ingredient.id);
     } else {
+      pushHistoryEntry(() => setEditingDetailsId(null));
       setEditingDetailsId(ingredient.id);
     }
   }
@@ -143,7 +146,10 @@ export function IngredientsPage() {
                 <IngredientChip
                   key={ingredient.id}
                   ingredient={ingredient}
-                  onClick={() => setEditingDetailsId(ingredient.id)}
+                  onClick={() => {
+                    pushHistoryEntry(() => setEditingDetailsId(null));
+                    setEditingDetailsId(ingredient.id);
+                  }}
                   highlighted={highlightIds.includes(ingredient.id)}
                 />
               ))}
@@ -158,7 +164,13 @@ export function IngredientsPage() {
     <div>
       <h1 className="page-header-title">냉장고</h1>
       <div className="page-header-actions">
-        <button className="btn small" onClick={() => setShowCategoryManager(true)}>
+        <button
+          className="btn small"
+          onClick={() => {
+            pushHistoryEntry(() => setShowCategoryManager(false));
+            setShowCategoryManager(true);
+          }}
+        >
           카테고리 관리
         </button>
       </div>
@@ -168,13 +180,34 @@ export function IngredientsPage() {
       </p>
 
       <div className="row" style={{ gap: 8 }}>
-        <button className="btn primary" style={{ flex: 1 }} onClick={() => setShowReceiptScan(true)}>
+        <button
+          className="btn primary"
+          style={{ flex: 1 }}
+          onClick={() => {
+            pushHistoryEntry(() => setShowReceiptScan(false));
+            setShowReceiptScan(true);
+          }}
+        >
           📷 영수증
         </button>
-        <button className="btn primary" style={{ flex: 1 }} onClick={() => setShowAddForm(true)}>
+        <button
+          className="btn primary"
+          style={{ flex: 1 }}
+          onClick={() => {
+            pushHistoryEntry(() => setShowAddForm(false));
+            setShowAddForm(true);
+          }}
+        >
           ➕ 직접 추가
         </button>
-        <button className="btn" style={{ flex: 1 }} onClick={() => setShowTidyModal(true)}>
+        <button
+          className="btn"
+          style={{ flex: 1 }}
+          onClick={() => {
+            pushHistoryEntry(() => setShowTidyModal(false));
+            setShowTidyModal(true);
+          }}
+        >
           🧹 정리하기
         </button>
       </div>
@@ -218,17 +251,17 @@ export function IngredientsPage() {
       {editingDetailsId && (
         <IngredientDetailModal
           ingredient={ingredients.find((i) => i.id === editingDetailsId)!}
-          onClose={() => setEditingDetailsId(null)}
+          onClose={goBack}
           onSave={async (patch) => {
             const target = ingredients.find((i) => i.id === editingDetailsId);
             if (!target) return;
             await saveIngredient({ ...target, ...patch });
-            setEditingDetailsId(null);
+            goBack();
           }}
           onDelete={async () => {
             const target = ingredients.find((i) => i.id === editingDetailsId);
             await deleteIngredient(editingDetailsId);
-            setEditingDetailsId(null);
+            goBack();
             if (target) {
               showUndoToast(`'${target.name}' 재료를 지웠어요`, () => saveIngredient(target));
             }
@@ -239,7 +272,7 @@ export function IngredientsPage() {
       {expiredConfirmId && (
         <ExpiredConfirmModal
           ingredient={ingredients.find((i) => i.id === expiredConfirmId)!}
-          onClose={() => setExpiredConfirmId(null)}
+          onClose={goBack}
           onResolve={async (stillGood) => {
             const target = ingredients.find((i) => i.id === expiredConfirmId);
             if (!target) return;
@@ -250,7 +283,10 @@ export function IngredientsPage() {
             }
           }}
           onEditDetails={() => {
+            // 확인 모달(depth1)을 닫고 그 자리에서 상세 모달(depth1)을 연다.
+            discardHistoryEntries(1);
             setExpiredConfirmId(null);
+            pushHistoryEntry(() => setEditingDetailsId(null));
             setEditingDetailsId(expiredConfirmId);
           }}
         />
@@ -259,19 +295,19 @@ export function IngredientsPage() {
       {showAddForm && (
         <AddIngredientModal
           existingNames={ingredients.map((i) => i.name.trim().toLowerCase())}
-          onClose={() => setShowAddForm(false)}
+          onClose={goBack}
           onSave={async (ingredient) => {
             await markIngredientFilled(ingredient);
-            setShowAddForm(false);
+            goBack();
           }}
         />
       )}
 
-      {showReceiptScan && <ReceiptScanModal onClose={() => setShowReceiptScan(false)} />}
+      {showReceiptScan && <ReceiptScanModal onClose={goBack} />}
 
-      {showCategoryManager && <CategoryManager onClose={() => setShowCategoryManager(false)} />}
+      {showCategoryManager && <CategoryManager onClose={goBack} />}
 
-      {showTidyModal && <PantryTidyModal onClose={() => setShowTidyModal(false)} />}
+      {showTidyModal && <PantryTidyModal onClose={goBack} />}
     </div>
   );
 }

@@ -29,6 +29,7 @@ import { CookingModePage } from './CookingModePage';
 import { TimingAdjustmentModal } from './TimingAdjustmentModal';
 import { PantryTidyModal } from '../ingredients/PantryTidyModal';
 import type { CookingLogStepTiming, Ingredient } from '../../data/types';
+import { pushHistoryEntry, goBack, discardHistoryEntries } from '../../lib/navigationHistory';
 
 const NUTRITION_SOURCE_LABEL: Record<string, string> = {
   public_data: '식약처 기준',
@@ -100,6 +101,7 @@ export function RecipeDetailPage({
   useEffect(() => {
     if (autoStartCookingMode && recipe && !autoStartedRef.current) {
       autoStartedRef.current = true;
+      pushHistoryEntry(() => setShowCookingMode(false));
       setShowCookingMode(true);
     }
   }, [autoStartCookingMode, recipe]);
@@ -357,6 +359,7 @@ export function RecipeDetailPage({
         style={{ width: '100%', marginBottom: 8 }}
         onClick={() => {
           setPendingStepTimings(undefined);
+          pushHistoryEntry(() => setShowCookingLogModal(false));
           setShowCookingLogModal(true);
         }}
       >
@@ -512,6 +515,7 @@ export function RecipeDetailPage({
           confirmLabel="시작"
           onConfirm={() => {
             setShowStartConfirm(false);
+            pushHistoryEntry(() => setShowCookingMode(false));
             setShowCookingMode(true);
           }}
           onCancel={() => setShowStartConfirm(false)}
@@ -523,36 +527,37 @@ export function RecipeDetailPage({
           servings={servings}
           ingredientsById={ingredientsById}
           householdId={householdId}
-          onClose={() => setShowCookingLogModal(false)}
+          onClose={goBack}
           onConfirm={handleConfirmCooking}
           onSetFinalImage={handleSetFinalImageFromCookingLog}
           onSaveLogImage={setCookingLogImage}
           onEditRecipe={() => {
+            // 기록 모달(depth1)을 닫고 그 자리에서 편집 화면으로 — onEdit()이 자체적으로 push한다.
+            discardHistoryEntries(1);
             setShowCookingLogModal(false);
             onEdit();
           }}
           onOpenPantryTidy={() => {
+            discardHistoryEntries(1);
             setShowCookingLogModal(false);
+            pushHistoryEntry(() => setShowPantryTidy(false));
             setShowPantryTidy(true);
           }}
         />
       )}
-      {showPantryTidy && (
-        <PantryTidyModal
-          onClose={() => setShowPantryTidy(false)}
-          cookingLogId={lastCookingLogId ?? undefined}
-        />
-      )}
+      {showPantryTidy && <PantryTidyModal onClose={goBack} cookingLogId={lastCookingLogId ?? undefined} />}
       {showCookingMode && (
         <CookingModePage
           recipe={recipe}
           servings={servings}
           ingredientsById={ingredientsById}
           householdId={householdId}
-          onExit={() => setShowCookingMode(false)}
+          onExit={goBack}
           onFinish={(stepTimings) => {
             setPendingStepTimings(stepTimings);
+            discardHistoryEntries(1);
             setShowCookingMode(false);
+            pushHistoryEntry(() => setShowCookingLogModal(false));
             setShowCookingLogModal(true);
           }}
         />

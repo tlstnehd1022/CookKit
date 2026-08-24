@@ -38,6 +38,7 @@ import { RecipeCard, RecipeListItem, resolveRecipeTagNames } from '../recipes/Re
 import { ConfirmDialog } from '../recipes/ConfirmDialog';
 import { ExpiredConfirmModal } from '../ingredients/IngredientsPage';
 import type { Ingredient, MealPlan, MealType, Recipe } from '../../data/types';
+import { pushHistoryEntry, goBack } from '../../lib/navigationHistory';
 
 type View =
   | { screen: 'week' }
@@ -149,7 +150,7 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
           household?.defaultServings ?? 2,
         );
       }
-      setPickerContext(null);
+      goBack();
       await refresh();
     } catch (err) {
       console.error('일정 배치 실패:', err);
@@ -332,15 +333,18 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
     return (
       <RecipeDetailPage
         recipeId={view.recipeId}
-        onBack={() => setView({ screen: 'week' })}
-        onEdit={() => setView({ screen: 'edit', recipeId: view.recipeId })}
+        onBack={goBack}
+        onEdit={() => {
+          pushHistoryEntry(() => setView(view));
+          setView({ screen: 'edit', recipeId: view.recipeId });
+        }}
         autoStartCookingMode={view.autoCook}
         initialServings={view.initialServings}
       />
     );
   }
   if (view.screen === 'edit') {
-    return <RecipeEditor recipeId={view.recipeId} onDone={() => setView({ screen: 'detail', recipeId: view.recipeId })} />;
+    return <RecipeEditor recipeId={view.recipeId} onDone={goBack} />;
   }
 
   return (
@@ -419,14 +423,24 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
                 return next;
               })
             }
-            onAdd={() => setPickerContext({ mealType })}
-            onReplace={(planId) => setPickerContext({ mealType, replaceId: planId })}
+            onAdd={() => {
+              pushHistoryEntry(() => setPickerContext(null));
+              setPickerContext({ mealType });
+            }}
+            onReplace={(planId) => {
+              pushHistoryEntry(() => setPickerContext(null));
+              setPickerContext({ mealType, replaceId: planId });
+            }}
             onRemove={handleRemovePlan}
             onChangeServings={handleUpdateServings}
-            onViewRecipe={(recipeId) => setView({ screen: 'detail', recipeId })}
-            onCookNow={(recipeId, servings) =>
-              setView({ screen: 'detail', recipeId, autoCook: true, initialServings: servings })
-            }
+            onViewRecipe={(recipeId) => {
+              pushHistoryEntry(() => setView({ screen: 'week' }));
+              setView({ screen: 'detail', recipeId });
+            }}
+            onCookNow={(recipeId, servings) => {
+              pushHistoryEntry(() => setView({ screen: 'week' }));
+              setView({ screen: 'detail', recipeId, autoCook: true, initialServings: servings });
+            }}
           />
         );
       })}
@@ -476,7 +490,7 @@ export function WeeklyPlanPage({ onBack }: { onBack: () => void }) {
           ingredientsById={ingredientsById}
           error={assignError}
           onPick={handlePickRecipe}
-          onClose={() => setPickerContext(null)}
+          onClose={goBack}
         />
       )}
 

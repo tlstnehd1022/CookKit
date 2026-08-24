@@ -34,6 +34,9 @@ interface PublicUserSummary {
   avatarUrl?: string;
   householdName?: string;
   recipeCount: number;
+  /** 이 사용자의 공개 레시피 중 가장 최근 createdAt(ms) — "마지막 업데이트" 정렬 기준.
+   * 레시피 자체에 수정 시각이 없어 새로 올린 시각으로 근사한다. */
+  lastRecipeAt: number;
 }
 
 /**
@@ -161,9 +164,11 @@ export function DiscoverRecipesPage({
   const publicUsers = useMemo(() => {
     const byUserId = new Map<string, PublicUserSummary>();
     for (const entry of realEntries) {
+      const entryTime = entry.recipe.createdAt ? new Date(entry.recipe.createdAt).getTime() : 0;
       const existing = byUserId.get(entry.authorUserId);
       if (existing) {
         existing.recipeCount += 1;
+        existing.lastRecipeAt = Math.max(existing.lastRecipeAt, entryTime);
       } else {
         byUserId.set(entry.authorUserId, {
           userId: entry.authorUserId,
@@ -171,14 +176,17 @@ export function DiscoverRecipesPage({
           avatarUrl: entry.authorAvatarUrl,
           householdName: entry.authorHouseholdName,
           recipeCount: 1,
+          lastRecipeAt: entryTime,
         });
       }
     }
-    return Array.from(byUserId.values()).sort((a, b) => b.recipeCount - a.recipeCount);
+    return Array.from(byUserId.values()).sort((a, b) => b.lastRecipeAt - a.lastRecipeAt);
   }, [realEntries]);
 
+  // 검색어가 없어도 전체공개 레시피가 있는 사용자를 마지막 업데이트 역순으로 쭉 보여준다
+  // (publicUsers가 이미 그 순서로 정렬돼 있음) — 검색어가 있으면 닉네임으로 좁힌다.
   const filteredUsers = useMemo(
-    () => (debouncedSearch ? publicUsers.filter((u) => u.name.toLowerCase().includes(debouncedSearch)) : []),
+    () => (debouncedSearch ? publicUsers.filter((u) => u.name.toLowerCase().includes(debouncedSearch)) : publicUsers),
     [publicUsers, debouncedSearch],
   );
 
@@ -318,9 +326,10 @@ export function DiscoverRecipesPage({
 
       {searchTarget === 'users' ? (
         <>
-          {!debouncedSearch && <div className="empty-hint">닉네임으로 다른 사용자를 찾아보세요.</div>}
-          {debouncedSearch && filteredUsers.length === 0 && (
-            <div className="empty-hint">일치하는 사용자가 없어요.</div>
+          {filteredUsers.length === 0 && (
+            <div className="empty-hint">
+              {debouncedSearch ? '일치하는 사용자가 없어요.' : '아직 전체공개 레시피를 올린 사용자가 없어요.'}
+            </div>
           )}
           {filteredUsers.map((u) => (
             <button

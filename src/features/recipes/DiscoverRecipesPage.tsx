@@ -37,6 +37,8 @@ interface PublicUserSummary {
   /** 이 사용자의 공개 레시피 중 가장 최근 createdAt(ms) — "마지막 업데이트" 정렬 기준.
    * 레시피 자체에 수정 시각이 없어 새로 올린 시각으로 근사한다. */
   lastRecipeAt: number;
+  /** 이 사용자의 공개 레시피 전체가 받은 좋아요 합계 */
+  totalLikes: number;
 }
 
 /**
@@ -165,10 +167,12 @@ export function DiscoverRecipesPage({
     const byUserId = new Map<string, PublicUserSummary>();
     for (const entry of realEntries) {
       const entryTime = entry.recipe.createdAt ? new Date(entry.recipe.createdAt).getTime() : 0;
+      const entryLikes = likeInfoById.get(entry.recipe.id)?.likeCount ?? 0;
       const existing = byUserId.get(entry.authorUserId);
       if (existing) {
         existing.recipeCount += 1;
         existing.lastRecipeAt = Math.max(existing.lastRecipeAt, entryTime);
+        existing.totalLikes += entryLikes;
       } else {
         byUserId.set(entry.authorUserId, {
           userId: entry.authorUserId,
@@ -177,11 +181,12 @@ export function DiscoverRecipesPage({
           householdName: entry.authorHouseholdName,
           recipeCount: 1,
           lastRecipeAt: entryTime,
+          totalLikes: entryLikes,
         });
       }
     }
     return Array.from(byUserId.values()).sort((a, b) => b.lastRecipeAt - a.lastRecipeAt);
-  }, [realEntries]);
+  }, [realEntries, likeInfoById]);
 
   // 검색어가 없어도 전체공개 레시피가 있는 사용자를 마지막 업데이트 역순으로 쭉 보여준다
   // (publicUsers가 이미 그 순서로 정렬돼 있음) — 검색어가 있으면 닉네임으로 좁힌다.
@@ -344,7 +349,7 @@ export function DiscoverRecipesPage({
               <span className="public-user-info">
                 <span className="public-user-name">{u.name}</span>
                 <span className="public-user-meta">
-                  {u.householdName ? `${u.householdName} · ` : ''}공개 레시피 {u.recipeCount}개
+                  {u.householdName ? `${u.householdName} · ` : ''}공개 레시피 {u.recipeCount}개 · ❤️ {u.totalLikes}
                 </span>
               </span>
             </button>
@@ -545,7 +550,7 @@ function UserProfilePage({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 18, fontWeight: 700 }}>{user.name}</div>
           <div className="text-muted" style={{ fontSize: 13 }}>
-            {user.householdName ? `${user.householdName} · ` : ''}공개 레시피 {user.recipeCount}개
+            {user.householdName ? `${user.householdName} · ` : ''}공개 레시피 {user.recipeCount}개 · ❤️ {user.totalLikes}
           </div>
         </div>
         <button

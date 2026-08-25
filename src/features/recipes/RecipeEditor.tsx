@@ -39,6 +39,7 @@ import {
   useStoredImage,
 } from '../../data/imageStore';
 import { getErrorMessage } from '../../lib/errorMessage';
+import { resizeDataUrlForUpload, resizeImageForUpload } from '../../lib/imageResize';
 import { computeDifficulty, DIFFICULTY_LABEL, MANUAL_DIFFICULTY_REASON } from '../../lib/recipeDifficulty';
 import { estimateCookMinutes } from '../../lib/recipeTime';
 import {
@@ -579,7 +580,8 @@ export function RecipeEditor({
     setImageGeneratingIndex(index);
     try {
       const prompt = geminiClient.buildStepImagePrompt(name || '이름 없는 레시피', step);
-      const dataUrl = await aiProxy.generateImage(settings.geminiImageModel, prompt);
+      const rawDataUrl = await aiProxy.generateImage(settings.geminiImageModel, prompt);
+      const { dataUrl } = await resizeDataUrlForUpload(rawDataUrl);
       const imageId = isStorageImagePath(step.imageId) ? step.imageId : buildImagePath(householdId, stableRecipeId, 'step');
       await saveImage(imageId, dataUrl);
       updateStepRow(index, { imageId });
@@ -620,7 +622,8 @@ export function RecipeEditor({
       currentMainIngredientNames(),
       currentTagNames(),
     );
-    const dataUrl = await aiProxy.generateImage(settings.geminiImageModel, prompt);
+    const rawDataUrl = await aiProxy.generateImage(settings.geminiImageModel, prompt);
+    const { dataUrl } = await resizeDataUrlForUpload(rawDataUrl);
     const path = isStorageImagePath(finalImageId) ? finalImageId : buildImagePath(householdId, stableRecipeId, 'final');
     await saveImage(path, dataUrl);
     setFinalImageId(path);
@@ -653,7 +656,7 @@ export function RecipeEditor({
     }
     setImageError(null);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      const { dataUrl } = await resizeImageForUpload(file);
       const path = isStorageImagePath(finalImageId) ? finalImageId : buildImagePath(householdId, stableRecipeId, 'final');
       await saveImage(path, dataUrl);
       setFinalImageId(path);
@@ -668,15 +671,6 @@ export function RecipeEditor({
     setFinalImageId(undefined);
   }
 
-  function readFileAsDataUrl(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error ?? new Error('파일을 읽지 못했습니다.'));
-      reader.readAsDataURL(file);
-    });
-  }
-
   async function uploadImageForStep(index: number, file: File) {
     if (!householdId) {
       setImageError('household 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
@@ -686,7 +680,7 @@ export function RecipeEditor({
     if (!step) return;
     setImageError(null);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      const { dataUrl } = await resizeImageForUpload(file);
       const imageId = isStorageImagePath(step.imageId) ? step.imageId : buildImagePath(householdId, stableRecipeId, 'step');
       await saveImage(imageId, dataUrl);
       updateStepRow(index, { imageId });
@@ -733,7 +727,8 @@ export function RecipeEditor({
           if (!step) return;
           try {
             const prompt = geminiClient.buildStepImagePrompt(recipeNameForPrompt, step);
-            const dataUrl = await aiProxy.generateImage(settings.geminiImageModel, prompt);
+            const rawDataUrl = await aiProxy.generateImage(settings.geminiImageModel, prompt);
+            const { dataUrl } = await resizeDataUrlForUpload(rawDataUrl);
             const imageId = isStorageImagePath(step.imageId) ? step.imageId : buildImagePath(householdId, stableRecipeId, 'step');
             await saveImage(imageId, dataUrl);
             updateStepRow(stepIndex, { imageId });

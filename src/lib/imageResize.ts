@@ -12,32 +12,41 @@ export interface ResizedImage {
   dataUrl: string;
 }
 
-export function resizeImageForUpload(file: File): Promise<ResizedImage> {
+function resizeImageSrc(src: string, maxDimension: number): Promise<ResizedImage> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = () => reject(new Error('이미지를 불러오지 못했습니다.'));
+    img.onload = () => {
+      const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+      const width = Math.max(1, Math.round(img.width * scale));
+      const height = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('이미지를 처리할 수 없습니다.'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+      const base64 = dataUrl.split(',')[1] ?? '';
+      resolve({ base64, mimeType: 'image/jpeg', dataUrl });
+    };
+    img.src = src;
+  });
+}
+
+export function resizeImageForUpload(file: File, maxDimension = MAX_DIMENSION): Promise<ResizedImage> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error ?? new Error('파일을 읽지 못했습니다.'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('이미지를 불러오지 못했습니다.'));
-      img.onload = () => {
-        const scale = Math.min(1, MAX_DIMENSION / Math.max(img.width, img.height));
-        const width = Math.max(1, Math.round(img.width * scale));
-        const height = Math.max(1, Math.round(img.height * scale));
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('이미지를 처리할 수 없습니다.'));
-          return;
-        }
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
-        const base64 = dataUrl.split(',')[1] ?? '';
-        resolve({ base64, mimeType: 'image/jpeg', dataUrl });
-      };
-      img.src = reader.result as string;
-    };
+    reader.onload = () => resolve(resizeImageSrc(reader.result as string, maxDimension));
     reader.readAsDataURL(file);
   });
+}
+
+/** AI가 생성해 dataUrl로 곧바로 돌려주는 이미지(Gemini 등)를 저장 전에 압축할 때 사용. */
+export function resizeDataUrlForUpload(dataUrl: string, maxDimension = MAX_DIMENSION): Promise<ResizedImage> {
+  return resizeImageSrc(dataUrl, maxDimension);
 }

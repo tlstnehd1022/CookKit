@@ -3,6 +3,7 @@ import type { Ingredient, Recipe } from '../../data/types';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { scaleAmount } from '../../data/computed';
 import { buildImagePath, saveImage, useStoredImage } from '../../data/imageStore';
+import { resizeImageForUpload } from '../../lib/imageResize';
 
 /**
  * "🍳 오늘 만들었어요" 확인 모달 — 이 레시피가 쓰는 재료를 체크박스로 보여주고(기본 전체 선택),
@@ -84,15 +85,6 @@ export function CookingLogModal({
     }
   }
 
-  function readFileAsDataUrl(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error ?? new Error('파일을 읽지 못했습니다.'));
-      reader.readAsDataURL(file);
-    });
-  }
-
   async function handlePhotoUpload(file: File) {
     if (!householdId || !cookingLogId) {
       setPhotoError('요리 기록 정보를 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
@@ -101,7 +93,7 @@ export function CookingLogModal({
     setPhotoUploading(true);
     setPhotoError(null);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      const { dataUrl } = await resizeImageForUpload(file);
       const imageId = buildImagePath(householdId, recipe.id, 'log');
       await saveImage(imageId, dataUrl);
       // 대표 사진 지정 여부와 무관하게 항상 이 요리 기록에 연결해둔다 — 안 그러면 "대표 사진으로

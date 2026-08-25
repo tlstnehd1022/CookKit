@@ -6,20 +6,12 @@ import { useSession } from '../../data/session';
 import { logCooking, setCookingLogImage } from '../../data/cookingLog';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { buildImagePath, saveImage, useStoredImage } from '../../data/imageStore';
+import { resizeImageForUpload } from '../../lib/imageResize';
 import { resolveRecipeTagNames, RecipeListItem } from './RecipesPage';
 
 function todayStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error ?? new Error('파일을 읽지 못했습니다.'));
-    reader.readAsDataURL(file);
-  });
 }
 
 type Step = 'recipe' | 'date' | 'photo' | 'ingredients';
@@ -106,7 +98,7 @@ export function AddCookingLogModal({
     setPhotoUploading(true);
     setPhotoError(null);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      const { dataUrl } = await resizeImageForUpload(file);
       const imageId = buildImagePath(householdId, selectedRecipe.id, 'log');
       await saveImage(imageId, dataUrl);
       await setCookingLogImage(cookingLogId, imageId);

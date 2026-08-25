@@ -13,6 +13,7 @@ import { fetchLikeInfo, type LikeInfo } from '../../data/recipeLikes';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { isPantryUsable } from '../../lib/pantryAvailability';
 import { RecipeCard, RecipeListItem } from './RecipesPage';
+import type { TagType } from '../../data/types';
 import {
   RecipeCategoryDetailPage,
   RecipeRowSection,
@@ -28,7 +29,7 @@ type SortMode = 'recent' | 'name';
 // 만들지 않고, 나중에 손님초대모드/MenuSet을 실제 구현할 때 3번째 탭으로 추가할 여지만 남겨둔다.
 type SearchTarget = 'recipes' | 'users';
 
-interface PublicUserSummary {
+export interface PublicUserSummary {
   userId: string;
   name: string;
   avatarUrl?: string;
@@ -278,6 +279,7 @@ export function DiscoverRecipesPage({
         entries={realEntries}
         ingredientNameById={ingredientNameById}
         likeInfoById={likeInfoById}
+        tagTypeByName={tagTypeByName}
         onSelectEntry={onSelectEntry}
         onBack={() => setSelectedUserId(null)}
       />
@@ -505,14 +507,21 @@ export function DiscoverRecipesPage({
   );
 }
 
-/** "사용자" 탭 검색 결과 선택 시 진입하는 화면 — 그 사람이 공개한 레시피를 RecipeCard/
- * RecipeListItem으로 그리드/리스트 전환하며 보여준다(기존 화면과 재사용 컴포넌트 공유).
- * 이미 이 화면 자체가 "OO님" 맥락이라 카드마다 반복되던 ownerLabel/ownerAvatarUrl은 생략한다. */
-function UserProfilePage({
+// 레시피 개수가 이 값 이하면 그리드/리스트로 전부 노출, 초과하면 cuisine/style 태그별 가로
+// 스크롤 행 구조로 전환한다(상수로 분리해 나중에 조정하기 쉽게).
+export const PROFILE_ROW_LAYOUT_THRESHOLD = 8;
+
+/** "사용자" 탭 검색 결과 선택 시(또는 "내 공개 프로필 보기") 진입하는 화면 — 그 사람이 공개한
+ * 레시피를 보여준다. 레시피가 적으면(PROFILE_ROW_LAYOUT_THRESHOLD 이하) 기존처럼 그리드/
+ * 리스트로 전부 노출하고, 많으면 RecipesPage/DiscoverRecipesPage와 같은 넷플릭스 스타일
+ * 가로 스크롤 행 구조로 전환한다. tagTypeByName은 항상 "보는 사람(나)"의 태그 목록에서
+ * 만들어 전달해야 한다(cuisine/style 분류 원칙 — RecipeRowSection.splitTagRows 참고). */
+export function UserProfilePage({
   user,
   entries,
   ingredientNameById,
   likeInfoById,
+  tagTypeByName,
   onSelectEntry,
   onBack,
 }: {
@@ -520,10 +529,12 @@ function UserProfilePage({
   entries: PublicRecipeEntry[];
   ingredientNameById: Map<string, string>;
   likeInfoById: Map<string, LikeInfo>;
+  tagTypeByName: Map<string, TagType>;
   onSelectEntry: (entry: PublicRecipeEntry, ingredientNameById: Map<string, string>) => void;
   onBack: () => void;
 }) {
   const { mode: viewMode, setMode: setViewMode } = useRecipeViewMode();
+  const [categoryDetail, setCategoryDetail] = useState<{ title: string; items: RecipeRowItem[] } | null>(null);
 
   const userEntries = useMemo(
     () =>
@@ -536,6 +547,48 @@ function UserProfilePage({
         }),
     [entries, user.userId],
   );
+
+  const useRowLayout = userEntries.length > PROFILE_ROW_LAYOUT_THRESHOLD;
+
+  function buildRowItem(entry: PublicRecipeEntry): RecipeRowItem {
+    return {
+      id: entry.recipe.id,
+      recipe: entry.recipe,
+      tagNames: entry.tagNames,
+      onClick: () => onSelectEntry(entry, ingredientNameById),
+      cornerBadge: entry.alreadyCopied ? '이미 있음' : undefined,
+      likeCount: likeInfoById.get(entry.recipe.id)?.likeCount ?? 0,
+    };
+  }
+
+  const rowItems = useMemo(
+    () => userEntries.map(buildRowItem),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [userEntries, ingredientNameById, likeInfoById],
+  );
+  const { cuisineRows, styleRows } = useMemo(() => {
+    const grouped = groupRowItemsByTagName(rowItems);
+    return splitTagRows(grouped, tagTypeByName);
+  }, [rowItems, tagTypeByName]);
+  // 3-1: cuisine/style 태그가 아예 없거나(또는 이 사람의 레시피 중에서만 너무 적어 행으로
+  // 안 뜨는 태그뿐이라) 어느 행에도 안 걸린 레시피는 "🏷 태그 없음" 행으로 따로 모아 누락 없이
+  // 노출한다.
+  const shownIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const row of [...cuisineRows, ...styleRows]) for (const item of row.items) ids.add(item.id);
+    return ids;
+  }, [cuisineRows, styleRows]);
+  const untaggedItems = rowItems.filter((item) => !shownIds.has(item.id));
+
+  if (categoryDetail) {
+    return (
+      <RecipeCategoryDetailPage
+        title={categoryDetail.title}
+        items={categoryDetail.items}
+        onBack={() => setCategoryDetail(null)}
+      />
+    );
+  }
 
   return (
     <div>
@@ -553,17 +606,45 @@ function UserProfilePage({
             {user.householdName ? `${user.householdName} · ` : ''}공개 레시피 {user.recipeCount}개 · ❤️ {user.totalLikes}
           </div>
         </div>
-        <button
-          type="button"
-          className="btn small"
-          onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-          title={viewMode === 'grid' ? '리스트로 보기' : '그리드로 보기'}
-        >
-          {viewMode === 'grid' ? '☰' : '▦'}
-        </button>
+        {!useRowLayout && (
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+            title={viewMode === 'grid' ? '리스트로 보기' : '그리드로 보기'}
+          >
+            {viewMode === 'grid' ? '☰' : '▦'}
+          </button>
+        )}
       </div>
 
-      {viewMode === 'grid' ? (
+      {useRowLayout ? (
+        <div>
+          {cuisineRows.map((row) => (
+            <RecipeRowSection
+              key={row.title}
+              title={row.title}
+              items={row.items}
+              onMore={() => setCategoryDetail({ title: row.title, items: row.items })}
+            />
+          ))}
+          {styleRows.map((row) => (
+            <RecipeRowSection
+              key={row.title}
+              title={row.title}
+              items={row.items}
+              onMore={() => setCategoryDetail({ title: row.title, items: row.items })}
+            />
+          ))}
+          {untaggedItems.length > 0 && (
+            <RecipeRowSection
+              title="🏷 태그 없음"
+              items={untaggedItems}
+              onMore={() => setCategoryDetail({ title: '🏷 태그 없음', items: untaggedItems })}
+            />
+          )}
+        </div>
+      ) : viewMode === 'grid' ? (
         <div className="recipe-grid">
           {userEntries.map((entry) => (
             <RecipeCard

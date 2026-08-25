@@ -4,6 +4,7 @@ import { RecipeDetailPage } from './RecipeDetailPage';
 import { RecipeEditor } from './RecipeEditor';
 import { TagManager } from './TagManager';
 import { DiscoverRecipesPage } from './DiscoverRecipesPage';
+import { MyPublicProfilePage } from './MyPublicProfilePage';
 import { PublicRecipeDetailPage } from './PublicRecipeDetailPage';
 import { CookingHistoryPage } from './CookingHistoryPage';
 import { MultiCookSelectPage } from './MultiCookSelectPage';
@@ -25,6 +26,7 @@ import { useSession } from '../../data/session';
 import { useHousehold } from '../../data/household';
 import { useDiscoverTabRequested, clearDiscoverTabRequest } from '../../data/discoverTabRequest';
 import { useSharedRecipeRequest, clearSharedRecipeRequest } from '../../data/sharedRecipeRequest';
+import { useMyPublicProfileRequested, clearMyPublicProfileRequest } from '../../data/myPublicProfileRequest';
 import { pushHistoryEntry, goBack, discardHistoryEntries } from '../../lib/navigationHistory';
 import { copyImage, isStorageImagePath } from '../../data/imageStore';
 import { getErrorMessage } from '../../lib/errorMessage';
@@ -37,6 +39,7 @@ type View =
   | { screen: 'detail'; recipeId: string; autoCook?: boolean; initialServings?: number }
   | { screen: 'edit'; recipeId?: string; initialYoutubeUrl?: string; initialChatText?: string }
   | { screen: 'discover-detail'; entry: PublicRecipeEntry; ingredientNameById: Map<string, string> }
+  | { screen: 'my-public-profile' }
   | { screen: 'cooking-history' }
   | { screen: 'multi-cook-select' }
   | { screen: 'multi-cook-preview'; recipes: Recipe[] }
@@ -85,6 +88,13 @@ export function RecipesFeature() {
     });
     clearSharedRecipeRequest();
   }, [sharedRecipeRequest]);
+
+  const myPublicProfileRequested = useMyPublicProfileRequested();
+  useEffect(() => {
+    if (!myPublicProfileRequested) return;
+    setView({ screen: 'my-public-profile' });
+    clearMyPublicProfileRequest();
+  }, [myPublicProfileRequested]);
 
   /**
    * 복합 요리 완료 확인 — 선택한 레시피 각각에 대해 별도로 CookingLog를 남긴다(하나로 합치지
@@ -295,6 +305,15 @@ export function RecipesFeature() {
           onBack={goBack}
           onCopy={() => handleCopyPublicRecipe(view.entry, view.ingredientNameById)}
           copying={copying}
+        />
+      )}
+      {view.screen === 'my-public-profile' && (
+        <MyPublicProfilePage
+          onSelectEntry={(entry, entryIngredientNameById) => {
+            pushHistoryEntry(() => setView({ screen: 'my-public-profile' }));
+            setView({ screen: 'discover-detail', entry, ingredientNameById: entryIngredientNameById });
+          }}
+          onBack={() => setView({ screen: 'list' })}
         />
       )}
       {view.screen === 'cooking-history' && householdId && (

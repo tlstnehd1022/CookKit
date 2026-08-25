@@ -21,6 +21,7 @@ import {
 } from '../../data/cookingModeSettings';
 import { useNotifications, type AppNotification } from '../../data/notifications';
 import { fetchAiChatFeedback, type AiChatFeedbackEntry } from '../../data/aiChatFeedback';
+import { requestMyPublicProfile } from '../../data/myPublicProfileRequest';
 import { useIngredients, useRecipes } from '../../data/store';
 import { AVAILABLE_MODELS } from '../../lib/claudeClient';
 import { getErrorMessage } from '../../lib/errorMessage';
@@ -137,7 +138,14 @@ export function ProfileSheet({
             }}
           />
         )}
-        {section === 'profile' && <ProfileSection />}
+        {section === 'profile' && (
+          <ProfileSection
+            onOpenPublicProfile={() => {
+              onClose();
+              requestMyPublicProfile();
+            }}
+          />
+        )}
         {section === 'household' && <HouseholdSection />}
         {section === 'app' && <AppSettingsSection onOpenFeedback={() => setSection('ai-feedback')} />}
         {section === 'ai-feedback' && <AiChatFeedbackSection />}
@@ -188,7 +196,7 @@ function NotificationsSection({ onNavigateToRecipe }: { onNavigateToRecipe: (rec
   );
 }
 
-function ProfileSection() {
+function ProfileSection({ onOpenPublicProfile }: { onOpenPublicProfile: () => void }) {
   const { user } = useSession();
   const { profile, updateDisplayName, updateAvatarFromFile, updateAvatarUrl } = useProfile();
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -294,6 +302,9 @@ function ProfileSection() {
         helperText="닉네임은 레시피 작성자 표시 등으로 같은 가구 구성원과 다른 가구 유저에게도 공개돼요."
         onSave={saveNickname}
       />
+      <button type="button" className="btn small" style={{ width: '100%', marginTop: 12 }} onClick={onOpenPublicProfile}>
+        👀 내 공개 프로필 보기
+      </button>
     </div>
   );
 }

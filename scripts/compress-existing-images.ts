@@ -37,6 +37,22 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
+// Supabase Storage API가 대량 순회 중 간헐적으로 504 Gateway Timeout을 반환하는 경우가
+// 있어(재현 확인됨), list/download/upload 공통으로 재시도하는 얇은 래퍼.
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 1500): Promise<T> {
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === retries) throw err;
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn(`  재시도 ${attempt}/${retries - 1}... (${reason})`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    }
+  }
+  throw new Error('unreachable');
+}
+
 interface StorageFile {
   path: string;
   size: number;
@@ -47,11 +63,13 @@ async function listAllFiles(prefix: string): Promise<StorageFile[]> {
   let offset = 0;
   const limit = 1000;
   while (true) {
-    const { data, error } = await supabase.storage.from(BUCKET).list(prefix, {
-      limit,
-      offset,
-      sortBy: { column: 'name', order: 'asc' },
-    });
+    const { data, error } = await withRetry(() =>
+      supabase.storage.from(BUCKET).list(prefix, {
+        limit,
+        offset,
+        sortBy: { column: 'name', order: 'asc' },
+      }),
+    );
     if (error) throw error;
     if (!data || data.length === 0) break;
     for (const item of data) {
@@ -81,7 +99,9 @@ async function main() {
 
   for (const [i, file] of files.entries()) {
     try {
-      const { data: blob, error: downloadError } = await supabase.storage.from(BUCKET).download(file.path);
+      const { data: blob, error: downloadError } = await withRetry(() =>
+        supabase.storage.from(BUCKET).download(file.path),
+      );
       if (downloadError || !blob) throw downloadError ?? new Error('다운로드 실패');
       const original = Buffer.from(await blob.arrayBuffer());
 
@@ -99,9 +119,9 @@ async function main() {
         .jpeg({ quality: JPEG_QUALITY })
         .toBuffer();
 
-      const { error: uploadError } = await supabase.storage
-        .from(BUCKET)
-        .upload(file.path, resized, { contentType: 'image/jpeg', upsert: true });
+      const { error: uploadError } = await withRetry(() =>
+        supabase.storage.from(BUCKET).upload(file.path, resized, { contentType: 'image/jpeg', upsert: true }),
+      );
       if (uploadError) throw uploadError;
 
       recompressed += 1;

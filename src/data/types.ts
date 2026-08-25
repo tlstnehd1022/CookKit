@@ -96,7 +96,9 @@ export interface RecipeNutrition {
  * 낮아 보류) · 'ai_estimate' = AI 추정(온디맨드) · 'manual' = 사용자 직접 입력 */
 export type NutritionSource = 'public_data' | 'api' | 'ai_estimate' | 'manual';
 
-export type TagType = 'style' | 'category' | 'cuisine';
+// 'tool'(요리도구, 예: 에어프라이어/오븐)은 필터 전용 — 레시피 목록의 가로 스크롤 행에는
+// 노출하지 않는다(RecipeRowSection.splitTagRows가 건너뜀).
+export type TagType = 'style' | 'category' | 'cuisine' | 'tool';
 
 export interface Tag {
   id: string;

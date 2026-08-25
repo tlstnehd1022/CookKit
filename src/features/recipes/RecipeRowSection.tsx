@@ -70,8 +70,11 @@ export function splitTagRows(
   const cuisineRows: TagRow[] = [];
   const styleRows: TagRow[] = [];
   for (const [name, items] of grouped) {
+    const type = tagTypeByName.get(name);
+    // 요리도구(tool) 태그는 필터 전용 — 가로 스크롤 행에는 노출하지 않는다.
+    if (type === 'tool') continue;
     const row: TagRow = { title: name, items };
-    if (tagTypeByName.get(name) === 'cuisine') cuisineRows.push(row);
+    if (type === 'cuisine') cuisineRows.push(row);
     else styleRows.push(row);
   }
   cuisineRows.sort((a, b) => b.items.length - a.items.length);

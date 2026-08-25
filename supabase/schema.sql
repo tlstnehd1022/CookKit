@@ -171,6 +171,11 @@ begin
            ('디저트·베이킹'), ('음료'), ('샌드위치·토스트')
   ) as v(name);
 
+  -- 요리도구 기본 태그(0038) — 필터 전용(레시피 목록 가로 스크롤 행에는 안 보임).
+  insert into public.tags (household_id, name, type)
+  select new_household_id, v.name, 'tool'
+  from (values ('에어프라이어'), ('오븐'), ('전자레인지'), ('찜기'), ('압력솥')) as v(name);
+
   -- 재료 카테고리 기본 시딩(0036) — 이것 없이는 "재료 직접 추가" 화면에서 고를 카테고리가
   -- 하나도 없어 막힌다. 두부는 찌개 등에서 고기 대신 쓰이는 단백질 재료라 "육류·해산물"과
   -- 묶었다.
@@ -278,7 +283,7 @@ create table public.tags (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households(id) on delete cascade,
   name text not null,
-  type text not null default 'style' check (type in ('style', 'category', 'cuisine')),
+  type text not null default 'style' check (type in ('style', 'category', 'cuisine', 'tool')),
   created_at timestamptz not null default now()
 );
 

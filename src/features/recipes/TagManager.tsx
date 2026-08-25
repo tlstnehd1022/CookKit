@@ -103,6 +103,32 @@ export function TagManager({ onClose }: { onClose: () => void }) {
             />
           ))}
 
+        <div className="section-title">요리도구 태그 (필터 전용)</div>
+        <p className="text-muted" style={{ marginTop: -4 }}>
+          에어프라이어, 오븐처럼 필요한 도구를 나타내는 태그예요. 레시피 목록에는 안 보이고
+          필터에서만 골라 찾을 수 있어요.
+        </p>
+        {tags
+          .filter((tag) => tag.type === 'tool')
+          .map((tag) => (
+            <TagRow
+              key={tag.id}
+              name={tag.name}
+              isRenaming={renamingId === tag.id}
+              renameDraft={renameDraft}
+              onRenameDraftChange={setRenameDraft}
+              onStartRename={() => {
+                setRenamingId(tag.id);
+                setRenameDraft(tag.name);
+              }}
+              onConfirmRename={() => {
+                saveTag({ ...tag, name: renameDraft.trim() || tag.name });
+                setRenamingId(null);
+              }}
+              onDelete={() => handleDeleteTag(tag)}
+            />
+          ))}
+
         <div className="section-title">새 태그 추가</div>
         <div className="field">
           <div className="row">
@@ -111,6 +137,7 @@ export function TagManager({ onClose }: { onClose: () => void }) {
               <option value="style">스타일</option>
               <option value="category">카테고리</option>
               <option value="cuisine">국가/장르</option>
+              <option value="tool">요리도구</option>
             </select>
             <button className="btn small" onClick={addTag}>
               추가

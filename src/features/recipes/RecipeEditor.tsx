@@ -1222,6 +1222,28 @@ export function RecipeEditor({
         <p className="text-muted">태그 관리에서 국가/장르 태그를 추가할 수 있어요(예: 한식, 양식).</p>
       )}
 
+      <div className="section-title">요리도구 (선택)</div>
+      <p className="text-muted" style={{ marginTop: -4, marginBottom: 6 }}>
+        에어프라이어, 오븐처럼 이 레시피에 필요한 도구를 나타내는 태그예요. 레시피 목록에는
+        따로 안 보이고 필터에서만 찾을 수 있어요.
+      </p>
+      <div className="chip-row">
+        {tags
+          .filter((tag) => tag.type === 'tool')
+          .map((tag) => (
+            <button
+              key={tag.id}
+              className={`chip selectable ${tagIds.includes(tag.id) ? 'active' : ''}`}
+              onClick={() => toggleTag(tag.id)}
+            >
+              {tag.name}
+            </button>
+          ))}
+      </div>
+      {tags.filter((tag) => tag.type === 'tool').length === 0 && (
+        <p className="text-muted">태그 관리에서 요리도구 태그를 추가할 수 있어요(예: 에어프라이어, 오븐).</p>
+      )}
+
       <div className="section-title">재료</div>
       {recipeIngredients.map((row, index) => (
         <div className="row" key={index} style={{ marginBottom: 8, gap: 6 }}>

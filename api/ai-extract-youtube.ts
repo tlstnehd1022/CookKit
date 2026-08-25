@@ -23,13 +23,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const user = await requireUser(req);
-    const { provider, model, transcriptText, meta, manualTranscript, existing } = (req.body ?? {}) as {
+    const { provider, model, transcriptText, meta, manualTranscript, existing, sourceLabel } = (req.body ?? {}) as {
       provider?: unknown;
       model?: unknown;
       transcriptText?: unknown;
       meta?: unknown;
       manualTranscript?: unknown;
       existing?: unknown;
+      /** "유튜브 요리 영상"/"인스타그램 요리 게시물" 등 프롬프트 문구 — 안 주면 기존대로 유튜브 문구. */
+      sourceLabel?: unknown;
     };
 
     if (provider !== 'anthropic' && provider !== 'gemini') {
@@ -55,22 +57,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(400).json({ error: 'invalid_transcript', message: '자막 텍스트가 필요합니다.' });
         return;
       }
+      const label = typeof sourceLabel === 'string' ? sourceLabel : undefined;
       const result = await extractRecipeFromTranscript(
         apiKey,
         model,
         transcriptText,
         existing as Parameters<typeof extractRecipeFromTranscript>[3],
+        label,
       );
       res.status(200).json(result);
       return;
     }
 
+    const label = typeof sourceLabel === 'string' ? sourceLabel : undefined;
     const result = await extractRecipeFromYoutubeMeta(
       apiKey,
       model,
       (meta ?? null) as Parameters<typeof extractRecipeFromYoutubeMeta>[2],
       typeof manualTranscript === 'string' ? manualTranscript : '',
       existing as Parameters<typeof extractRecipeFromYoutubeMeta>[4],
+      label,
     );
     res.status(200).json(result);
   } catch (err) {

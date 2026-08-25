@@ -74,12 +74,14 @@ export async function extractRecipeFromTranscript(
   model: string,
   transcriptText: string,
   existing: ExistingContext,
+  sourceLabel?: string,
 ): Promise<ExtractedRecipe> {
   return callAiApi<ExtractedRecipe>('/api/ai-extract-youtube', {
     provider: 'anthropic',
     model,
     transcriptText,
     existing,
+    sourceLabel,
   });
 }
 
@@ -88,6 +90,7 @@ export async function extractRecipeFromYoutubeMeta(
   meta: YoutubeVideoMeta | null,
   manualTranscript: string,
   existing: ExistingContext,
+  sourceLabel?: string,
 ): Promise<ExtractedRecipe> {
   return callAiApi<ExtractedRecipe>('/api/ai-extract-youtube', {
     provider: 'gemini',
@@ -95,6 +98,7 @@ export async function extractRecipeFromYoutubeMeta(
     meta,
     manualTranscript,
     existing,
+    sourceLabel,
   });
 }
 

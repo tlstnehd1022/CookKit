@@ -304,21 +304,24 @@ export async function extractRecipeFromYoutubeMeta(
   meta: YoutubeVideoMeta | null,
   manualTranscript: string,
   existing: ExistingContext,
+  // 인스타그램 변환도 이 함수를 그대로 재사용한다(meta.description 자리에 캡션을 넣어서) —
+  // 프롬프트 문구만 파라미터로 바꾼다.
+  sourceLabel = '유튜브 요리 영상',
 ): Promise<ExtractedRecipe> {
   const parts = [
-    meta?.title ? `영상 제목: ${meta.title}` : null,
-    meta?.description ? `영상 설명란:\n${meta.description}` : null,
+    meta?.title ? `제목: ${meta.title}` : null,
+    meta?.description ? `설명/캡션:\n${meta.description}` : null,
     manualTranscript.trim() ? `자막/추가 텍스트:\n${manualTranscript.trim()}` : null,
   ].filter(Boolean);
 
   if (parts.length === 0) {
-    throw new Error('영상 제목/설명란을 가져오지 못했고 붙여넣은 텍스트도 없습니다.');
+    throw new Error('제목/설명을 가져오지 못했고 붙여넣은 텍스트도 없습니다.');
   }
 
   return generateStructuredRecipe(
     apiKey,
     model,
-    `다음은 유튜브 요리 영상에서 얻은 정보야. 이 내용을 바탕으로 레시피(재료+수량+단위, 조리순서)를 구조화해줘. 정보가 부족하거나 추측한 부분이 많다면 warning 필드에 한국어로 설명해줘.\n\n${parts.join('\n\n')}\n\n${buildExistingContextNote(existing)}`,
+    `다음은 ${sourceLabel}에서 얻은 정보야. 이 내용을 바탕으로 레시피(재료+수량+단위, 조리순서)를 구조화해줘. 정보가 부족하거나 추측한 부분이 많다면 warning 필드에 한국어로 설명해줘.\n\n${parts.join('\n\n')}\n\n${buildExistingContextNote(existing)}`,
   );
 }
 

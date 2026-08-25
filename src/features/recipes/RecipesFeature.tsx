@@ -83,7 +83,7 @@ export function RecipesFeature() {
     setListMode('mine');
     setView({
       screen: 'edit',
-      initialYoutubeUrl: 'youtubeUrl' in sharedRecipeRequest ? sharedRecipeRequest.youtubeUrl : undefined,
+      initialYoutubeUrl: 'linkUrl' in sharedRecipeRequest ? sharedRecipeRequest.linkUrl : undefined,
       initialChatText: 'chatText' in sharedRecipeRequest ? sharedRecipeRequest.chatText : undefined,
     });
     clearSharedRecipeRequest();

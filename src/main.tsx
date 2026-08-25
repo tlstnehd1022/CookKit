@@ -42,12 +42,14 @@ async function bootstrap() {
       { setHighlightIngredientIds },
       { requestSharedRecipe },
       { extractYoutubeVideoId },
+      { extractInstagramPostId },
       { initNavigationHistory },
     ] = await Promise.all([
       import('./data/activeTab'),
       import('./data/highlightIngredients'),
       import('./data/sharedRecipeRequest'),
       import('./lib/youtubeTranscript'),
+      import('./lib/instagramTranscript'),
       import('./lib/navigationHistory'),
     ])
 
@@ -82,16 +84,20 @@ async function bootstrap() {
     }
 
     // 안드로이드 "공유하기"(vite.config.ts의 share_target)로 들어오면 /share-recipe?title=&text=&url=
-    // 로 열린다 — 유튜브 링크가 섞여 있으면 바로 변환 파이프라인으로, 아니면 대화 입력창에 미리
-    // 채워넣도록 신호만 세팅하고 실제 화면 전환은 RecipesFeature.tsx가 담당한다.
+    // 로 열린다 — 유튜브/인스타그램 링크가 섞여 있으면 바로 변환 파이프라인으로, 아니면 대화
+    // 입력창에 미리 채워넣도록 신호만 세팅하고 실제 화면 전환은 RecipesFeature.tsx가 담당한다.
     if (window.location.pathname === '/share-recipe') {
       const shareParams = new URLSearchParams(window.location.search)
       const sharedTitle = shareParams.get('title')?.trim() ?? ''
       const sharedText = shareParams.get('text')?.trim() ?? ''
       const sharedUrl = shareParams.get('url')?.trim() ?? ''
-      const youtubeId = extractYoutubeVideoId(`${sharedUrl} ${sharedText}`)
+      const combined = `${sharedUrl} ${sharedText}`
+      const youtubeId = extractYoutubeVideoId(combined)
+      const instagramId = extractInstagramPostId(combined)
       if (youtubeId) {
-        requestSharedRecipe({ youtubeUrl: `https://www.youtube.com/watch?v=${youtubeId}` })
+        requestSharedRecipe({ linkUrl: `https://www.youtube.com/watch?v=${youtubeId}` })
+      } else if (instagramId) {
+        requestSharedRecipe({ linkUrl: `https://www.instagram.com/reel/${instagramId}/` })
       } else {
         const chatText = [sharedTitle, sharedText, sharedUrl]
           .filter((v, i, arr) => v && arr.indexOf(v) === i)

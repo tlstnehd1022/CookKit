@@ -8,6 +8,7 @@ import {
   YoutubeTranscriptVideoUnavailableError,
 } from 'youtube-transcript';
 import { requireUser, AuthError } from './_lib/auth.js';
+import { fetchSupadataTranscript } from './_lib/supadata.js';
 import { extractYoutubeVideoId } from '../src/lib/youtubeTranscript.js';
 
 // Supadata 폴백이 긴 영상은 작업(job) 방식으로 처리하고 폴링이 필요할 수 있어 기본 실행시간보다 늘려둔다.
@@ -20,13 +21,11 @@ export const config = { maxDuration: 120 };
 const LANG_PRIORITY = ['ko', 'en'];
 
 // 자막이 아예 없는 영상은 youtube-transcript로 근본적으로 처리 불가(가져올 자막 트랙 자체가 없음).
-// 이 경우에만 Supadata(supadata.ai)로 한 번 더 시도한다 — Supadata는 자막이 없으면 자체적으로
-// 오디오를 음성인식(Whisper)해서 대신 준다(mode=auto). 우리 서버는 그 결과를 기다렸다가 그대로
-// 전달할 뿐, 오디오 다운로드/STT 자체는 하지 않는다(유튜브 봇 차단 리스크를 직접 떠안지 않기 위함).
-// SUPADATA_API_KEY가 설정되어 있지 않으면(선택 사항) 이 폴백 없이 기존 에러를 그대로 반환한다.
-const SUPADATA_BASE_URL = 'https://api.supadata.ai/v1';
-const SUPADATA_POLL_INTERVAL_MS = 3000;
-const SUPADATA_MAX_WAIT_MS = 100_000;
+// 이 경우에만 Supadata(supadata.ai, api/_lib/supadata.ts)로 한 번 더 시도한다 — Supadata는
+// 자막이 없으면 자체적으로 오디오를 음성인식(Whisper)해서 대신 준다(mode=auto). 우리 서버는 그
+// 결과를 기다렸다가 그대로 전달할 뿐, 오디오 다운로드/STT 자체는 하지 않는다(유튜브 봇 차단
+// 리스크를 직접 떠안지 않기 위함). SUPADATA_API_KEY가 설정되어 있지 않으면(선택 사항) 이 폴백
+// 없이 기존 에러를 그대로 반환한다.
 
 interface TranscriptResult {
   transcript: string;
@@ -53,42 +52,12 @@ async function fetchOwnCaptions(videoId: string): Promise<TranscriptResult> {
   };
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function fetchSupadataFallback(url: string): Promise<TranscriptResult | null> {
   const apiKey = process.env.SUPADATA_API_KEY;
   if (!apiKey) return null;
-
-  const requestUrl = `${SUPADATA_BASE_URL}/transcript?url=${encodeURIComponent(url)}&lang=ko&text=true&mode=auto`;
-  const res = await fetch(requestUrl, { headers: { 'x-api-key': apiKey } });
-
-  if (res.status === 200) {
-    const data = await res.json();
-    if (!data.content) return null;
-    return { transcript: data.content as string, language: data.lang ?? 'auto', source: 'supadata' };
-  }
-
-  if (res.status === 202) {
-    const { jobId } = await res.json();
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < SUPADATA_MAX_WAIT_MS) {
-      await sleep(SUPADATA_POLL_INTERVAL_MS);
-      const pollRes = await fetch(`${SUPADATA_BASE_URL}/transcript/${jobId}`, {
-        headers: { 'x-api-key': apiKey },
-      });
-      if (!pollRes.ok) continue;
-      const pollData = await pollRes.json();
-      if (pollData.status === 'completed' && pollData.content) {
-        return { transcript: pollData.content as string, language: pollData.lang ?? 'auto', source: 'supadata' };
-      }
-      if (pollData.status === 'failed') return null;
-    }
-    return null; // 폴링 시간 초과
-  }
-
-  return null;
+  const result = await fetchSupadataTranscript(url, apiKey);
+  if (!result) return null;
+  return { transcript: result.transcript, language: result.language, source: 'supadata' };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

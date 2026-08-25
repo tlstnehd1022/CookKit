@@ -21,6 +21,8 @@ import { RecipeChatPanel } from './RecipeChatPanel';
 import { diffLineColor, summarizeRecipeDiff, type DiffLine, type RecipeSnapshot } from '../../lib/recipeDiff';
 import { StepDiffSummary } from './StepDiffSummary';
 import { extractYoutubeVideoId, fetchYoutubeTranscript } from '../../lib/youtubeTranscript';
+import { fetchInstagramTranscript } from '../../lib/instagramTranscript';
+import { detectLinkPlatform, type LinkPlatform } from '../../lib/linkPlatform';
 import { getRecipeAddTab, setRecipeAddTab, type RecipeAddTab } from '../../data/recipeAddTab';
 import {
   startYoutubeConversion,
@@ -57,7 +59,7 @@ export function RecipeEditor({
   onDone: () => void;
   /** 홈 "있는 재료로 레시피 추가"처럼 바로 대화를 시작시키고 싶을 때 첫 메시지를 미리 지정 */
   initialChatPrompt?: string;
-  /** 공유하기로 들어온 유튜브 링크 — 있으면 유튜브 변환을 자동으로 시작한다 */
+  /** 공유하기로 들어온 링크(유튜브 또는 인스타그램) — 있으면 변환을 자동으로 시작한다 */
   initialYoutubeUrl?: string;
   /** 공유하기로 들어온 텍스트 — 대화 입력창에 미리 채워두기만 하고 자동 전송은 하지 않는다 */
   initialChatText?: string;
@@ -132,6 +134,13 @@ export function RecipeEditor({
   const [useYoutubeThumbnail, setUseYoutubeThumbnail] = useState(true);
   /** 자막(supadata STT 포함) 추출은 성공했지만 텍스트가 너무 짧을 때(숏츠 등) — 정보 부족 안내용 */
   const [pendingYoutubeShort, setPendingYoutubeShort] = useState(false);
+  // 인스타그램 지원 — "링크로 만들기" 탭은 유튜브/인스타그램 둘 다 받으므로, 지금 결과가 어느
+  // 플랫폼에서 왔는지(pendingLinkPlatform)와 인스타그램 전용 완성 사진 후보(원본 게시물
+  // URL + 미리보기용 썸네일 URL, videoId처럼 안정적이지 않고 서명이 만료될 수 있어 저장
+  // 시점에 다시 조회한다)를 따로 들고 있는다.
+  const [pendingLinkPlatform, setPendingLinkPlatform] = useState<LinkPlatform | null>(null);
+  const [pendingInstagramUrl, setPendingInstagramUrl] = useState<string | null>(null);
+  const [pendingInstagramThumbnailUrl, setPendingInstagramThumbnailUrl] = useState<string | null>(null);
 
   // 신규 레시피 추가 화면만 탭으로 나눈다(기존 레시피 수정 화면은 원래 구조 그대로 영향 없음).
   // 공유하기로 유튜브 링크를 받았으면 유튜브 탭으로, 대화를 자동 시작하는 진입(홈 "있는 재료로 레시피
@@ -265,17 +274,11 @@ export function RecipeEditor({
   }
 
   const isGemini = settings.aiProvider === 'gemini';
+  // 입력 중인 링크가 유튜브인지 인스타그램인지 실시간으로 감지 — 카드 문구/버튼 텍스트를
+  // 바꿔서 사용자가 지금 어떤 플랫폼으로 변환될지 알 수 있게 한다.
+  const typedLinkPlatform = useMemo(() => detectLinkPlatform(youtubeUrl), [youtubeUrl]);
 
-  async function runYoutubeConversion(overrideUrl?: string) {
-    const trimmedUrl = (overrideUrl ?? youtubeUrl).trim();
-    if (!trimmedUrl) return;
-    setAiLoading(true);
-    setAiError(null);
-    setAiMissingApiKey(false);
-    setAiWarning(null);
-    setPendingYoutubeShort(false);
-    setYoutubeStage('extracting');
-    startYoutubeConversion();
+  async function runYoutubeConversionInternal(trimmedUrl: string) {
     try {
       let transcriptText = '';
       let transcriptLanguage = '';
@@ -327,6 +330,94 @@ export function RecipeEditor({
         setAiMissingApiKey(true);
       }
       setAiError(getErrorMessage(err, '유튜브 변환에 실패했습니다.'));
+    }
+  }
+
+  async function runInstagramConversionInternal(trimmedUrl: string) {
+    try {
+      let igTranscript = '';
+      let igCaption = '';
+      let igLanguage = 'auto';
+      let igThumbnailUrl: string | null = null;
+      try {
+        const igResult = await fetchInstagramTranscript(trimmedUrl);
+        igTranscript = igResult.transcript;
+        igCaption = igResult.caption;
+        igLanguage = igResult.language;
+        igThumbnailUrl = igResult.thumbnailUrl;
+        // 릴스도 숏츠처럼 짧은 편이라 자막+캡션을 합쳐도 정보가 부족할 수 있다.
+        setPendingYoutubeShort([igTranscript, igCaption].join(' ').trim().length < 50);
+      } catch (err) {
+        // 자막/캡션을 아예 못 가져온 경우(비공개 계정/삭제된 게시물 등) — AI 호출 없이 바로
+        // 중단하고 대체 경로(직접 붙여넣기 또는 상단 대화창)로 유도한다.
+        const baseMessage = err instanceof Error ? err.message : '게시물 정보를 가져오지 못했습니다.';
+        setAiError(
+          isGemini
+            ? `${baseMessage} 아래 "영상 자막/설명 직접 붙여넣기" 칸에 붙여넣거나, 위쪽 대화창에서 텍스트로 설명해서 만들어보세요.`
+            : `${baseMessage} 위쪽 대화창에서 텍스트로 설명해서 만들어보세요.`,
+        );
+        return;
+      }
+
+      setYoutubeStage('analyzing');
+      setYoutubeConversionStage('analyzing');
+      let result: ExtractedRecipe;
+      if (isGemini) {
+        const combinedManual = [igTranscript, youtubeManualText.trim()].filter(Boolean).join('\n\n');
+        result = await aiProxy.extractRecipeFromYoutubeMeta(
+          settings.geminiModel,
+          { title: '', description: igCaption },
+          combinedManual,
+          existingContext,
+          '인스타그램 요리 게시물',
+        );
+      } else {
+        const combined = [igTranscript, igCaption, youtubeManualText.trim()].filter(Boolean).join('\n\n');
+        result = await aiProxy.extractRecipeFromTranscript(
+          settings.model,
+          combined,
+          existingContext,
+          '인스타그램 요리 게시물',
+        );
+      }
+      setPendingYoutubeResult(result);
+      setPendingYoutubeDiff(summarizeRecipeDiff(currentRecipeSnapshot, result));
+      setPendingYoutubeSource('supadata');
+      setPendingYoutubeLanguage(igLanguage);
+      setPendingInstagramUrl(trimmedUrl);
+      setPendingInstagramThumbnailUrl(igThumbnailUrl);
+      setUseYoutubeThumbnail(true);
+      showInfoToast('📸 인스타그램 변환이 끝났어요');
+    } catch (err) {
+      if (err instanceof ApiProxyError && err.code === 'no_api_key') {
+        setAiMissingApiKey(true);
+      }
+      setAiError(getErrorMessage(err, '인스타그램 변환에 실패했습니다.'));
+    }
+  }
+
+  async function runYoutubeConversion(overrideUrl?: string) {
+    const trimmedUrl = (overrideUrl ?? youtubeUrl).trim();
+    if (!trimmedUrl) return;
+    const platform = detectLinkPlatform(trimmedUrl);
+    if (!platform) {
+      setAiError('유튜브 또는 인스타그램 링크를 알아볼 수 없어요.');
+      return;
+    }
+    setAiLoading(true);
+    setAiError(null);
+    setAiMissingApiKey(false);
+    setAiWarning(null);
+    setPendingYoutubeShort(false);
+    setPendingLinkPlatform(platform);
+    setYoutubeStage('extracting');
+    startYoutubeConversion();
+    try {
+      if (platform === 'instagram') {
+        await runInstagramConversionInternal(trimmedUrl);
+      } else {
+        await runYoutubeConversionInternal(trimmedUrl);
+      }
     } finally {
       setAiLoading(false);
       setYoutubeStage('idle');
@@ -334,8 +425,9 @@ export function RecipeEditor({
     }
   }
 
-  // 공유하기로 유튜브 링크를 받고 들어온 경우, 화면을 열자마자 변환을 자동으로 시작한다
-  // (ref로 StrictMode 이중 실행 방지 — RecipeChatPanel의 autoSendText와 같은 패턴).
+  // 공유하기로 링크(유튜브 또는 인스타그램)를 받고 들어온 경우, 화면을 열자마자 변환을
+  // 자동으로 시작한다(runYoutubeConversion이 내부에서 플랫폼을 감지해 분기함) — ref로
+  // StrictMode 이중 실행 방지(RecipeChatPanel의 autoSendText와 같은 패턴).
   const autoYoutubeRef = useRef(false);
   useEffect(() => {
     if (!initialYoutubeUrl || autoYoutubeRef.current) return;
@@ -353,28 +445,37 @@ export function RecipeEditor({
       await applyExtractedResult(pendingYoutubeResult);
       if (!pendingYoutubeResult.warning) {
         setAiWarning(
-          pendingYoutubeSource === 'supadata'
-            ? '자막이 없는 영상이라 AI 음성 인식(Supadata)으로 추출한 결과입니다. 일반 자막보다 부정확할 수 있으니 꼭 확인해주세요.'
-            : `유튜브 자막(${pendingYoutubeLanguage || '자동생성'}) 기반 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.`,
+          pendingLinkPlatform === 'instagram'
+            ? '인스타그램 자막/캡션 기반 추출 결과입니다. 실제 게시물과 다를 수 있으니 꼭 확인해주세요.'
+            : pendingYoutubeSource === 'supadata'
+              ? '자막이 없는 영상이라 AI 음성 인식(Supadata)으로 추출한 결과입니다. 일반 자막보다 부정확할 수 있으니 꼭 확인해주세요.'
+              : `유튜브 자막(${pendingYoutubeLanguage || '자동생성'}) 기반 추출 결과입니다. 실제 영상과 다를 수 있으니 꼭 확인해주세요.`,
         );
       }
-      if (useYoutubeThumbnail && pendingYoutubeVideoId && householdId) {
+      const thumbnailProxyUrl =
+        pendingLinkPlatform === 'instagram' && pendingInstagramUrl
+          ? `/api/thumbnail-proxy?instagramUrl=${encodeURIComponent(pendingInstagramUrl)}`
+          : pendingYoutubeVideoId
+            ? `/api/thumbnail-proxy?videoId=${encodeURIComponent(pendingYoutubeVideoId)}`
+            : null;
+      if (useYoutubeThumbnail && thumbnailProxyUrl && householdId) {
         try {
-          const proxyUrl = `/api/youtube-thumbnail?videoId=${encodeURIComponent(pendingYoutubeVideoId)}`;
           const authHeaders = await aiProxy.getAuthHeader();
-          const path = await saveImageFromUrl(proxyUrl, householdId, stableRecipeId, 'final', authHeaders);
+          const path = await saveImageFromUrl(thumbnailProxyUrl, householdId, stableRecipeId, 'final', authHeaders);
           setFinalImageId(path);
         } catch (err) {
           // 완성 사진 저장 실패는 레시피 반영 자체를 막을 정도는 아니라 경고만 표시하고 계속 진행
-          console.error('유튜브 썸네일 저장 실패:', err);
-          setImageError(getErrorMessage(err, '유튜브 썸네일을 완성 사진으로 저장하지 못했습니다.'));
+          console.error('완성 사진 후보 저장 실패:', err);
+          setImageError(getErrorMessage(err, '완성 사진 후보를 저장하지 못했습니다.'));
         }
       }
       setPendingYoutubeResult(null);
       setPendingYoutubeDiff([]);
       setPendingYoutubeVideoId(null);
+      setPendingInstagramUrl(null);
+      setPendingInstagramThumbnailUrl(null);
     } catch (err) {
-      console.error('유튜브 반영 실패:', err);
+      console.error('링크 변환 반영 실패:', err);
       setAiError(getErrorMessage(err, '반영 중 오류가 발생했습니다.'));
     } finally {
       setApplyingYoutube(false);
@@ -385,6 +486,8 @@ export function RecipeEditor({
     setPendingYoutubeResult(null);
     setPendingYoutubeDiff([]);
     setPendingYoutubeVideoId(null);
+    setPendingInstagramUrl(null);
+    setPendingInstagramThumbnailUrl(null);
   }
 
   async function createIngredientFromAi(
@@ -915,7 +1018,7 @@ export function RecipeEditor({
             className={`underline-tab ${addTab === 'youtube' ? 'active' : ''}`}
             onClick={() => selectAddTab('youtube')}
           >
-            🎬 유튜브로 만들기
+            🎬 링크로 만들기
           </button>
         </div>
       )}
@@ -938,17 +1041,19 @@ export function RecipeEditor({
 
       <div style={{ display: showYoutubeTab ? undefined : 'none' }}>
       <div className="card">
-        <h2 style={{ fontSize: 14, marginBottom: 4 }}>🎬 유튜브 링크로 변환</h2>
+        <h2 style={{ fontSize: 14, marginBottom: 4 }}>
+          {typedLinkPlatform === 'instagram' ? '📸 인스타그램 링크로 변환' : '🎬 유튜브 링크로 변환'}
+        </h2>
         <p className="text-muted" style={{ marginBottom: 8 }}>
-          링크만 넣으면 자막을 읽고 레시피로 정리해요.
+          유튜브 또는 인스타그램 릴스/게시물 링크를 넣으면 자막·캡션을 읽고 레시피로 정리해요.
         </p>
         <div className="row" style={{ gap: 6, alignItems: 'flex-end' }}>
           <div className="field" style={{ flex: 1, maxWidth: '62%', marginBottom: 0 }}>
-            <label>유튜브 링크</label>
+            <label>유튜브/인스타그램 링크</label>
             <input
               value={youtubeUrl}
               onChange={(e) => setYoutubeUrl(e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=..."
+              placeholder="https://www.youtube.com/watch?v=... 또는 인스타그램 릴스/게시물 링크"
             />
           </div>
           <button className="btn primary" onClick={() => runYoutubeConversion()} disabled={aiLoading}>
@@ -956,7 +1061,9 @@ export function RecipeEditor({
               ? youtubeStage === 'extracting'
                 ? '자막 추출 중...'
                 : '레시피 분석 중...'
-              : '유튜브 변환'}
+              : typedLinkPlatform === 'instagram'
+                ? '인스타그램 변환'
+                : '유튜브 변환'}
           </button>
         </div>
         {isGemini && (
@@ -981,7 +1088,9 @@ export function RecipeEditor({
                 ⚠️ 영상이 짧아서 정보가 부족할 수 있어요. 내용을 꼭 확인해주세요.
               </p>
             )}
-            <strong style={{ fontSize: 13 }}>유튜브 변환 결과 — 변경사항</strong>
+            <strong style={{ fontSize: 13 }}>
+              {pendingLinkPlatform === 'instagram' ? '인스타그램' : '유튜브'} 변환 결과 — 변경사항
+            </strong>
             <StepDiffSummary beforeSteps={currentRecipeSnapshot.steps} afterSteps={pendingYoutubeResult.steps} />
             <ul style={{ margin: '6px 0', paddingLeft: 18, fontSize: 13 }}>
               {pendingYoutubeDiff.map((line, index) => (
@@ -994,11 +1103,15 @@ export function RecipeEditor({
                 조리시간: 약 {estimateCookMinutes(pendingYoutubeResult.steps)}분
               </li>
             </ul>
-            {pendingYoutubeVideoId && (
+            {(pendingYoutubeVideoId || pendingInstagramThumbnailUrl) && (
               <div className="row" style={{ alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
                 <img
-                  src={`https://img.youtube.com/vi/${pendingYoutubeVideoId}/hqdefault.jpg`}
-                  alt="영상 썸네일 미리보기"
+                  src={
+                    pendingLinkPlatform === 'instagram'
+                      ? (pendingInstagramThumbnailUrl ?? undefined)
+                      : `https://img.youtube.com/vi/${pendingYoutubeVideoId}/hqdefault.jpg`
+                  }
+                  alt="완성 사진 후보 미리보기"
                   style={{ width: 96, aspectRatio: '4 / 3', objectFit: 'cover', borderRadius: 'var(--radius)' }}
                 />
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 13 }}>
@@ -1009,6 +1122,13 @@ export function RecipeEditor({
                   />
                   이 썸네일을 완성 사진으로 사용할까요? (반영하면 우리 Storage에 저장돼요. 원치 않으면
                   체크 해제 — 나중에 AI 생성/직접 업로드로 바꿀 수 있어요)
+                  {pendingLinkPlatform === 'instagram' && (
+                    <>
+                      {' '}
+                      원작자의 사진이니, 사용한다면 레시피 이름이나 메모에 원본 게시물 출처를 함께
+                      남기는 걸 추천해요.
+                    </>
+                  )}
                 </label>
               </div>
             )}

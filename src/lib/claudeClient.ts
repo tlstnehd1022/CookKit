@@ -123,6 +123,9 @@ export async function extractRecipeFromTranscript(
   model: string,
   transcriptText: string,
   existing: ExistingContext,
+  // 인스타그램 변환(RecipeEditor.tsx "링크로 만들기" 탭)도 이 함수를 그대로 재사용한다 —
+  // 자막 텍스트를 구조화하는 로직 자체는 플랫폼과 무관해서, 프롬프트 문구만 파라미터로 바꾼다.
+  sourceLabel = '유튜브 요리 영상',
 ): Promise<ExtractedRecipe> {
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 
@@ -137,7 +140,7 @@ export async function extractRecipeFromTranscript(
       {
         role: 'user',
         content:
-          `다음은 유튜브 요리 영상에서 추출한 자막 텍스트야. 이 내용을 바탕으로 레시피(재료+수량+단위, 조리순서)를 정리해줘. 자막이라 구어체나 요리와 무관한 문구(인사말, 광고 등)가 섞여 있을 수 있으니 그런 부분은 무시하고, 정보가 부족하거나 추측한 부분이 많다면 warning 필드에 그 사실을 한국어로 설명해줘.\n\n자막:\n${transcriptText}\n\n` +
+          `다음은 ${sourceLabel}에서 추출한 자막 텍스트야. 이 내용을 바탕으로 레시피(재료+수량+단위, 조리순서)를 정리해줘. 자막이라 구어체나 요리와 무관한 문구(인사말, 광고 등)가 섞여 있을 수 있으니 그런 부분은 무시하고, 정보가 부족하거나 추측한 부분이 많다면 warning 필드에 그 사실을 한국어로 설명해줘.\n\n자막:\n${transcriptText}\n\n` +
           buildExistingContextNote(existing),
       },
     ],

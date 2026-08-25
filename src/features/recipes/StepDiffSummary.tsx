@@ -34,7 +34,15 @@ export function StepDiffSummary({
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--accent)',
+        }}
       >
         {summaryText} {expanded ? '▴' : '▾'} 자세히 보기
       </button>

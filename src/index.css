@@ -110,15 +110,20 @@ textarea {
 }
 
 /* 상단 고정 배너(오프라인 안내/이미지 생성 등 상태 배너 공용) — 어떤 탭을 보고 있어도(레시피
-   탭이 hidden이어도) 항상 보이도록 app-main보다 앞에 둔다. 실제 스크롤은 #root가 아니라
-   문서(body) 레벨에서 일어나므로(min-height:100vh라 내용이 길어지면 #root 자체가 늘어남 —
-   app-nav가 이미 같은 이유로 position:sticky를 쓰고 있는 것과 동일한 사정) sticky로 스크롤해도
-   화면 상단에 붙어있게 함. */
+   탭이 hidden이어도) 항상 보이도록 app-main보다 앞에 둔다. position:fixed로 스크롤 위치와
+   무관하게 항상 뷰포트 맨 위에 떠 있게 한다 — 예전엔 position:sticky를 썼는데, 화면 중간에
+   있는 버튼(예: "전체 이미지 생성")을 눌러 배너가 떠도 이미 스크롤을 내린 상태에서는 배너가
+   보이지 않는 문제가 있었다(게다가 .top-banner.loading이 절대 위치 프로그레스 바를 위해
+   position:relative로 덮어써서 sticky 자체가 아예 적용되지도 않고 있었다). #root와 같은
+   폭(640px)으로 가운데 정렬해 넓은 화면에서도 앱 컨텐츠 폭에 맞춘다. */
 .top-banner {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
+  max-width: 640px;
+  margin: 0 auto;
   z-index: 50;
-  flex-shrink: 0;
   padding: 8px 20px;
   background: var(--chip-bg);
   color: var(--text-secondary);
@@ -131,7 +136,6 @@ textarea {
    눈에 잘 안 들어와서 accent 연한 배경 + 은은한 테두리/그림자로 "떠 있는" 느낌을 살짝 더하고,
    아주 미묘한 밝기 펄스로 가만히 있는 배너보다 시선을 끈다. 과하지 않게 최소한만. */
 .top-banner.loading {
-  position: relative;
   background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
   box-shadow: var(--shadow-soft);

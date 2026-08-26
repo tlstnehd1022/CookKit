@@ -81,6 +81,11 @@ export function RecipesFeature() {
   useEffect(() => {
     if (!sharedRecipeRequest) return;
     setListMode('mine');
+    // 'edit' 화면의 onDone은 항상 goBack()에 연결돼 있는데(아래 렌더 블록), 다른 모든 진입
+    // 경로(onAddRecipe 등)와 달리 이 경로만 pushHistoryEntry 없이 setView를 호출하고 있었음 —
+    // history 스택이 비어 goBack()이 조용히 아무 것도 안 해서, 저장은 성공해도 화면이 목록으로
+    // 안 넘어가는 버그였다.
+    pushHistoryEntry(() => setView({ screen: 'list' }));
     setView({
       screen: 'edit',
       initialYoutubeUrl: 'linkUrl' in sharedRecipeRequest ? sharedRecipeRequest.linkUrl : undefined,

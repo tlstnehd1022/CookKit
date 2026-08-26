@@ -443,7 +443,9 @@ export function ShoppingListPage() {
 
 /** 집계된 재료 한 행 — 카테고리(매대)별 그룹 안에서 반복 렌더링된다. 보유 여부 수정은 여기서
  * 하지 않는다(냉장고 탭에서만) — "담음" 체크(왼쪽) 하나로 충분하고, 보유 토글까지 같이 있으면
- * "구매 필요" 필터와 상호작용하면서 혼란스러웠다(토글을 켜면 항목이 필터에서 바로 사라지는 등). */
+ * "구매 필요" 필터와 상호작용하면서 혼란스러웠다(토글을 켜면 항목이 필터에서 바로 사라지는 등).
+ * 클릭 영역은 원형 버튼뿐 아니라 행 전체 — 재료명을 눌러도 반응이 없다는 피드백을 반영해 행에
+ * onClick을 달았다(원형 버튼 자체의 onClick은 없애 이벤트 버블링으로 한 번만 토글되게 함). */
 function ShoppingItemRow({
   row,
   ingredient,
@@ -457,11 +459,14 @@ function ShoppingItemRow({
 }) {
   const isExpired = ingredient != null && getPantryAvailability(ingredient) === 'expired_unconfirmed';
   return (
-    <div className="shopping-item-row" style={{ opacity: checked ? 0.55 : 1 }}>
+    <div
+      className="shopping-item-row"
+      style={{ opacity: checked ? 0.55 : 1, cursor: 'pointer' }}
+      onClick={onToggleChecked}
+    >
       <button
         type="button"
         className={`shopping-item-check ${checked ? 'checked' : ''}`}
-        onClick={onToggleChecked}
         aria-label="담음 체크"
       >
         {checked && '✓'}

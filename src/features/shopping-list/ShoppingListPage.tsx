@@ -23,6 +23,17 @@ import { pushHistoryEntry, goBack, discardHistoryEntries } from '../../lib/navig
 
 type FilterMode = 'all' | 'need' | 'owned';
 
+// 쇼핑몰 바로가기 — 검색어/목록 전달 없이 단순히 각 플랫폼 메인 화면을 새 탭으로 여는 용도.
+// 쿠팡/네이버쇼핑/마켓컬리 모두 공식적으로 공개된 커스텀 URL 스킴(coupang:// 등)이 없어서(직접
+// 조사 결과 실제로도 안정적으로 동작하지 않는다는 사례가 많음) 그냥 https 도메인으로 연결한다 —
+// 앱이 설치돼 있으면 Android App Links/iOS Universal Links로 OS가 알아서 앱을 열어주고, 없으면
+// 자연스럽게 모바일 웹으로 열린다.
+const SHOPPING_APP_LINKS = [
+  { name: '쿠팡', url: 'https://www.coupang.com' },
+  { name: '네이버쇼핑', url: 'https://shopping.naver.com' },
+  { name: '마켓컬리', url: 'https://www.kurly.com' },
+] as const;
+
 interface AggregatedRow {
   key: string;
   ingredientId: string;
@@ -282,6 +293,24 @@ export function ShoppingListPage() {
             >
               <Plus size={22} strokeWidth={2.75} />
             </button>
+          </div>
+
+          <p className="text-muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+            장보기 목록을 보면서 쇼핑몰에서 검색해보세요
+          </p>
+          <div className="chip-row-scroll" style={{ marginBottom: 8 }}>
+            {SHOPPING_APP_LINKS.map((app) => (
+              <a
+                key={app.name}
+                className="chip"
+                href={app.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ textDecoration: 'none' }}
+              >
+                🛒 {app.name}
+              </a>
+            ))}
           </div>
 
           {selection.length > 0 && (

@@ -362,6 +362,18 @@ create table public.recipe_likes (
   primary key (recipe_id, user_id)
 );
 
+-- ---- recipe_comments (0039) — 레시피 댓글. recipe_likes와 같은 가시성 규칙 재사용 -------------
+create table public.recipe_comments (
+  id uuid primary key default gen_random_uuid(),
+  recipe_id uuid not null references public.recipes(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  content text not null check (char_length(content) between 1 and 500),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
+);
+
+create index recipe_comments_recipe_id_idx on public.recipe_comments (recipe_id, created_at);
+
 create index recipe_likes_recipe_id_idx on public.recipe_likes (recipe_id);
 
 -- 참고: MenuSet(손님초대모드)은 앱에서도 아직 UI가 없는 스텁이라 이번 스키마에는 포함하지
@@ -556,6 +568,69 @@ create policy "recipe_likes_insert_own" on public.recipe_likes
 
 create policy "recipe_likes_delete_own" on public.recipe_likes
   for delete using (user_id = auth.uid());
+
+-- ---- recipe_comments (0039) ------------------------------------------------
+alter table public.recipe_comments enable row level security;
+
+create policy "recipe_comments_select_via_recipe" on public.recipe_comments
+  for select using (
+    recipe_id in (
+      select id from public.recipes
+      where visibility = 'public'
+        or user_id = auth.uid()
+        or (visibility = 'household' and public.shares_household_with(user_id))
+    )
+  );
+
+create policy "recipe_comments_insert_own" on public.recipe_comments
+  for insert with check (
+    user_id = auth.uid()
+    and recipe_id in (
+      select id from public.recipes
+      where visibility = 'public'
+        or user_id = auth.uid()
+        or (visibility = 'household' and public.shares_household_with(user_id))
+    )
+  );
+
+create policy "recipe_comments_update_own" on public.recipe_comments
+  for update using (user_id = auth.uid());
+
+-- 삭제는 작성자 본인 또는 레시피 소유자(부적절한 댓글에 대한 최소한의 대응 수단) 둘 다 허용
+create policy "recipe_comments_delete_own_or_owner" on public.recipe_comments
+  for delete using (
+    user_id = auth.uid()
+    or recipe_id in (select id from public.recipes where user_id = auth.uid())
+  );
+
+-- 다른 household 댓글 작성자의 프로필/가구 이름 표시용 예외 — profiles_select_via_public_recipe
+-- (아래)는 "레시피 작성자"만 커버해서, 공개 레시피에 댓글을 남긴 다른 household 사용자의
+-- 프로필까지는 못 본다.
+create policy "profiles_select_via_public_recipe_comment" on public.profiles
+  for select using (
+    id in (
+      select user_id from public.recipe_comments
+      where recipe_id in (select id from public.recipes where visibility = 'public')
+    )
+  );
+
+create policy "household_members_select_via_public_recipe_comment" on public.household_members
+  for select using (
+    user_id in (
+      select user_id from public.recipe_comments
+      where recipe_id in (select id from public.recipes where visibility = 'public')
+    )
+  );
+
+create policy "households_select_via_public_recipe_comment" on public.households
+  for select using (
+    id in (
+      select hm.household_id
+      from public.household_members hm
+      join public.recipe_comments rc on rc.user_id = hm.user_id
+      where rc.recipe_id in (select id from public.recipes where visibility = 'public')
+    )
+  );
 
 -- ---- user_api_keys (0014) — Anthropic/Gemini API 키 Vault 암호화 저장 ----------------------
 -- 실제 키 값은 vault.secrets에 암호화 저장하고, 이 테이블은 그 참조(secret_id)만 가진다.
@@ -764,7 +839,7 @@ create policy "meal_plans_all_household_member" on public.meal_plans
 create table public.notifications (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
-  type text not null check (type in ('recipe_liked', 'household_recipe_added')),
+  type text not null check (type in ('recipe_liked', 'household_recipe_added', 'recipe_commented')),
   payload jsonb not null default '{}',
   read_at timestamptz,
   created_at timestamptz not null default now()
@@ -870,6 +945,82 @@ $$;
 
 revoke all on function public.create_household_recipe_added_notifications(uuid) from public;
 grant execute on function public.create_household_recipe_added_notifications(uuid) to authenticated;
+
+-- ---- create_recipe_commented_notification (0039) ---------------------------------------------
+create or replace function public.create_recipe_commented_notification(
+  p_recipe_id uuid,
+  p_comment_id uuid,
+  p_content text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid;
+  v_commenter_name text;
+begin
+  select user_id into v_owner_id from public.recipes where id = p_recipe_id;
+  if v_owner_id is null or v_owner_id = auth.uid() then
+    return; -- 레시피가 없거나 본인 레시피에 본인이 댓글 단 경우 알림 생성 안 함
+  end if;
+
+  select display_name into v_commenter_name from public.profiles where id = auth.uid();
+
+  insert into public.notifications (user_id, type, payload)
+  values (
+    v_owner_id,
+    'recipe_commented',
+    jsonb_build_object(
+      'recipe_id', p_recipe_id,
+      'comment_id', p_comment_id,
+      'commenter_user_id', auth.uid(),
+      'commenter_name', coalesce(v_commenter_name, '이름 없는 사용자'),
+      'comment_preview', left(p_content, 80)
+    )
+  );
+end;
+$$;
+
+revoke all on function public.create_recipe_commented_notification(uuid, uuid, text) from public;
+grant execute on function public.create_recipe_commented_notification(uuid, uuid, text) to authenticated;
+
+-- ---- delete_recipe_commented_notification (0039) ---------------------------------------------
+-- 삭제 주체가 댓글 작성자 본인이든(자진 삭제) 레시피 소유자든(모더레이션 삭제) 둘 다 호출할 수
+-- 있어야 해서, "작성자 본인 또는 레시피 소유자"인지를 알림 payload 기준으로 검증한다.
+create or replace function public.delete_recipe_commented_notification(p_comment_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_recipe_id uuid;
+  v_commenter_id uuid;
+  v_owner_id uuid;
+begin
+  select (payload->>'recipe_id')::uuid, (payload->>'commenter_user_id')::uuid
+    into v_recipe_id, v_commenter_id
+  from public.notifications
+  where type = 'recipe_commented' and payload->>'comment_id' = p_comment_id::text
+  limit 1;
+
+  if v_recipe_id is null then
+    return;
+  end if;
+
+  select user_id into v_owner_id from public.recipes where id = v_recipe_id;
+
+  if auth.uid() = v_commenter_id or auth.uid() = v_owner_id then
+    delete from public.notifications
+    where type = 'recipe_commented' and payload->>'comment_id' = p_comment_id::text;
+  end if;
+end;
+$$;
+
+revoke all on function public.delete_recipe_commented_notification(uuid) from public;
+grant execute on function public.delete_recipe_commented_notification(uuid) to authenticated;
 
 -- AI 대화 응답 피드백(👎) — 0037
 create table public.ai_chat_feedback (

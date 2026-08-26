@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-export type NotificationType = 'recipe_liked' | 'household_recipe_added';
+export type NotificationType = 'recipe_liked' | 'household_recipe_added' | 'recipe_commented';
 
 export interface RecipeLikedPayload {
   recipe_id: string;
@@ -15,6 +15,14 @@ export interface HouseholdRecipeAddedPayload {
   author_name: string;
 }
 
+export interface RecipeCommentedPayload {
+  recipe_id: string;
+  comment_id: string;
+  commenter_user_id: string;
+  commenter_name: string;
+  comment_preview: string;
+}
+
 interface BaseNotification {
   id: string;
   readAt: string | null;
@@ -23,7 +31,8 @@ interface BaseNotification {
 
 export type AppNotification =
   | (BaseNotification & { type: 'recipe_liked'; payload: RecipeLikedPayload })
-  | (BaseNotification & { type: 'household_recipe_added'; payload: HouseholdRecipeAddedPayload });
+  | (BaseNotification & { type: 'household_recipe_added'; payload: HouseholdRecipeAddedPayload })
+  | (BaseNotification & { type: 'recipe_commented'; payload: RecipeCommentedPayload });
 
 // activeTab.ts/shoppingSelection.ts와 같은 전역 store 패턴 — 홈 화면(우상단 점)과 프로필
 // 바텀시트(배지)가 같은 안 읽은 개수를 동시에 봐야 해서 fetch-on-demand 대신 가벼운 반응형
@@ -114,5 +123,26 @@ export async function deleteRecipeLikedNotification(recipeId: string): Promise<v
  * 구성원에게 알림을 생성한다. */
 export async function createHouseholdRecipeAddedNotifications(recipeId: string): Promise<void> {
   const { error } = await supabase.rpc('create_household_recipe_added_notifications', { p_recipe_id: recipeId });
+  if (error) throw error;
+}
+
+/** 댓글을 남길 때 호출 — 레시피 소유자에게 알림을 생성한다(본인 레시피면 서버가 조용히 무시). */
+export async function createRecipeCommentedNotification(
+  recipeId: string,
+  commentId: string,
+  content: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('create_recipe_commented_notification', {
+    p_recipe_id: recipeId,
+    p_comment_id: commentId,
+    p_content: content,
+  });
+  if (error) throw error;
+}
+
+/** 댓글 삭제 시(작성자 본인 또는 레시피 소유자의 모더레이션 삭제 둘 다) 그 댓글이 만든 알림을
+ * 지운다 — 안 그러면 삭제된 댓글에 대한 알림이 계속 남아있게 된다. */
+export async function deleteRecipeCommentedNotification(commentId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_recipe_commented_notification', { p_comment_id: commentId });
   if (error) throw error;
 }

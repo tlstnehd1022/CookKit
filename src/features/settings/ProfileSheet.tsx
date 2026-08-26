@@ -158,6 +158,9 @@ function formatNotificationText(notification: AppNotification, recipeName: strin
   if (notification.type === 'recipe_liked') {
     return `${notification.payload.liker_name}님이 회원님의 레시피 "${recipeName}"를 좋아해요`;
   }
+  if (notification.type === 'recipe_commented') {
+    return `${notification.payload.commenter_name}님이 회원님의 레시피 "${recipeName}"에 댓글을 남겼어요: "${notification.payload.comment_preview}"`;
+  }
   return `${notification.payload.author_name}님이 새 레시피 "${recipeName}"를 추가했어요`;
 }
 

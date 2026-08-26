@@ -8,6 +8,7 @@ import { useSession } from '../../data/session';
 import { getErrorMessage } from '../../lib/errorMessage';
 import { formatPublicRecipeOwnerLabel, type PublicRecipeEntry } from '../../data/publicRecipes';
 import { CookingLogPhotoGallery } from './CookingLogPhotoGallery';
+import { RecipeCommentsSection } from './RecipeCommentsSection';
 
 /** 다른 household의 공개 레시피 상세 — 조회 전용(재료/조리순서/난이도/작성자 표시) + 좋아요.
  * "내 레시피로 복사하기" 버튼과 실제 복사 로직은 onCopy prop으로 상위(RecipesFeature)에서 주입한다. */
@@ -111,6 +112,9 @@ export function PublicRecipeDetailPage({
         )}
         {formatPublicRecipeOwnerLabel(entry)}
       </p>
+      <div style={{ marginBottom: 8 }}>
+        <RecipeCommentsSection recipeId={recipe.id} recipeOwnerUserId={entry.authorUserId} />
+      </div>
       {coverImageUrl && (
         <img
           src={coverImageUrl}

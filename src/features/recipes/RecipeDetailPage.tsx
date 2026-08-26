@@ -25,6 +25,7 @@ import { useSession } from '../../data/session';
 import { CookingLogModal } from './CookingLogModal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { CookingLogPhotoGallery } from './CookingLogPhotoGallery';
+import { RecipeCommentsSection } from './RecipeCommentsSection';
 import { CookingModePage } from './CookingModePage';
 import { TimingAdjustmentModal } from './TimingAdjustmentModal';
 import { PantryTidyModal } from '../ingredients/PantryTidyModal';
@@ -408,6 +409,11 @@ export function RecipeDetailPage({
         <p className="text-muted" style={{ marginTop: -2, marginBottom: 8 }}>
           {recipe.difficultyReason}
         </p>
+      )}
+      {recipe.ownerId && (
+        <div style={{ marginBottom: 8 }}>
+          <RecipeCommentsSection recipeId={recipe.id} recipeOwnerUserId={recipe.ownerId} />
+        </div>
       )}
       {(recipeTags.length > 0 || recipeAllergens.length > 0) && (
         <div className="chip-row">

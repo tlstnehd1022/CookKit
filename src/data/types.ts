@@ -69,6 +69,9 @@ export interface Recipe {
   authorName?: string;
   /** 작성자 프로필 사진 URL(profiles.avatar_url) — authorName과 같은 조회 전용 필드 */
   authorAvatarUrl?: string;
+  /** 작성자 user_id(DB의 recipes.user_id) — authorName과 달리 표시용이 아니라 "이 레시피의
+   * 댓글을 삭제할 권한이 있는가" 같은 소유권 판단에 쓰는 조회 전용 필드(저장 시에는 무시됨) */
+  ownerId?: string;
   /** servingsBase(기준 인분) 1인분 기준 영양 정보 — 인분 조절 시 화면에서 비례 재계산한다 */
   nutrition?: RecipeNutrition;
   /** nutrition 값의 출처 — 화면에 항상 같이 표기해서 정확도를 오인하지 않게 한다 */

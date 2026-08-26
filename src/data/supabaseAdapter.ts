@@ -131,6 +131,7 @@ export function rowToRecipe(row: Record<string, unknown>): Recipe {
     nutritionSource: content.nutritionSource,
     authorName: profile?.display_name ?? undefined,
     authorAvatarUrl: profile?.avatar_url ?? undefined,
+    ownerId: row.user_id as string,
   };
 }
 

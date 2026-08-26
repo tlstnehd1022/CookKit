@@ -29,7 +29,8 @@ import { ConfirmDialog } from '../recipes/ConfirmDialog';
 
 const API_KEY_MIGRATION_FLAG = 'cookkit:apiKeyMigrated';
 
-type Section = 'menu' | 'notifications' | 'profile' | 'household' | 'app' | 'ai-feedback';
+export type ProfileSheetSection = 'menu' | 'notifications' | 'profile' | 'household' | 'app' | 'ai-feedback';
+type Section = ProfileSheetSection;
 
 const SECTION_TITLE: Record<Exclude<Section, 'menu'>, string> = {
   notifications: '알림',
@@ -49,12 +50,15 @@ const SECTION_TITLE: Record<Exclude<Section, 'menu'>, string> = {
 export function ProfileSheet({
   onClose,
   onNavigateToRecipe,
+  initialSection = 'menu',
 }: {
   onClose: () => void;
   /** 알림 탭 시 관련 레시피 상세로 이동시키기 위한 콜백 — 시트를 소유한 HomePage가 주입한다. */
   onNavigateToRecipe: (recipeId: string) => void;
+  /** 홈의 "이번 주 반응 요약" 카드처럼 알림 목록으로 곧장 열어야 할 때 사용(기본은 메뉴). */
+  initialSection?: ProfileSheetSection;
 }) {
-  const [section, setSection] = useState<Section>('menu');
+  const [section, setSection] = useState<Section>(initialSection);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { user, logout } = useSession();
   const { profile } = useProfile();

@@ -12,7 +12,10 @@ import { useStoredImage } from '../../data/imageStore';
 import { setActiveTab, useActiveTab } from '../../data/activeTab';
 import { useShoppingSelection } from '../../data/shoppingSelection';
 import { requestRecipeSearchFocus } from '../../data/recipeSearchFocus';
-import { requestMaxMinutesFilter } from '../../data/recipeTimeFilterRequest';
+import { requestDiscoverTab } from '../../data/discoverTabRequest';
+import { useSession } from '../../data/session';
+import { fetchPopularPublicRecipes, fetchMyRecentLikeCount, type PopularRecipeEntry } from '../../data/recipeLikeStats';
+import type { PublicRecipeEntry } from '../../data/publicRecipes';
 import { useProfileSheetRequested, clearProfileSheetRequest } from '../../data/profileSheet';
 import { pushHistoryEntry, goBack, discardHistoryEntries } from '../../lib/navigationHistory';
 import {
@@ -44,9 +47,10 @@ import { pickGreeting, TIME_SLOT_LABEL } from '../../lib/homeGreeting';
 import { DIFFICULTY_LABEL } from '../../lib/recipeDifficulty';
 import { RecipeDetailPage } from '../recipes/RecipeDetailPage';
 import { RecipeEditor } from '../recipes/RecipeEditor';
+import { PublicRecipeDetailPage } from '../recipes/PublicRecipeDetailPage';
 import { CookingHistoryPage } from '../recipes/CookingHistoryPage';
 import { PantryTidyModal } from '../ingredients/PantryTidyModal';
-import { ProfileSheet } from '../settings/ProfileSheet';
+import { ProfileSheet, type ProfileSheetSection } from '../settings/ProfileSheet';
 import { WeeklyPlanPage } from './WeeklyPlanPage';
 import { OnboardingTour } from './OnboardingTour';
 import type { MealPlan, Recipe } from '../../data/types';
@@ -56,12 +60,11 @@ type View =
   | { screen: 'detail'; recipeId: string; autoCook?: boolean; initialServings?: number }
   | { screen: 'edit'; recipeId?: string; initialChatPrompt?: string; initialOwnedIngredientIds?: string[] }
   | { screen: 'weekly-plan' }
-  | { screen: 'cooking-history' };
+  | { screen: 'cooking-history' }
+  | { screen: 'public-detail'; entry: PublicRecipeEntry; ingredientNameById: Map<string, string> };
 
 const OWNED_CHIP_LIMIT = 6;
 const EXPIRING_LIMIT = 4;
-const QUICK_RECIPE_MAX_MINUTES = 20;
-const QUICK_RECIPE_MIN_COUNT = 3;
 const WEEK_DATES = getCurrentWeekDates();
 
 export function HomePage() {
@@ -74,9 +77,14 @@ export function HomePage() {
   const [cookingStatsById, setCookingStatsById] = useState<Map<string, CookingStats>>(new Map());
   const [showPantryTidy, setShowPantryTidy] = useState(false);
   const [showTour, setShowTour] = useState(false);
+  const [popularRecipes, setPopularRecipes] = useState<PopularRecipeEntry[]>([]);
+  const [popularIngredientNameById, setPopularIngredientNameById] = useState<Map<string, string>>(new Map());
+  const [myRecentLikeCount, setMyRecentLikeCount] = useState(0);
+  const [profileSheetSection, setProfileSheetSection] = useState<ProfileSheetSection>('menu');
   const profileSheetRequested = useProfileSheetRequested();
   const tourRestartRequested = useOnboardingTourRestartRequested();
 
+  const { user } = useSession();
   const { recipes } = useRecipes();
   const { ingredients } = useIngredients();
   const ingredientsById = useIngredientsById();
@@ -175,17 +183,48 @@ export function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [householdId, activeTab, view.screen, recipes.map((r) => r.id).join(',')]);
 
+  // 1. "🔥 요즘 인기 있는 레시피" — 위 조회들과 같은 시점(홈 진입/복귀)에 다시 불러온다.
+  useEffect(() => {
+    if (!user || !householdId || activeTab !== 'home' || view.screen !== 'feed') return;
+    let cancelled = false;
+    fetchPopularPublicRecipes(user.id, householdId, recipes)
+      .then((result) => {
+        if (!cancelled) {
+          setPopularRecipes(result.items);
+          setPopularIngredientNameById(result.ingredientNameById);
+        }
+      })
+      .catch((err) => console.error('인기 레시피 조회 실패:', err));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, householdId, activeTab, view.screen, recipes.map((r) => r.id).join(',')]);
+
+  // 2. "💬 이번 주 반응 요약" — 내가 소유한 레시피에 최근 7일간 새로 달린 좋아요 총합. 개별
+  // 알림(누가 언제 눌렀는지)은 알림함에서만 다루고 홈에는 요약 숫자만 노출한다.
+  useEffect(() => {
+    if (!user || activeTab !== 'home' || view.screen !== 'feed') return;
+    const myRecipeIds = recipes.filter((r) => r.ownerId === user.id).map((r) => r.id);
+    if (myRecipeIds.length === 0) {
+      setMyRecentLikeCount(0);
+      return;
+    }
+    let cancelled = false;
+    fetchMyRecentLikeCount(myRecipeIds)
+      .then((count) => {
+        if (!cancelled) setMyRecentLikeCount(count);
+      })
+      .catch((err) => console.error('내 레시피 반응 요약 조회 실패:', err));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, activeTab, view.screen, recipes.map((r) => r.id).join(',')]);
+
   const ownedIngredients = useMemo(() => ingredients.filter((i) => i.owned), [ingredients]);
   // "있는 재료로 레시피 추가"용 — 유통기한 지나 확인이 필요한 재료는 제안 재료 목록에서 제외한다.
   const usableIngredients = useMemo(() => ownedIngredients.filter((i) => isPantryUsable(i)), [ownedIngredients]);
-
-  // A-1: 예상 조리시간이 짧은 순으로, 최소 3개 이상일 때만 섹션 노출(빈약해 보이지 않게)
-  const quickRecipes = useMemo(() => {
-    const candidates = recipes
-      .filter((r) => r.estimatedMinutes != null && r.estimatedMinutes <= QUICK_RECIPE_MAX_MINUTES)
-      .sort((a, b) => (a.estimatedMinutes ?? 0) - (b.estimatedMinutes ?? 0));
-    return candidates.length >= QUICK_RECIPE_MIN_COUNT ? candidates : [];
-  }, [recipes]);
 
   // owned=false인 재료는 유통기한이 설정돼 있어도 애초에 냉장고에 없는 것이라 대상에서 제외한다
   // (IngredientsPage.tsx와 같은 기준).
@@ -244,6 +283,17 @@ export function HomePage() {
     setView({ screen: 'detail', recipeId });
   }
 
+  function openPublicRecipe(entry: PublicRecipeEntry) {
+    pushHistoryEntry(() => setView({ screen: 'feed' }));
+    setView({ screen: 'public-detail', entry, ingredientNameById: popularIngredientNameById });
+  }
+
+  function openNotifications() {
+    setProfileSheetSection('notifications');
+    pushHistoryEntry(() => setShowProfileSheet(false));
+    setShowProfileSheet(true);
+  }
+
   function openWeeklyPlan() {
     pushHistoryEntry(() => setView({ screen: 'feed' }));
     setView({ screen: 'weekly-plan' });
@@ -292,6 +342,12 @@ export function HomePage() {
     return householdId ? <CookingHistoryPage householdId={householdId} onBack={goBack} /> : null;
   }
 
+  if (view.screen === 'public-detail') {
+    return (
+      <PublicRecipeDetailPage entry={view.entry} ingredientNameById={view.ingredientNameById} onBack={goBack} />
+    );
+  }
+
   return (
     <div className="home-page">
       <div className="home-greeting">
@@ -307,6 +363,7 @@ export function HomePage() {
           className="home-avatar-btn"
           data-tour="profile"
           onClick={() => {
+            setProfileSheetSection('menu');
             pushHistoryEntry(() => setShowProfileSheet(false));
             setShowProfileSheet(true);
           }}
@@ -400,20 +457,35 @@ export function HomePage() {
         </div>
       )}
 
-      {quickRecipes.length > 0 && (
+      {popularRecipes.length > 0 && (
         <div className="home-section">
           <div className="home-section-head">
-            <span className="home-section-title">⏱ {QUICK_RECIPE_MAX_MINUTES}분 안에 되는 것</span>
-            <button type="button" className="home-link" onClick={() => requestMaxMinutesFilter(QUICK_RECIPE_MAX_MINUTES)}>
+            <span className="home-section-title">🔥 요즘 인기 있는 레시피</span>
+            <button type="button" className="home-link" onClick={requestDiscoverTab}>
               전체 보기
             </button>
           </div>
           <div className="recipe-row-scroll">
-            {quickRecipes.map((recipe) => (
-              <QuickRecipeCard key={recipe.id} recipe={recipe} onClick={() => openRecipe(recipe.id)} />
+            {popularRecipes.map((item) => (
+              <PopularRecipeCard
+                key={item.entry.recipe.id}
+                item={item}
+                onClick={() => openPublicRecipe(item.entry)}
+              />
             ))}
           </div>
         </div>
+      )}
+
+      {myRecentLikeCount > 0 && (
+        <button type="button" className="action-banner" onClick={openNotifications}>
+          <span className="action-banner-text">
+            💬 이번 주 내 레시피가 좋아요 {myRecentLikeCount}개를 받았어요
+          </span>
+          <span className="action-banner-cta">
+            확인하기 <ChevronRight size={14} strokeWidth={2.75} />
+          </span>
+        </button>
       )}
 
       <div className="home-section" data-tour="week">
@@ -509,6 +581,7 @@ export function HomePage() {
       {showProfileSheet && (
         <ProfileSheet
           onClose={goBack}
+          initialSection={profileSheetSection}
           onNavigateToRecipe={(recipeId) => {
             // 프로필 바텀시트(depth1)를 닫고 그 자리에서 바로 레시피 상세(depth1)를 여는 것 —
             // 바텀시트가 열려있던 항목을 지운 뒤 openRecipe가 새로 하나 쌓는다.
@@ -585,22 +658,23 @@ function RecommendCard({
   );
 }
 
-/** A-1 "⏱ 20분 안에 되는 것" 행의 카드 — RecipesPage.tsx의 .recipe-card/.recipe-card-row CSS를
- * 그대로 재사용하되, 메타 텍스트만 이 섹션 취지("12분 · 재료 5개")에 맞게 직접 구성한다. */
-function QuickRecipeCard({ recipe, onClick }: { recipe: Recipe; onClick: () => void }) {
-  const imageId = recipe.finalImageId ?? recipe.steps.find((s) => s.imageId)?.imageId;
+/** 1번 "🔥 요즘 인기 있는 레시피" 행의 카드 — RecipesPage.tsx의 .recipe-card/.recipe-card-row CSS를
+ * 그대로 재사용하되, 메타 텍스트를 좋아요 개수+작성자로 구성한다. */
+function PopularRecipeCard({ item, onClick }: { item: PopularRecipeEntry; onClick: () => void }) {
+  const { entry, likeCount } = item;
+  const imageId = entry.recipe.finalImageId ?? entry.recipe.steps.find((s) => s.imageId)?.imageId;
   const imageUrl = useStoredImage(imageId);
   return (
     <div className="recipe-card recipe-card-row" onClick={onClick}>
       {imageUrl ? (
-        <img src={imageUrl} alt={recipe.name} className="recipe-card-image" />
+        <img src={imageUrl} alt={entry.recipe.name} className="recipe-card-image" />
       ) : (
         <div className="recipe-card-placeholder">🍽️</div>
       )}
       <div className="recipe-card-body">
-        <strong className="recipe-title">{recipe.name}</strong>
+        <strong className="recipe-title">{entry.recipe.name}</strong>
         <span className="text-muted" style={{ fontSize: 12 }}>
-          {recipe.estimatedMinutes}분 · 재료 {recipe.ingredients.length}개
+          ❤️ {likeCount} · {entry.authorName}님
         </span>
       </div>
     </div>

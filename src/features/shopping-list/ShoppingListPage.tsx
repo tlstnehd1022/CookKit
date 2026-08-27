@@ -34,6 +34,28 @@ const SHOPPING_APP_LINKS = [
   { name: '마켓컬리', url: 'https://www.kurly.com' },
 ] as const;
 
+function isStandalonePwa(): boolean {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
+// 설치된 PWA(standalone) 안드로이드에서는 target="_blank"/<a> 클릭이 진짜 새 탭이 아니라
+// 크롬 커스텀 탭(상단에 X+⋮만 있는 미니멀 UI) 형태로 열려서 "기본 브라우저로 완전히 나가서
+// 열린다"는 기대와 다르게 보인다 — intent:// 스킴으로 명시적인 ACTION_VIEW 인텐트를 만들면
+// 완전히 별개의 앱(브라우저든 설치된 쇼핑 앱이든)으로 진짜 전환된다. package를 특정 브라우저로
+// 고정하지 않고 S.browser_fallback_url만 지정해서, 그 URL을 처리할 수 있는 설치된 앱(App Links로
+// 등록된 쇼핑 앱)이 있으면 그 앱으로, 없으면 사용자의 실제 기본 브라우저로 열리게 한다(크롬으로
+// 못박으면 삼성인터넷/파이어폭스 등을 기본으로 쓰는 사용자에게 오히려 더 나쁜 경험이 됨).
+// iOS는 이런 스킴이 없고 PWA 표준 웹 API로는 강제 전환 방법이 없어 그대로 둔다.
+function buildShoppingLinkHref(url: string): string {
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  if (!isAndroid || !isStandalonePwa()) return url;
+  const withoutScheme = url.replace(/^https?:\/\//, '');
+  return `intent://${withoutScheme}#Intent;scheme=https;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+}
+
 interface AggregatedRow {
   key: string;
   ingredientId: string;
@@ -303,7 +325,7 @@ export function ShoppingListPage() {
               <a
                 key={app.name}
                 className="chip"
-                href={app.url}
+                href={buildShoppingLinkHref(app.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{ textDecoration: 'none' }}
